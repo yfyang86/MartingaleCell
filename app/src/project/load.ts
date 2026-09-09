@@ -136,7 +136,22 @@ export async function loadProjectIntoRuntime(): Promise<void> {
         /* engine noise during load (compile notes etc.) → cell OUT well */
         if (chunk.trim()) useWorkspace.getState().appendCellStdout(cell.id, chunk)
       },
-    })
+      /* a failing project form pauses the load in the debugger (Sprint 5) —
+       * the project cell renders the same restart block as an eval cell */
+      onDebug: (pause) => {
+        const s = useWorkspace.getState()
+        s.updateCell(cell.id, { status: 'paused', debug: pause, errorType: pause.errorType, frames: pause.frames, details: pause.details })
+        s.addLog('WARN', 'PROJECT', `${pause.errorType ?? 'ERROR'} — load paused in debugger — ${truncate(pause.condition, 120)} — cell [${cell.n}]`, {
+          cellRef: cell.n,
+          details: pause.restarts.map((r) => `[${r.index}] ${r.name} — ${r.report}`).join('\n'),
+        })
+      },
+      onDebugNote: (message) => {
+        const s = useWorkspace.getState()
+        s.appendCellStdout(cell.id, `; debugger: ${message}`)
+        s.addLog('WARN', 'PROJECT', `debugger: ${message}`, { cellRef: cell.n })
+      },
+    }, { debug: ws.settings.debugOnError })
     const s = useWorkspace.getState()
 
     /* cl-plot (save fig "name.png" …) during load — auto-download the PNG */
@@ -190,6 +205,8 @@ export async function loadProjectIntoRuntime(): Promise<void> {
         errorType: result.errorType,
         warnings: result.warnings,
         durationMs: result.durationMs,
+        debug: undefined,
+        ...(result.restartUsed ? { resumedVia: result.restartUsed } : {}),
       })
       s.addLog(
         result.error ? 'ERROR' : 'INFO',

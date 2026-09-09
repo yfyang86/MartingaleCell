@@ -33,7 +33,9 @@
  *        (index into the ;;RESTART: list, -1 declines; value = Lisp form)
  *      | {type:'input', id, text}   a line for a job waiting on stdin
  *        (;;READ-WAIT); text null = end of file
- *      | {type:'load-project', id, files:[{path, content}]}
+ *      | {type:'load-project', id, files:[{path, content}], debug?}
+ *        (debug: a failing project form pauses with SKIP-FORM / RETRY /
+ *         STORE-VALUE / DEFINE-FUNCTION / ABORT-LOAD restarts)
  *   out: {type:'boot', line} | {type:'ready'} | {type:'bootfail', message}
  *        {type:'stdout', id, text} | {type:'stderr', id, text}
  *        {type:'done', id} | {type:'joberror', id, message}
@@ -516,27 +518,71 @@ var CC_HELPER_SRC = [
   '                       (format *error-output* "~&;;WARNING: ~A: ~A~%" path first-err)',
   '                       (return))',
   '                      (t',
-  '                       (handler-case',
-  '                           (progn',
-  '                             (handler-bind ((warning (function %warn))) (eval form))',
-  '                             (incf nok))',
-  '                         (serious-condition (e)',
-  '                           (incf nerr)',
-  '                           (setf first-err (or first-err (%report e)))',
-  '                           (format *error-output* "~&;;WARNING: ~A: ~A~%" path (%report e))))))))))',
+  '                       (let ((r (%load-one-form path form)))',
+  '                         (case r',
+  '                           (:ok (incf nok))',
+  '                           (:abort-load',
+  '                            (incf nerr)',
+  '                            (setf first-err (or first-err "load aborted from the debugger"))',
+  '                            (setf *load-aborted* t)',
+  '                            (return))',
+  '                           (t (incf nerr) (setf first-err (or first-err r)))))))))))',
   '      (serious-condition (e)',
   '        (setf first-err (or first-err (%report e)))',
   '        (when (zerop nerr) (incf nerr))))',
   '    (values nok nerr first-err)))',
+  /* One project form through the debugger (Sprint 5). With debug on, an
+   * unhandled error pauses the image with load-specific restarts; with
+   * debug off (or a decline) the form is skipped exactly as before and the
+   * failure is folded into the file status. Returns :ok, :abort-load, or
+   * the report string of the skipped form. */
+  '(defvar *load-aborted* nil)',
+  '(defun %load-one-form (path form)',
+  '  (loop',
+  '    (let ((outcome',
+  '            (restart-case',
+  '                (handler-case',
+  '                    (progn',
+  '                      (handler-bind ((warning (function %warn))',
+  '                                     (serious-condition (function %debug-pause)))',
+  '                        (eval form))',
+  '                      :ok)',
+  '                  (serious-condition (e)',
+  '                    (format *error-output* "~&;;WARNING: ~A: ~A~%" path (%report e))',
+  '                    (%report e)))',
+  '              (skip-form ()',
+  '                :report "Skip this form and keep loading the project"',
+  '                (let ((msg (if *debug-condition* (%report *debug-condition*) "skipped")))',
+  '                  (format *error-output* "~&;;WARNING: ~A: ~A (skipped)~%" path msg)',
+  '                  msg))',
+  '              (retry ()',
+  '                :report "Retry this form"',
+  '                :cc-retry)',
+  '              (store-value (v)',
+  '                :test (lambda (c) (or (null c) (typep c (quote unbound-variable))))',
+  '                :report "Set the variable to a value, then retry this form"',
+  '                (setf (symbol-value (cell-error-name *debug-condition*)) v)',
+  '                :cc-retry)',
+  '              (define-function (f)',
+  '                :test (lambda (c) (or (null c) (typep c (quote undefined-function))))',
+  '                :report "Define the function (a lambda or a function name), then retry this form"',
+  '                (setf (symbol-function (cell-error-name *debug-condition*)) (coerce f (quote function)))',
+  '                :cc-retry)',
+  '              (abort-load ()',
+  '                :report "Stop loading the project here"',
+  '                :abort-load))))',
+  '      (unless (eq outcome :cc-retry) (return outcome)))))',
   '(defun %manual-load-ordered (files)',
   '  (dolist (f files)',
-  '    (multiple-value-bind (nok nerr first-err) (%load-file-forms f)',
-  '      (cond ((zerop nerr)',
-  '             (%say-file f "ok" (format nil "loaded (~A form~:P)" nok)))',
-  '            ((plusp nok)',
-  '             (%say-file f "warn" (format nil "~A/~A forms ok -- ~A" nok (+ nok nerr) first-err)))',
-  '            (t',
-  '             (%say-file f "error" (or first-err "load failed")))))))',
+  '    (if *load-aborted*',
+  '        (%say-file f "error" "not loaded -- load aborted from the debugger")',
+  '        (multiple-value-bind (nok nerr first-err) (%load-file-forms f)',
+  '          (cond ((zerop nerr)',
+  '                 (%say-file f "ok" (format nil "loaded (~A form~:P)" nok)))',
+  '                ((plusp nok)',
+  '                 (%say-file f "warn" (format nil "~A/~A forms ok -- ~A" nok (+ nok nerr) first-err)))',
+  '                (t',
+  '                 (%say-file f "error" (or first-err "load failed"))))))))',
   '(defun %package-first (files)',
   '  (sort (copy-list files)',
   '        (lambda (a b)',
@@ -637,8 +683,11 @@ var CC_HELPER_SRC = [
   '                               (package-name (car found))',
   '                               (string-downcase (package-name (car found)))',
   '                               (string-downcase (symbol-name (cdr found))))))))))',
-  '(defun load-project (files)',
-  '  (let* ((asds (remove-if-not (lambda (f) (%ext= f ".asd")) files))',
+  '(defun load-project (files &key debug)',
+  '  (setf *load-aborted* nil)',
+  '  (let* ((*debug-enabled* debug)',
+  '         (*debug-condition* nil)',
+  '         (asds (remove-if-not (lambda (f) (%ext= f ".asd")) files))',
   '         (lisps (remove-if-not (lambda (f) (or (%ext= f ".lisp") (%ext= f ".lsp") (%ext= f ".cl")))',
   '                               files)))',
   '    (%install-ext-polyfills)',
@@ -883,6 +932,18 @@ function escapeLispString(src) {
   return String(src).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+/* A condition that escapes the helper library at the top level of
+ * wecl_eval (a bug in cc itself, not in user code — user errors are handled
+ * inside eval-string / load-project) would enter the ECL debugger, which
+ * waits for terminal input for ever: a silent worker hang. Every top-level
+ * call is therefore wrapped so such a bug is reported as ;;ERROR: instead. */
+function guardTopLevel(form) {
+  return '(handler-case ' + form +
+    ' (serious-condition (e)' +
+    '   (handler-case (format *error-output* "~&;;ERROR: internal: ~A~%" e)' +
+    '     (serious-condition () (format *error-output* "~&;;ERROR: internal: ~A signalled~%" (type-of e))))))';
+}
+
 /* wecl_eval reads ONE form — deliver the helper via a single bootstrap form.
  * Every read AND eval is handler-case'd: an unhandled condition at the top
  * level of wecl_eval enters the ECL debugger, which waits for input forever
@@ -970,8 +1031,8 @@ function runEval(id, code, opts) {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
-        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '"' +
-          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') + ')');
+        return wecl_eval(guardTopLevel('(cc:eval-string "' + escapeLispString(code) + '"' +
+          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') + ')'));
       })
       .then(function () {
         self.postMessage({ type: 'done', id: id });
@@ -1039,13 +1100,13 @@ function pathListLiteral(files) {
   }).join(' ') + ')';
 }
 
-function runLoadProject(id, files) {
+function runLoadProject(id, files, debug) {
   queue = queue.then(function () {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
         if (writeProjectFiles(files)) {
-          return wecl_eval('(cc:load-project (quote ' + pathListLiteral(files) + '))');
+          return wecl_eval(guardTopLevel('(cc:load-project (quote ' + pathListLiteral(files) + ')' + (debug ? ' :debug t' : '') + ')'));
         }
         /* no Emscripten FS — fall back to evaluating file contents in order */
         self.postMessage({
@@ -1149,7 +1210,7 @@ self.onmessage = function (ev) {
   if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug });
   else if (m.type === 'restart') answerDebug(m.id, m.index, m.value);
   else if (m.type === 'input') answerInput(m.id, m.text);
-  else if (m.type === 'load-project') runLoadProject(m.id, m.files || []);
+  else if (m.type === 'load-project') runLoadProject(m.id, m.files || [], !!m.debug);
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };
 

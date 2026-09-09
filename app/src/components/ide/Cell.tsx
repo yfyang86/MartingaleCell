@@ -393,8 +393,8 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
             </div>
           )}
 
-          {/* paused in the debugger — live restarts */}
-          {paused && !isProject && <DebuggerBlock cell={cell} />}
+          {/* paused in the debugger — live restarts (eval cells and project loads alike) */}
+          {paused && <DebuggerBlock cell={cell} />}
           {/* blocked on standard input */}
           {cell.status === 'input' && <InputBlock cell={cell} />}
 
