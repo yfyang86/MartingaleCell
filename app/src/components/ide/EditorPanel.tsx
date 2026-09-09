@@ -308,6 +308,8 @@ function EditorSurface() {
           keymap.of([
             { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
             { key: 'F12', run: () => { gotoDefinition(); return true } },
+            /* Ctrl/⌘+Shift+F: workspace search — bound here too so CodeMirror's Mod-f (in-buffer search) fallback never eats it */
+            { key: 'Mod-Shift-f', run: () => { useUi.getState().openSearch(); return true } },
             { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
             { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
             { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },

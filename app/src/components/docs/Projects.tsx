@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle } from 'lucide-react'
+import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle, Search } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
 
@@ -18,6 +18,11 @@ const CARDS = [
     Icon: PackageOpen,
     title: 'Load the whole project',
     body: '"Load Project into Runtime" ships every .lisp/.lsp/.cl/.asd file to the worker and loads them recursively. If an .asd exists, its system is loaded via asdf:load-source-op — ECL\'s C-compile path can\'t exist in WASM, so sources load uncompiled. Without an .asd, files load manually: package definitions first, then alphabetical; every file is guarded, so one bad file never aborts the batch.',
+  },
+  {
+    Icon: Search,
+    title: 'Search & go to definition',
+    body: 'Ctrl+Shift+F searches open buffers and every Lisp file of the project — match case, whole symbol, regex, and a code-only mode that skips strings and comments. Results are grouped by file; a click opens the file at the line. F12 jumps to a definition: the loader indexes every form it loads, and Ctrl+Enter indexes what you evaluate, so the most recent definition wins.',
   },
   {
     Icon: FileUp,

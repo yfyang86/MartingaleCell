@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "pnpm run test:transcript && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf",
+    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf",
     "test:boot": "node scripts/boot-harness.mjs",
     "test:package": "node scripts/package-test.mjs",
     "test:modules": "node scripts/pkg-mgr-test.mjs && node scripts/pkg-persist-test.mjs",
@@ -20,7 +20,8 @@
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "test:stdin": "node scripts/stdin-test.mjs",
     "test:perf": "node scripts/perf-test.mjs",
-    "test:transcript": "node scripts/transcript-test.mjs"
+    "test:transcript": "node scripts/transcript-test.mjs",
+    "test:search": "node scripts/search-test.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

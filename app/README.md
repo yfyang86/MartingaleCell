@@ -24,7 +24,7 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # transcript export (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
+pnpm test            # transcript export + search matcher (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
 pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
 pnpm check           # lint + build + test
@@ -37,7 +37,7 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build, the transcript test and the six wasm tests on every
+`.github/workflows/ci.yml` runs lint, build, the two pure-TS tests and the six wasm tests on every
 pull request and on pushes to `dev`.
 
 ## How it is put together
@@ -70,6 +70,7 @@ printed by the Lisp helpers (parsed main-side, never shown as output):
 | `;;PACKAGE: P` | stdout | reader package after the job — `in-package` persists across cells |
 | `;;PLOT64 …` | stdout | base64 gnuplot script + data captured from cl-plot |
 | `;;FILE:`, `;;PKG:`, `;;SYM:`, `;;NOTE:`, `;;HINT:` | stdout | project-load progress |
+| `;;DEF: path\|offset\|NAME\|kind` | stdout | a definition and where its form starts — from the loader, and from `eval` when the page names the buffer |
 | `;;MODULES-CHANGED` | stdout | `/modules` was written — persist it to IndexedDB |
 
 ## Development log

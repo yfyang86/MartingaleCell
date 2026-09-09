@@ -90,6 +90,7 @@ function PaletteBody({ close }: { close: () => void }) {
           toast(msg)
         },
       },
+      { id: 'search-ws', group: 'View', name: 'Search in workspace', desc: 'open buffers + project files', kbd: 'Ctrl⇧F', run: () => ui().openSearch() },
       { id: 'focus-editor', group: 'View', name: 'Focus editor', run: focusEditor },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },

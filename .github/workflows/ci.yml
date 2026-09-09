@@ -46,6 +46,9 @@ jobs:
       - name: session export (Markdown / .lisp transcript) test
         run: node scripts/transcript-test.mjs
 
+      - name: workspace search matcher test
+        run: node scripts/search-test.mjs
+
       - name: Boot the ECL image (real worker + wasm, Node harness)
         run: node scripts/boot-harness.mjs --timeout-ms 120000
 

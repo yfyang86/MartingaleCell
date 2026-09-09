@@ -29,6 +29,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
     name: 'Project',
     shortcuts: [
       { keys: ['Ctrl', 'B'], action: 'Toggle project explorer' },
+      { keys: ['Ctrl', 'Shift', 'F'], action: 'Search the workspace (open buffers + project files); Enter jumps to the first hit' },
     ],
   },
   {
