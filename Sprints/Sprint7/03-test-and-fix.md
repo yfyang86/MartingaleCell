@@ -1,6 +1,6 @@
 # Sprint 7 — Test and fix log
 
-PR: _filled in below once opened_ (`sprint7` → `dev`)
+PR: https://github.com/yfyang86/ConsCell/pull/7 (`sprint7` → `dev`)
 
 ## Local verification
 
