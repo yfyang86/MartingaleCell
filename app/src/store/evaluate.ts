@@ -1,13 +1,15 @@
 /* Evaluation orchestration: runtime ↔ cells ↔ logs. */
 
 import { runtime } from '@/lisp/runtime'
+import { useProject } from '@/store/project'
+import { registerProjectDefinitions } from '@/components/ide/completion'
 import { useWorkspace, type Cell } from './workspace'
 import { autoDownloadSavedPlots } from '@/plot/download'
 
 /** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
  * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
  * report) have their own dedicated UI — they must never appear in the OUT well. */
-export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|DETAIL:|FRAME:|PLOT64|PACKAGE:)/
+export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|DETAIL:|FRAME:|PLOT64|PACKAGE:|DEF:)/
 
 /** Drop engine protocol marker lines from captured stdout. */
 export function stripOutMarkers(stdout: string): string {
@@ -24,7 +26,35 @@ export function isBusy(c: Cell): boolean {
 }
 
 /** Evaluate a code string; appends a cell and mirrors warnings/errors into the log. */
-export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
+/** Where a piece of code came from, so evaluated definitions get buffer positions. */
+export interface EvalOrigin {
+  bufferId: string
+  /** character offset of `code` within the buffer */
+  from: number
+}
+
+/** byte offset (UTF-8) within `text` → character index */
+export function byteToCharOffset(text: string, byteOffset: number): number {
+  let bytes = 0, i = 0
+  for (const ch of text) {
+    if (bytes >= byteOffset) break
+    const cp = ch.codePointAt(0) ?? 0
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+    i += ch.length
+  }
+  return i
+}
+
+export function charOffsetToLineCol(content: string, offset: number): { line: number; col: number } {
+  let line = 1, col = 1
+  const end = Math.min(offset, content.length)
+  for (let i = 0; i < end; i++) {
+    if (content[i] === '\n') { line++; col = 1 } else col++
+  }
+  return { line, col }
+}
+
+export function evaluateCode(code: string, bufferName?: string, origin?: EvalOrigin): Promise<Cell> {
   const store = useWorkspace.getState()
   const trimmed = code.trim()
   const cell = store.addCell({
@@ -86,7 +116,18 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { status: 'input', inputRequest: req })
         s.addLog('INFO', 'EVAL', `cell [${cell.n}] is waiting for standard input`, { cellRef: cell.n })
       },
-    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError })
+      onDefinition: (d) => {
+        /* ;;DEF: path|offset|NAME|kind — offset is a byte offset into `trimmed` */
+        if (!origin || !bufferName) return
+        const ws = useWorkspace.getState()
+        const buf = ws.buffers.find((b) => b.id === origin.bufferId)
+        if (!buf) return
+        const charOff = origin.from + code.indexOf(trimmed) + byteToCharOffset(trimmed, d.offset)
+        const { line, col } = charOffsetToLineCol(buf.content, charOff)
+        useProject.getState().recordBufferDefinition({ name: d.name, kind: d.defKind, bufferId: buf.id, bufferName: buf.name, line, col })
+        registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+      },
+    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError, ...(origin && bufferName ? { path: bufferName } : {}) })
     .then((result) => {
       const s = useWorkspace.getState()
       /* the resolution line: which restart brought the job back */
@@ -165,10 +206,16 @@ function mergeStdout(cellId: string, finalStdout: string): string {
 }
 
 /** Evaluate every top-level form in a buffer, sequentially (one cell per form). */
-export function evaluateAll(code: string, bufferName?: string): void {
+export function evaluateAll(code: string, bufferName?: string, origin?: EvalOrigin): void {
   const forms = splitTopLevelForms(code)
   if (forms.length === 0) return
-  for (const f of forms) void evaluateCode(f, bufferName)
+  let cursor = 0
+  for (const f of forms) {
+    const at = code.indexOf(f, cursor)
+    const from = at === -1 ? cursor : at
+    cursor = from + f.length
+    void evaluateCode(f, bufferName, origin ? { bufferId: origin.bufferId, from: origin.from + from } : undefined)
+  }
 }
 
 /** Split source into top-level forms (strings/comments aware). */
