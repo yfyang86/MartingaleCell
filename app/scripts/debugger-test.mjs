@@ -193,10 +193,62 @@ async function run() {
     await untilDone(15)
     check('L: the function stays defined afterwards', linesOf(15).includes(';;=> 30') && waitCount(15) === 0, linesOf(15).join(' | '))
 
+    /* M: an error inside a chosen restart's body pauses AGAIN (nested) */
+    await evalJob(17, '(restart-case (boom 0) (use-value (v) :report "then fail" (error "nested ~A" v)))')
+    await untilPaused(17)
+    send({ type: 'restart', id: 17, index: byName(17, 'USE-VALUE').index, value: '5' })
+    await untilPaused(17, 2)
+    check('M: error inside the chosen restart re-pauses', waitCount(17) === 2 && !isDone(17) && linesOf(17).some((l) => l === ';;DEBUG: nested 5'), linesOf(17).join(' | '))
+    send({ type: 'restart', id: 17, index: byName(17, 'ABORT').index })
+    await untilDone(17)
+    check('M: ABORT from the nested pause reports the nested error', linesOf(17).some((l) => /^;;ERROR: nested 5/.test(l)), linesOf(17).join(' | '))
+
+    /* N: project load through the debugger */
+    const files = [
+      { path: 'a.lisp', content: '(defun helper (x) (* 2 x))\n(defparameter *loaded-a* (needs-def 21))\n' },
+      { path: 'b.lisp', content: '(defparameter *loaded-b* (helper 5))\n' },
+    ]
+    console.log('\n--- job 18: load-project (debug) with an undefined function in a.lisp')
+    send({ type: 'load-project', id: 18, files, debug: true })
+    await untilPaused(18)
+    const nr = restartsOf(18).map((r) => r.name)
+    check('N: the load pauses with the load restarts', nr.join(',') === 'SKIP-FORM,RETRY,DEFINE-FUNCTION,ABORT-LOAD', JSON.stringify(restartsOf(18)))
+    send({ type: 'restart', id: 18, index: byName(18, 'DEFINE-FUNCTION').index, value: '(lambda (x) (+ x 1))' })
+    await untilDone(18)
+    const fileLines18 = linesOf(18).filter((l) => l.startsWith(';;FILE:'))
+    check('N: DEFINE-FUNCTION resumes the load — both files ok', fileLines18.some((l) => /a\.lisp\|ok\|/.test(l)) && fileLines18.some((l) => /b\.lisp\|ok\|/.test(l)), fileLines18.join(' | '))
+    await evalJob(19, '(list *loaded-a* *loaded-b*)')
+    await untilDone(19)
+    check('N: definitions from the resumed load are live → (22 10)', linesOf(19).includes(';;=> (22 10)'), linesOf(19).join(' | '))
+
+    console.log('\n--- job 20: load-project (debug) → SKIP-FORM keeps loading')
+    send({ type: 'load-project', id: 20, files: [{ path: 'c.lisp', content: '(defparameter *c1* (no-such-fn))\n(defparameter *c2* :after)\n' }, { path: 'd.lisp', content: '(defparameter *d* :d-loaded)\n' }], debug: true })
+    await untilPaused(20)
+    send({ type: 'restart', id: 20, index: byName(20, 'SKIP-FORM').index })
+    await untilDone(20)
+    const fl20 = linesOf(20).filter((l) => l.startsWith(';;FILE:'))
+    check('N: SKIP-FORM → c.lisp warn (1/2 forms), d.lisp ok', fl20.some((l) => /c\.lisp\|warn\|1\/2/.test(l)) && fl20.some((l) => /d\.lisp\|ok\|/.test(l)), fl20.join(' | '))
+
+    console.log('\n--- job 21: load-project (debug) → ABORT-LOAD stops before the next file')
+    send({ type: 'load-project', id: 21, files: [{ path: 'e.lisp', content: '(defparameter *e* (no-such-fn-2))\n' }, { path: 'f.lisp', content: '(defparameter *f-should-not-load* t)\n' }], debug: true })
+    await untilPaused(21)
+    send({ type: 'restart', id: 21, index: byName(21, 'ABORT-LOAD').index })
+    await untilDone(21)
+    const fl21 = linesOf(21).filter((l) => l.startsWith(';;FILE:'))
+    check('N: ABORT-LOAD → e.lisp error, f.lisp reported as not loaded', fl21.some((l) => /e\.lisp\|error\|/.test(l)) && fl21.some((l) => /f\.lisp\|error\|not loaded/.test(l)), fl21.join(' | '))
+    await evalJob(22, '(boundp (quote *f-should-not-load*))')
+    await untilDone(22)
+    check('N: the file after ABORT-LOAD really did not load', linesOf(22).includes(';;=> NIL'), linesOf(22).join(' | '))
+
+    console.log('\n--- job 23: load-project WITHOUT debug never pauses')
+    send({ type: 'load-project', id: 23, files: [{ path: 'g.lisp', content: '(defparameter *g* (no-such-fn-3))\n(defparameter *g2* 2)\n' }], debug: false })
+    await untilDone(23)
+    check('N: debug:false → no pause, file warn as before', waitCount(23) === 0 && linesOf(23).some((l) => /;;FILE:.*g\.lisp\|warn\|/.test(l)), linesOf(23).join(' | '))
+
     /* I: still healthy; in-package still persists */
-    await evalJob(16, '(+ 40 2)')
-    await untilDone(16)
-    check('I: image healthy after all pauses', linesOf(16).includes(';;=> 42') && linesOf(16).includes(';;PACKAGE: CL-USER'))
+    await evalJob(24, '(+ 40 2)')
+    await untilDone(24)
+    check('I: image healthy after all pauses', linesOf(24).includes(';;=> 42') && linesOf(24).includes(';;PACKAGE: CL-USER'))
 
     const failed = results.filter((r) => r.startsWith('✗')).length
     finish(failed === 0, failed === 0 ? `${results.length} checks passed` : `${failed} check(s) failed`)
@@ -204,5 +256,5 @@ async function run() {
     finish(false, e?.message ?? String(e))
   }
 }
-setTimeout(() => finish(false, 'timeout (boot or job hung)'), 150000)
+setTimeout(() => finish(false, 'timeout (boot or job hung)'), 240000)
 vm.runInContext(fs.readFileSync(path.join(publicDir, 'wecl-worker.js'), 'utf8'), context, { filename: 'wecl-worker.js' })

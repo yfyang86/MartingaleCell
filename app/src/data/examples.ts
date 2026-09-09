@@ -768,4 +768,100 @@ Add your own: (setf (gethash :my-shape *fractal-generators*) generator)."
 ;; OUT Vicsek fractal (custom shape) — 1000 points
 ;;=> 1000`,
   },
+  {
+    slug: 'interactive-input',
+    title: 'Ask the user: read-line and y-or-n-p',
+    category: 'Basics',
+    difficulty: 1,
+    description:
+      'Standard input is real: the cell shows a prompt and the program waits for your line.',
+    code: `;;;; Standard input in a notebook cell.
+;;;; When a form reads from *standard-input*, the cell shows an
+;;;; "stdin ←" prompt. Type a line and press Enter; Ctrl+D sends EOF.
+
+(defun greet ()
+  (format t "What is your name? ")
+  (finish-output)
+  (let ((name (read-line)))
+    (format t "~&Hello, ~A!~%" name)
+    (when (y-or-n-p "Shall I shout it?")
+      (format t "~&~:@(Hello, ~A!~)~%" name))
+    name))
+
+(greet)
+
+;; (read) parses a whole form — an unfinished one asks for another line.
+(let ((form (read)))
+  (list :you-typed form :which-is (type-of form)))
+`,
+    expectedOutput: `;; OUT What is your name? Ada
+;; OUT Hello, Ada!
+;; OUT Shall I shout it?  (Y or N) y
+;; OUT HELLO, ADA!
+;;=> "Ada"`,
+  },
+  {
+    slug: 'restarts-walkthrough',
+    title: 'Restarts: pause, choose, continue',
+    category: 'Conditions',
+    difficulty: 2,
+    description:
+      'An unhandled error pauses the image; the cell lists the live restarts and you pick one.',
+    code: `;;;; The debugger is the real thing: the image is suspended inside the
+;;;; handler with the stack intact, and the cell shows every restart that
+;;;; is live at that point — yours first, then RETRY and ABORT.
+
+(defun parse-age (text)
+  (let ((n (parse-integer text :junk-allowed t)))
+    (restart-case
+        (if (and n (<= 0 n 150))
+            n
+            (error "~S is not an age" text))
+      (use-value (v)
+        :report "Use a different age"
+        v)
+      (continue ()
+        :report "Treat it as unknown (nil)"
+        nil))))
+
+;; Evaluate this and watch the cell pause. Try:
+;;   [0] USE-VALUE  → type 42 into the value box
+;;   [1] CONTINUE   → returns NIL
+;;   RETRY / ABORT  → re-run the form, or give up
+(list :age (parse-age "forty-two"))
+
+;; A handler-case in your own code still wins: this never pauses.
+(handler-case (parse-age "n/a")
+  (error (e) (format nil "caught: ~A" e)))
+`,
+    expectedOutput: `;;=> (:AGE 42)
+;;=> "caught: \\"n/a\\" is not an age"`,
+  },
+  {
+    slug: 'fix-it-live',
+    title: 'Fix it live: define the missing function',
+    category: 'Conditions',
+    difficulty: 2,
+    description:
+      'Call a function that does not exist yet, then define it from inside the debugger and let the form finish.',
+    code: `;;;; Two mistakes every REPL session makes — and the two restarts
+;;;; ConsCell adds for them. Neither exists in the image itself.
+
+;; 1. Undefined function. The cell pauses with DEFINE-FUNCTION: type a
+;;    lambda (or the name of an existing function) and the form re-runs.
+;;    Try:  (lambda (x) (* x x))
+(list :squared (square 12))
+
+;; 2. Unbound variable. STORE-VALUE sets it and re-runs the form.
+;;    Try:  3.14159
+(list :area (* *pi-ish* 2 2))
+
+;; Both stay defined afterwards, exactly as if you had evaluated
+;; (defun square …) and (defparameter *pi-ish* …) yourself:
+(list (square 3) *pi-ish*)
+`,
+    expectedOutput: `;;=> (:SQUARED 144)
+;;=> (:AREA 12.56636)
+;;=> (9 3.14159)`,
+  },
 ];

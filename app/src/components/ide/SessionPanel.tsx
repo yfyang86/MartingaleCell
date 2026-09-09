@@ -158,6 +158,7 @@ function EmptySession() {
 export default function SessionPanel() {
   const cells = useWorkspace((s) => s.cells)
   const packageName = useWorkspace((s) => s.packageName)
+  const engineStatus = useWorkspace((s) => s.engineStatus)
   const historyTrimmed = useWorkspace((s) => s.historyTrimmed)
   const setConfirm = useUi((s) => s.setConfirm)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -252,6 +253,18 @@ export default function SessionPanel() {
           </button>
         </div>
       </header>
+      {/* fallback rungs (Sprint 5 decision): keep them, but say what they cannot do */}
+      {(engineStatus === 'ready-jscl' || engineStatus === 'ready-mock') && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning/[0.07] px-3 py-1.5 text-[11.5px] leading-snug text-secondary">
+          <span className="mt-px shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-warning">
+            {engineStatus === 'ready-jscl' ? 'JSCL fallback' : 'demo runtime'}
+          </span>
+          <span>
+            ECL could not be loaded. This rung has no debugger, no standard input, no packages and only a subset of ANSI Common Lisp.
+            Restart the runtime once the network is back to get the real image.
+          </span>
+        </div>
+      )}
 
       {/* cells */}
       <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-3">

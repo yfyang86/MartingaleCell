@@ -93,7 +93,7 @@ export type WorkerInMessage =
   | { type: 'eval'; id: number; code: string; compile?: boolean; debug?: boolean }
   | { type: 'restart'; id: number; index: number; value?: string }
   | { type: 'input'; id: number; text: string | null }
-  | { type: 'load-project'; id: number; files: ProjectFilePayload[] }
+  | { type: 'load-project'; id: number; files: ProjectFilePayload[]; debug?: boolean }
   | { type: 'modules-snapshot'; id: number }
   | { type: 'modules-restore'; id: number; files: { path: string; content: string }[] }
 

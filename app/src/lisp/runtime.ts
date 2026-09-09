@@ -406,7 +406,12 @@ class LispRuntime {
     if (t.startsWith(';;DETAIL:')) { const d = parseDetail(t); if (d) job.lastDetails.push(d); return false }
     if (t.startsWith(';;READ-WAIT')) {
       job.awaitingInput = true
-      job.callbacks.onInputRequest?.({ jobId: job.id })
+      if (job.callbacks.onInputRequest) job.callbacks.onInputRequest({ jobId: job.id })
+      else {
+        /* nobody can answer (hidden job, no cell) — end the file rather than hang the image */
+        job.stderr.push('; standard input is not available for this job (end of file)')
+        setTimeout(() => this.provideInput(job.id, null), 0)
+      }
       return true
     }
     if (t.startsWith(';;DEBUG:')) { job.debugCondition = t.slice(8).trim(); job.debugRestarts = []; return true }
@@ -418,7 +423,12 @@ class LispRuntime {
     if (t.startsWith(';;DEBUG-NOTE:')) { job.callbacks.onDebugNote?.(t.slice(13).trim()); return true }
     if (t.startsWith(';;DEBUG-WAIT')) {
       job.paused = true
-      job.callbacks.onDebug?.({
+      if (!job.callbacks.onDebug) {
+        /* a pause nobody listens to must never hang the worker: decline it */
+        setTimeout(() => this.chooseRestart(job.id, -1), 0)
+        return true
+      }
+      job.callbacks.onDebug({
         jobId: job.id,
         condition: job.debugCondition ?? '',
         errorType: job.lastErrorType,
@@ -553,7 +563,7 @@ class LispRuntime {
    * Streams LoadEvents (per-file status, packages, symbols) via callbacks.
    * On non-ECL engines falls back to evaluating each file in order.
    */
-  loadProject(files: ProjectFilePayload[], callbacks: LoadCallbacks = {}): Promise<EvalResult> {
+  loadProject(files: ProjectFilePayload[], callbacks: LoadCallbacks = {}, opts: EvalOptions = {}): Promise<EvalResult> {
     if (this.engine !== 'ecl' || !this.worker) {
       /* jscl / mock: evaluate files sequentially (package files first) */
       return (async () => {
@@ -598,7 +608,7 @@ class LispRuntime {
           lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
         }
         this.jobs.set(id, job)
-        this.worker!.postMessage({ type: 'load-project', id, files })
+        this.worker!.postMessage({ type: 'load-project', id, files, debug: !!opts.debug } satisfies WorkerInMessage)
       }
       this.queue = this.queue.then(run, run)
     })
