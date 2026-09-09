@@ -1,6 +1,18 @@
 /* Ephemeral IDE UI state: overlays, confirms, share URL. */
 
 import { create } from 'zustand'
+import type { SearchOptions } from '@/search/workspace-search'
+
+export interface SearchPreset { query: string; opts?: SearchOptions }
+
+const SEARCH_OPTS_KEY = 'conscell-search-opts'
+function loadSearchOpts(): SearchOptions {
+  try { return JSON.parse(localStorage.getItem(SEARCH_OPTS_KEY) ?? '{}') as SearchOptions } catch { return {} }
+}
+function saveSearchOpts(o: SearchOptions): SearchOptions {
+  try { localStorage.setItem(SEARCH_OPTS_KEY, JSON.stringify(o)) } catch { /* private mode */ }
+  return o
+}
 
 export type ConfirmKind = 'restart' | 'interrupt' | 'clear-session' | 'reset-workspace' | null
 
@@ -16,6 +28,9 @@ interface UiState {
   searchOpen: boolean
   /** bumps every time openSearch() runs so the panel can refocus its input */
   searchFocusTick: number
+  /** the search panel's query and options live here so find-references can preset them */
+  searchQuery: string
+  searchOpts: SearchOptions
   /** dirty project buffer pending a close confirmation */
   confirmCloseBufferId: string | null
   setPaletteOpen: (v: boolean) => void
@@ -26,8 +41,10 @@ interface UiState {
   setExplorerOpen: (v: boolean) => void
   toggleExplorer: () => void
   setSearchOpen: (v: boolean) => void
-  /** open the explorer and the search panel, focus the query box */
-  openSearch: () => void
+  /** open the explorer and the search panel, focus the query box; with a preset, run that search */
+  openSearch: (preset?: SearchPreset) => void
+  setSearchQuery: (q: string) => void
+  setSearchOpts: (patch: Partial<SearchOptions>) => void
   setConfirmCloseBuffer: (id: string | null) => void
   dismissBanner: () => void
 }
@@ -42,6 +59,8 @@ export const useUi = create<UiState>((set) => ({
   explorerOpen: true,
   searchOpen: false,
   searchFocusTick: 0,
+  searchQuery: '',
+  searchOpts: loadSearchOpts(),
   confirmCloseBufferId: null,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
@@ -51,7 +70,12 @@ export const useUi = create<UiState>((set) => ({
   setExplorerOpen: (explorerOpen) => set({ explorerOpen }),
   toggleExplorer: () => set((s) => ({ explorerOpen: !s.explorerOpen })),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
-  openSearch: () => set((s) => ({ explorerOpen: true, searchOpen: true, searchFocusTick: s.searchFocusTick + 1 })),
+  openSearch: (preset) => set((s) => ({
+    explorerOpen: true, searchOpen: true, searchFocusTick: s.searchFocusTick + 1,
+    ...(preset ? { searchQuery: preset.query, searchOpts: saveSearchOpts({ ...s.searchOpts, ...preset.opts }) } : {}),
+  })),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setSearchOpts: (patch) => set((s) => ({ searchOpts: saveSearchOpts({ ...s.searchOpts, ...patch }) })),
   setConfirmCloseBuffer: (confirmCloseBufferId) => set({ confirmCloseBufferId }),
   dismissBanner: () => {
     localStorage.setItem('conscell-banner-dismissed', '1')

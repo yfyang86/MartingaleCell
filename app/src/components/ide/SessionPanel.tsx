@@ -46,7 +46,7 @@ function ReplInput() {
     historyRef.current = [text, ...historyRef.current].slice(0, 100)
     histIdx.current = -1
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: '' } })
-    void evaluateCode(text)
+    void evaluateCode(text, undefined, { bufferId: '', from: 0, session: true })
   }, [])
 
   const setText = (v: EditorView, text: string) =>
@@ -90,7 +90,9 @@ function ReplInput() {
             {
               key: 'Enter',
               run: (v) => {
-                if (completionStatus(v.state) !== null) return false /* completion keymap accepts */
+                const st = completionStatus(v.state)
+                if (st === 'active') return false /* completion keymap accepts */
+                if (st === 'pending') closeCompletion(v) /* Enter right after typing: evaluate, do not wait for the popup */
                 submit()
                 return true
               },
@@ -129,7 +131,7 @@ function ReplInput() {
     <div className="shrink-0 border-t border-hairline bg-panel px-3 py-2">
       <div className="flex items-start gap-2 rounded-md border border-hairline bg-inset px-2.5 py-0.5 transition-colors duration-150 focus-within:border-steel/50">
         <span className="mt-px select-none whitespace-nowrap py-1 font-mono text-[12px] text-steel">{packageName}&gt;</span>
-        <div ref={hostRef} className="min-w-0 flex-1 [&_.cm-editor]:bg-transparent" />
+        <div ref={hostRef} data-testid="session-input" className="min-w-0 flex-1 [&_.cm-editor]:bg-transparent" />
       </div>
     </div>
   )

@@ -341,7 +341,10 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
 
       {/* gutter header */}
       <div className="flex h-6 items-center justify-between px-3 pt-1.5">
-        <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
+        <span className="flex items-center gap-1.5">
+          <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
+          {cell.imported && <span className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted" title="Appended from a transcript — not evaluated in this session">imported</span>}
+        </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:opacity-100">
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Copy cell" onClick={() => void copyText(cellText, 'Cell copied')}>
             <Copy size={12} />

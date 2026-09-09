@@ -47,6 +47,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
       { keys: ['Ctrl', 'Space'], action: 'Autocomplete / symbol documentation' },
       { keys: ['Ctrl', 'Shift', '↑'], action: 'Select enclosing s-expression (repeat to grow)' },
       { keys: ['F12'], action: 'Go to definition of the symbol at point (Ctrl+click too)' },
+      { keys: ['Shift', 'F12'], action: 'Find references of the symbol at point (workspace search, whole symbol, code only)' },
       { keys: ['Alt', '↑ / ↓'], action: 'Move between top-level forms' },
     ],
   },

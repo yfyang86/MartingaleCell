@@ -28,9 +28,12 @@ export function isBusy(c: Cell): boolean {
 /** Evaluate a code string; appends a cell and mirrors warnings/errors into the log. */
 /** Where a piece of code came from, so evaluated definitions get buffer positions. */
 export interface EvalOrigin {
+  /** the buffer the code came from; empty for the session box */
   bufferId: string
   /** character offset of `code` within the buffer */
   from: number
+  /** the code was typed into the session box — definitions point at the cell */
+  session?: boolean
 }
 
 /** byte offset (UTF-8) within `text` → character index */
@@ -118,8 +121,14 @@ export function evaluateCode(code: string, bufferName?: string, origin?: EvalOri
       },
       onDefinition: (d) => {
         /* ;;DEF: path|offset|NAME|kind — offset is a byte offset into `trimmed` */
-        if (!origin || !bufferName) return
+        if (!origin) return
         const ws = useWorkspace.getState()
+        if (origin.session) {
+          useProject.getState().recordBufferDefinition({ name: d.name, kind: d.defKind, bufferId: '', bufferName: 'session', line: cell.n, col: 1, cellN: cell.n })
+          registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+          return
+        }
+        if (!bufferName) return
         const buf = ws.buffers.find((b) => b.id === origin.bufferId)
         if (!buf) return
         const charOff = origin.from + code.indexOf(trimmed) + byteToCharOffset(trimmed, d.offset)
@@ -127,7 +136,7 @@ export function evaluateCode(code: string, bufferName?: string, origin?: EvalOri
         useProject.getState().recordBufferDefinition({ name: d.name, kind: d.defKind, bufferId: buf.id, bufferName: buf.name, line, col })
         registerProjectDefinitions(useProject.getState().definitionsForCompletion())
       },
-    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError, ...(origin && bufferName ? { path: bufferName } : {}) })
+    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError, ...(origin?.session ? { path: 'session' } : origin && bufferName ? { path: bufferName } : {}) })
     .then((result) => {
       const s = useWorkspace.getState()
       /* the resolution line: which restart brought the job back */

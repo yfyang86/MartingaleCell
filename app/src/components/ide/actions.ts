@@ -381,8 +381,13 @@ export function gotoDefinition(name?: string) {
   const key = sym.toUpperCase()
   const ws = useWorkspace.getState()
   /* most recent evaluation of the name wins over the last project load */
-  const bdef = useProject.getState().bufferDefinitions.find((d) => d.name === key && ws.buffers.some((b) => b.id === d.bufferId))
+  const bdef = useProject.getState().bufferDefinitions.find((d) => d.name === key && (d.cellN != null ? ws.cells.some((c) => c.n === d.cellN) : ws.buffers.some((b) => b.id === d.bufferId)))
   if (bdef) {
+    if (bdef.cellN != null) {
+      ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → session cell [${bdef.cellN}] (${bdef.kind}, evaluated)`)
+      window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: bdef.cellN }))
+      return
+    }
     ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${bdef.bufferName}:${bdef.line} (${bdef.kind}, evaluated)`)
     gotoBuffer(bdef.bufferId, bdef.line, bdef.col)
     return
@@ -453,4 +458,59 @@ export async function exportSession(format: 'md' | 'lisp') {
   const plots = cells.reduce((n, c) => n + (c.plots?.length ?? 0), 0)
   useWorkspace.getState().addLog('INFO', 'UI', `Exported ${cells.length} cells${plots ? ` and ${plots} plot${plots === 1 ? '' : 's'}` : ''} to ${name}`)
   toast(`Saved ${name}`)
+}
+
+/* ---- find references (Sprint 10) ---- */
+
+/** Shift+F12: search the workspace for the symbol at point — whole symbol, code only. */
+export function findReferences(name?: string) {
+  const sym = name ?? symbolAtPoint()
+  if (!sym) { toast('No symbol at point'); return }
+  useUi.getState().openSearch({ query: sym, opts: { wholeWord: true, symbolsOnly: true, regex: false, caseSensitive: false } })
+  useWorkspace.getState().addLog('DEBUG', 'UI', `find references: ${sym}`)
+}
+
+/* ---- transcript import (Sprint 10) ---- */
+
+/** Append the cells of a Markdown transcript to the session, or open a .lisp transcript as a buffer. */
+export async function importTranscriptText(name: string, text: string): Promise<number> {
+  const ws = useWorkspace.getState()
+  /* by extension, or by content when the file has none (a browser download, a paste) */
+  const isMarkdown = /\.(md|markdown)$/i.test(name) || (!/\.(lisp|lsp|cl)$/i.test(name) && /^## Cell \d+ · /m.test(text))
+  if (!isMarkdown) {
+    ws.newBuffer(name.replace(/[^\w.-]+/g, '_') || 'transcript.lisp', text)
+    toast(`Opened ${name} as a buffer`)
+    return 0
+  }
+  const { parseMarkdownTranscript } = await import('@/session/transcript')
+  const cells = parseMarkdownTranscript(text)
+  if (!cells.length) { toast(`No cells found in ${name} — is it a ConsCell transcript?`); return 0 }
+  for (const c of cells) {
+    ws.addCell({
+      input: c.input, pkg: c.pkg, status: c.status, stdout: c.stdout, values: c.values, warnings: c.warnings,
+      error: c.error, errorType: c.errorType, resumedVia: c.resumedVia, durationMs: c.durationMs,
+      startedAt: Date.now(), restartsUsed: c.resumedVia ? 1 : 0, imported: true,
+      ...(c.kind === 'project' && c.project ? { kind: 'project' as const, project: { projectName: c.project.projectName, files: c.project.files, packages: [] } } : {}),
+    })
+  }
+  ws.addLog('INFO', 'UI', `Imported ${cells.length} cells from ${name}`)
+  toast(`Imported ${cells.length} cell${cells.length === 1 ? '' : 's'} from ${name}`)
+  return cells.length
+}
+
+/** Palette: pick a .md / .lisp transcript from disk. */
+export function importTranscriptFile() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.md,.markdown,.lisp,.lsp,.cl,text/markdown'
+  input.style.display = 'none'
+  input.onchange = () => {
+    const f = input.files?.[0]
+    input.remove()
+    if (!f) return
+    void f.text().then((t) => importTranscriptText(f.name, t))
+  }
+  /* attached while open: some browsers ignore clicks on detached file inputs */
+  document.body.appendChild(input)
+  input.click()
 }

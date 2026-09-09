@@ -7,7 +7,7 @@ import { useUi } from '@/store/ui'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession } from './actions'
+  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession, findReferences, importTranscriptFile } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
 
@@ -91,10 +91,12 @@ function PaletteBody({ close }: { close: () => void }) {
         },
       },
       { id: 'search-ws', group: 'View', name: 'Search in workspace', desc: 'open buffers + project files', kbd: 'Ctrl⇧F', run: () => ui().openSearch() },
+      { id: 'find-refs', group: 'View', name: 'Find references of symbol at point', desc: 'whole symbol, code only', kbd: '⇧F12', run: () => findReferences() },
       { id: 'focus-editor', group: 'View', name: 'Focus editor', run: focusEditor },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },
       { id: 'docs', group: 'Help', name: 'Open docs', run: () => { window.location.href = '/docs' } },
+      { id: 'import-transcript', group: 'Workspace', name: 'Import session transcript (.md / .lisp)', desc: 'append the cells of a Markdown transcript, or open a .lisp one as a buffer', run: importTranscriptFile },
       { id: 'export-md', group: 'Workspace', name: 'Export session as Markdown (.md)', desc: 'values, warnings, errors and plots inline', run: () => void exportSession('md') },
       { id: 'export-lisp', group: 'Workspace', name: 'Export session as Lisp transcript (.lisp)', desc: 'results as comments — the file evaluates as is', run: () => void exportSession('lisp') },
       { id: 'export-ws', group: 'Workspace', name: 'Export workspace (.json)', run: () => {
@@ -118,7 +120,17 @@ function PaletteBody({ close }: { close: () => void }) {
     return base
   }, [examples])
 
-  const filtered = useMemo(() => commands.filter((c) => !query || fuzzy(query, c.name) || fuzzy(query, c.group)), [commands, query])
+  /* subsequence matches, but a name that starts with / contains the query verbatim ranks first (Sprint 10) */
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return commands
+    const rank = (c: Cmd) => { const n = c.name.toLowerCase(); return n.startsWith(q) ? 0 : n.includes(q) ? 1 : 2 }
+    return commands
+      .filter((c) => fuzzy(q, c.name) || fuzzy(q, c.group))
+      .map((c, i) => ({ c, i, r: rank(c) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map((x) => x.c)
+  }, [commands, query])
 
   const runCmd = (c: Cmd) => {
     close()
