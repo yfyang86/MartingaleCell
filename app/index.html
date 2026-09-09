@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <title>ConsCell — Common Lisp IDE in the Browser (ECL → WASM)</title>
+    <meta name="description" content="ConsCell compiles ECL (Embeddable Common Lisp) to WebAssembly and wraps it in a notebook-style IDE — syntax-highlighted editor, persistent result cells, a real condition system with restarts. No servers. No setup." />
+    <meta property="og:title" content="ConsCell — Common Lisp, compiled to WASM" />
+    <meta property="og:description" content="A notebook-grade Common Lisp IDE running ECL (ANSI Common Lisp) as WebAssembly. 100% client-side." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/og-cover.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og-cover.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html { background: #07080D; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

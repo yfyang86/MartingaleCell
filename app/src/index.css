@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ConsCell design tokens */
+    --bg-abyss: #07080D;
+    --bg-panel: #0C0E15;
+    --bg-editor: #0A0B12;
+    --bg-raised: #12141E;
+    --bg-inset: #08090F;
+    --border-hairline: #1C2030;
+    --border-strong: #2A2F45;
+    --text-primary: #E7EAF3;
+    --text-secondary: #9AA1B5;
+    --text-muted: #565D72;
+    --steel: #6EA8DC;
+    --steel-bright: #8FC3EE;
+    --steel-dim: #2C4A66;
+    --lisp-purple: #A78BFA;
+    --lisp-deep: #7C5CE0;
+    --success: #4ADE80;
+    --warning: #FBBF24;
+    --error: #F87171;
+    --info: #60A5FA;
+    /* rainbow paren cycle, depth 1 -> 6 */
+    --paren-1: #8FC3EE;
+    --paren-2: #A78BFA;
+    --paren-3: #F472B6;
+    --paren-4: #4ADE80;
+    --paren-5: #FBBF24;
+    --paren-6: #38BDF8;
+    /* brand gradient */
+    --brand-gradient: linear-gradient(120deg, #6EA8DC 0%, #A78BFA 100%);
+    --radius: 8px;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: auto;
+  }
+
+  body {
+    @apply bg-abyss font-sans text-primary antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04";
+  }
+
+  code, pre, kbd, samp {
+    @apply font-mono;
+  }
+
+  .font-mono {
+    font-variant-ligatures: contextual;
+  }
+
+  ::selection {
+    background: rgba(110, 168, 220, 0.28);
+    color: #E7EAF3;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(110, 168, 220, 0.45);
+  }
+
+  /* Global custom scrollbar (design 3.6): 10px, transparent track */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2A2F45 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2A2F45;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3A4160;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  /* Thin variant (6px) for cells / log panels */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2A2F45 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    border: none;
+  }
+}
+
+@layer components {
+  /* Brand gradient text */
+  .text-brand-gradient {
+    background: var(--brand-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Faint dot-grid background (hero, 28px pitch, 6% white) */
+  .bg-dot-grid {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Noise overlay helper — pair with low opacity */
+  .bg-noise {
+    background-image: url("/noise.svg");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+
+  /* Panel: design 3.3 */
+  .cc-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+  }
+
+  /* Cell: design 3.3 — raised body, hairline, 3px left accent bar */
+  .cc-cell {
+    position: relative;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .cc-cell::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--cell-accent, var(--steel));
+  }
+  .cc-cell-input { --cell-accent: var(--steel); }
+  .cc-cell-result { --cell-accent: var(--success); }
+  .cc-cell-warning { --cell-accent: var(--warning); }
+  .cc-cell-error { --cell-accent: var(--error); }
+
+  /* KBD chip: design 3.4 */
+  .cc-kbd {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: 2px 6px;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+    color: var(--text-secondary);
+  }
+}
+
+@layer utilities {
+  /* Syntax theme classes (design 1.2) — editor + all code blocks */
+  .tok-paren { color: #9AA1B5; }
+  .tok-paren-1 { color: var(--paren-1); font-weight: 600; }
+  .tok-paren-2 { color: var(--paren-2); font-weight: 600; }
+  .tok-paren-3 { color: var(--paren-3); font-weight: 600; }
+  .tok-paren-4 { color: var(--paren-4); font-weight: 600; }
+  .tok-paren-5 { color: var(--paren-5); font-weight: 600; }
+  .tok-paren-6 { color: var(--paren-6); font-weight: 600; }
+  .tok-keyword { color: #A78BFA; font-weight: 600; }
+  .tok-symbol { color: #8FC3EE; }
+  .tok-constant { color: #F472B6; }
+  .tok-string { color: #4ADE80; }
+  .tok-comment { color: #565D72; font-style: italic; }
+  .tok-number { color: #FBBF24; }
+  .tok-reader { color: #38BDF8; font-weight: 600; }
+  .tok-package { color: #6EA8DC; font-weight: 500; }
+  .tok-type { color: #5EEAD4; }
+
+  .pause-animation {
+    animation-play-state: paused;
+  }
+}

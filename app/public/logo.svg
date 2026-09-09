@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="cc-brand" x1="18" y1="14" x2="110" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6EA8DC"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="cc-inner" x1="40" y1="34" x2="88" y2="94" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8FC3EE"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer paren pair: two concentric open parens forming a "C" around the lambda -->
+  <!-- Outer left paren -->
+  <path d="M 78 18 C 52 26, 34 44, 34 64 C 34 84, 52 102, 78 110"
+        stroke="url(#cc-brand)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Outer right paren (open, lighter) -->
+  <path d="M 96 30 C 104 40, 108 51, 108 64 C 108 77, 104 88, 96 98"
+        stroke="url(#cc-brand)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.65"/>
+  <!-- Inner left paren -->
+  <path d="M 70 36 C 56 42, 47 52, 47 64 C 47 76, 56 86, 70 92"
+        stroke="url(#cc-inner)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Inner right paren -->
+  <path d="M 86 44 C 91 50, 94 57, 94 64 C 94 71, 91 78, 86 84"
+        stroke="url(#cc-inner)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.65"/>
+  <!-- Lambda glyph -->
+  <path d="M 60 50 L 74 82 M 60 50 L 66 64 M 66 64 L 58 82"
+        stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
