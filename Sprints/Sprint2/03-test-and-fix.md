@@ -1,6 +1,6 @@
 # Sprint 2 — Test and fix log
 
-PR: _filled in below once opened_ (`sprint2` → `dev`)
+PR: https://github.com/yfyang86/ConsCell/pull/2 (`sprint2` → `dev`)
 
 ## Local verification
 
