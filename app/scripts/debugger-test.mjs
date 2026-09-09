@@ -161,10 +161,42 @@ async function run() {
     await untilDone(9)
     check('H: user handler-case handles it — no pause, value :HANDLED', waitCount(9) === 0 && linesOf(9).includes(';;=> :HANDLED'), linesOf(9).join(' | '))
 
+    /* J: condition details for a type-error */
+    await evalJob(11, '(car 5)')
+    await untilPaused(11)
+    const det = linesOf(11).filter((l) => l.startsWith(';;DETAIL:')).map((l) => l.slice(9).trim())
+    /* ECL signals SIMPLE-TYPE-ERROR expecting CONS for (car 5) */
+    check('J: type-error carries datum and expected-type details', det.some((d) => /^datum\|5$/.test(d)) && det.some((d) => /^expected\|(CONS|LIST)$/.test(d)), JSON.stringify(det))
+    check('J: STORE-VALUE / DEFINE-FUNCTION are NOT offered for a type-error', !byName(11, 'STORE-VALUE') && !byName(11, 'DEFINE-FUNCTION'), JSON.stringify(restartsOf(11)))
+    send({ type: 'restart', id: 11, index: byName(11, 'ABORT').index })
+    await untilDone(11)
+
+    /* K: unbound variable → STORE-VALUE sets it and retries the form */
+    await evalJob(12, '(list :twice (* 2 *cc-missing*))')
+    await untilPaused(12)
+    check('K: unbound-variable offers STORE-VALUE with the name detail', !!byName(12, 'STORE-VALUE') && linesOf(12).includes(';;DETAIL: name|*CC-MISSING*'), linesOf(12).join(' | '))
+    send({ type: 'restart', id: 12, index: byName(12, 'STORE-VALUE').index, value: '21' })
+    await untilDone(12)
+    check('K: STORE-VALUE 21 → (:TWICE 42)', linesOf(12).includes(';;=> (:TWICE 42)'), linesOf(12).join(' | '))
+    await evalJob(13, '*cc-missing*')
+    await untilDone(13)
+    check('K: the variable stays set afterwards', linesOf(13).includes(';;=> 21'), linesOf(13).join(' | '))
+
+    /* L: undefined function → DEFINE-FUNCTION binds a lambda and retries */
+    await evalJob(14, '(cc-triple 7)')
+    await untilPaused(14)
+    check('L: undefined-function offers DEFINE-FUNCTION', !!byName(14, 'DEFINE-FUNCTION') && !byName(14, 'STORE-VALUE'), JSON.stringify(restartsOf(14)))
+    send({ type: 'restart', id: 14, index: byName(14, 'DEFINE-FUNCTION').index, value: '(lambda (x) (* 3 x))' })
+    await untilDone(14)
+    check('L: DEFINE-FUNCTION (lambda …) → 21', linesOf(14).includes(';;=> 21'), linesOf(14).join(' | '))
+    await evalJob(15, '(cc-triple 10)')
+    await untilDone(15)
+    check('L: the function stays defined afterwards', linesOf(15).includes(';;=> 30') && waitCount(15) === 0, linesOf(15).join(' | '))
+
     /* I: still healthy; in-package still persists */
-    await evalJob(10, '(+ 40 2)')
-    await untilDone(10)
-    check('I: image healthy after all pauses', linesOf(10).includes(';;=> 42') && linesOf(10).includes(';;PACKAGE: CL-USER'))
+    await evalJob(16, '(+ 40 2)')
+    await untilDone(16)
+    check('I: image healthy after all pauses', linesOf(16).includes(';;=> 42') && linesOf(16).includes(';;PACKAGE: CL-USER'))
 
     const failed = results.filter((r) => r.startsWith('✗')).length
     finish(failed === 0, failed === 0 ? `${results.length} checks passed` : `${failed} check(s) failed`)

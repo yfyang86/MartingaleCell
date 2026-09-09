@@ -206,7 +206,7 @@ export async function loadProjectIntoRuntime(): Promise<void> {
     s.addLog('ERROR', 'PROJECT', `project load failed: ${(e as Error)?.message ?? e}`, { cellRef: cell.n })
   } finally {
     const s = useWorkspace.getState()
-    const stillBusy = s.cells.some((c) => c.status === 'running' || c.status === 'paused' || (c.status === 'queued' && c.id !== cell.id))
+    const stillBusy = s.cells.some((c) => c.status === 'running' || c.status === 'paused' || c.status === 'input' || (c.status === 'queued' && c.id !== cell.id))
     if (!stillBusy) s.setEvaluating(false)
   }
 }

@@ -1,7 +1,7 @@
 /* A single session cell: input echo, streamed OUT block, values, warnings,
  * error mini-debugger with restarts, running/queued states. */
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2 } from 'lucide-react'
@@ -9,9 +9,9 @@ import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
 import { LispCode } from './LispCode'
-import { copyText, getEditor, jumpToPosition, chooseRestart } from './actions'
+import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput } from './actions'
 import { evaluateCode } from '@/store/evaluate'
-import type { DebugRestart } from '@/lisp/types'
+import type { ConditionDetail, DebugRestart } from '@/lisp/types'
 import { findSymbolPosition } from './lisp-utils'
 import { firstSymbol, stripOutMarkers } from '@/store/evaluate'
 import { ProjectLoadBody } from './ProjectLoadCell'
@@ -113,10 +113,63 @@ function FramesDetails({ frames, tone }: { frames: string[]; tone: 'error' | 'wa
   )
 }
 
+/** Condition slots (datum / expected / name / operands …) captured at signal time. */
+function DetailsList({ details }: { details: ConditionDetail[] }) {
+  if (details.length === 0) return null
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 pb-1.5 font-mono text-[11.5px]">
+      {details.map((d, i) => (
+        <Fragment key={i}>
+          <dt className="text-muted">{d.key}</dt>
+          <dd className="min-w-0 break-all text-secondary">{d.value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
 /** Restarts that take an argument get a value-form input before they fire. */
 function restartNeedsValue(r: DebugRestart): boolean {
   if (/^(RETRY|ABORT|CONTINUE|MUFFLE-WARNING)$/i.test(r.name)) return false
-  return /USE-VALUE|STORE-VALUE/i.test(r.name) || /\bvalue\b/i.test(r.report)
+  return /USE-VALUE|STORE-VALUE|DEFINE-FUNCTION/i.test(r.name) || /\bvalue\b/i.test(r.report)
+}
+
+/** The cell is blocked on (read-line) & co.: one line in, Enter sends, EOF ends. */
+function InputBlock({ cell }: { cell: Cell }) {
+  const [text, setText] = useState('')
+  const send = () => { provideInput(cell.id, text); setText('') }
+  return (
+    <div className="mt-2 rounded-md border border-steel/40 bg-steel-dim/30">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <span className="shrink-0 font-mono text-[11px] font-bold text-steel">stdin ←</span>
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); send() }
+            if (e.key === 'd' && e.ctrlKey) { e.preventDefault(); provideInput(cell.id, null) }
+          }}
+          placeholder="the program is reading a line — type it and press Enter"
+          className="h-7 min-w-0 flex-1 rounded-md border border-hairline bg-inset px-2 font-mono text-[12px] text-primary placeholder:text-muted focus:border-strong focus:outline-none"
+        />
+        <button
+          className="shrink-0 rounded-full border border-steel/40 px-2.5 py-0.5 font-mono text-[11px] text-steel transition-colors hover:bg-steel-dim"
+          onClick={send}
+          title="Send this line"
+        >
+          send ↵
+        </button>
+        <button
+          className="shrink-0 font-mono text-[10.5px] text-muted hover:text-primary"
+          onClick={() => provideInput(cell.id, null)}
+          title="End of file (Ctrl+D)"
+        >
+          EOF
+        </button>
+      </div>
+    </div>
+  )
 }
 
 /** The live debugger: the image is suspended inside the handler and waits
@@ -163,6 +216,7 @@ function DebuggerBlock({ cell }: { cell: Cell }) {
       <div className="whitespace-pre-wrap break-words px-3 pb-1.5 font-mono text-[12.5px] leading-relaxed text-primary/90">
         {pause.condition}
       </div>
+      <DetailsList details={pause.details} />
       <FramesDetails frames={pause.frames} tone="warning" />
       <div className="border-t border-warning/20 py-1">
         {restarts.map((r) => (
@@ -252,6 +306,8 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
 
   const isError = cell.status === 'error'
   const accent = isError ? 'cc-cell-error' : paused || cell.warnings.length > 0 ? 'cc-cell-warning' : cell.status === 'done' ? 'cc-cell-result' : 'cc-cell-input'
+  /* the OUT well must stay visible while the program waits for a line
+   * (prompts like "Name? " are printed right before the read) */
 
   return (
     <motion.div
@@ -339,6 +395,8 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
 
           {/* paused in the debugger — live restarts */}
           {paused && !isProject && <DebuggerBlock cell={cell} />}
+          {/* blocked on standard input */}
+          {cell.status === 'input' && <InputBlock cell={cell} />}
 
           {/* stdout — hidden when nothing but marker lines were captured */}
           {outText && (
@@ -386,6 +444,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
               <div className="whitespace-pre-wrap break-words px-3 pb-1.5 font-mono text-[12.5px] leading-relaxed text-primary/90">
                 {cell.error}
               </div>
+              <DetailsList details={cell.details ?? []} />
               <FramesDetails frames={cell.frames ?? []} tone="error" />
               <div className="flex items-center gap-3 border-t border-error/15 px-3 py-1 font-mono text-[11px] text-muted">
                 {cell.resumedVia

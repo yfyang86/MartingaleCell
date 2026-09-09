@@ -9,7 +9,7 @@
  * subscribe() and logged by the workspace store.
  */
 
-import type { DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
+import type { ConditionDetail, DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, InputRequest, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
 import { mockEval } from './mock'
 import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
@@ -36,6 +36,8 @@ export interface EvalCallbacks {
   onDebug?: (pause: DebugPause) => void
   /** a note from the debugger while paused (e.g. a value form failed). */
   onDebugNote?: (message: string) => void
+  /** the job is blocked on standard input — answer with runtime.provideInput(). */
+  onInputRequest?: (req: InputRequest) => void
 }
 
 export interface LoadCallbacks extends EvalCallbacks {
@@ -62,7 +64,10 @@ interface Job {
   package?: string
   /* ---- debugger state (streamed markers) ---- */
   lastErrorType?: string
+  lastDetails: ConditionDetail[]
   lastFrames: string[]
+  /** image suspended on js-wait inside %stdin, waiting for provideInput() */
+  awaitingInput: boolean
   /** restart list being assembled between ;;DEBUG: and ;;DEBUG-WAIT */
   debugCondition?: string
   debugRestarts: DebugRestart[]
@@ -109,7 +114,9 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
    * ones belonging to the FIRST reported error only */
   let pendingType: string | undefined
   let pendingFrames: string[] = []
+  let pendingDetails: ConditionDetail[] = []
   let frames: string[] | undefined
+  let details: ConditionDetail[] | undefined
   const outLines: string[] = []
 
   const handle = (line: string, isErr: boolean) => {
@@ -120,8 +127,9 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
       return
     }
     if (t.startsWith(';;WARNING:')) { warnings.push(t.slice(10).trim()); return }
-    if (t.startsWith(';;ERRTYPE:')) { pendingType = t.slice(10).trim(); pendingFrames = []; return }
+    if (t.startsWith(';;ERRTYPE:')) { pendingType = t.slice(10).trim(); pendingFrames = []; pendingDetails = []; return }
     if (t.startsWith(';;FRAME:')) { pendingFrames.push(t.slice(8).trim()); return }
+    if (t.startsWith(';;DETAIL:')) { const d = parseDetail(t); if (d) pendingDetails.push(d); return }
     if (t.startsWith(';;ERROR:')) {
       const msg = t.slice(8).trim()
       if (!error) {
@@ -130,6 +138,7 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
           /* the image's own type-of — authoritative */
           errorType = pendingType
           if (pendingFrames.length > 0) frames = pendingFrames
+          if (pendingDetails.length > 0) details = pendingDetails
         } else {
           /* reader errors and non-ECL engines: best-effort guess from the text */
           const m = msg.match(/(DIVISION-BY-ZERO|UNDEFINED-FUNCTION|UNBOUND-VARIABLE|TYPE-ERROR|SIMPLE-ERROR|READER-ERROR|reader)/i)
@@ -138,6 +147,7 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
       }
       pendingType = undefined
       pendingFrames = []
+      pendingDetails = []
       return
     }
     if (!isErr) outLines.push(t)
@@ -145,7 +155,19 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
   }
   stdoutLines.forEach((l) => handle(l, false))
   stderrLines.forEach((l) => handle(l, true))
-  return { stdout: outLines.join('\n'), values, warnings, error, errorType, durationMs, ...(frames ? { frames } : {}) }
+  return {
+    stdout: outLines.join('\n'), values, warnings, error, errorType, durationMs,
+    ...(frames ? { frames } : {}),
+    ...(details ? { details } : {}),
+  }
+}
+
+/** `;;DETAIL: key|value` → { key, value } (null for a malformed line). */
+function parseDetail(line: string): ConditionDetail | null {
+  const body = line.trimStart().slice(9).trim()
+  const bar = body.indexOf('|')
+  if (bar <= 0) return null
+  return { key: body.slice(0, bar).trim(), value: body.slice(bar + 1).trim() }
 }
 
 class LispRuntime {
@@ -379,8 +401,14 @@ class LispRuntime {
    */
   private handleDebugMarker(job: Job, line: string): boolean {
     const t = line.trimStart()
-    if (t.startsWith(';;ERRTYPE:')) { job.lastErrorType = t.slice(10).trim(); job.lastFrames = []; return false }
+    if (t.startsWith(';;ERRTYPE:')) { job.lastErrorType = t.slice(10).trim(); job.lastFrames = []; job.lastDetails = []; return false }
     if (t.startsWith(';;FRAME:')) { job.lastFrames.push(t.slice(8).trim()); return false }
+    if (t.startsWith(';;DETAIL:')) { const d = parseDetail(t); if (d) job.lastDetails.push(d); return false }
+    if (t.startsWith(';;READ-WAIT')) {
+      job.awaitingInput = true
+      job.callbacks.onInputRequest?.({ jobId: job.id })
+      return true
+    }
     if (t.startsWith(';;DEBUG:')) { job.debugCondition = t.slice(8).trim(); job.debugRestarts = []; return true }
     if (t.startsWith(';;RESTART:')) {
       const [idx = '0', name = '', ...rest] = t.slice(10).trim().split('|')
@@ -394,6 +422,7 @@ class LispRuntime {
         jobId: job.id,
         condition: job.debugCondition ?? '',
         errorType: job.lastErrorType,
+        details: job.lastDetails.slice(),
         frames: job.lastFrames.slice(),
         restarts: job.debugRestarts.slice(),
       })
@@ -415,6 +444,15 @@ class LispRuntime {
     job.restartUsed = index < 0 ? 'DECLINE' : (chosen?.name ?? `#${index}`)
     const msg: WorkerInMessage = { type: 'restart', id: jobId, index, ...(value != null && value.trim() ? { value: value.trim() } : {}) }
     this.worker.postMessage(msg)
+    return true
+  }
+
+  /** Answer a job blocked on standard input with one line (null = end of file). */
+  provideInput(jobId: number, text: string | null): boolean {
+    const job = this.jobs.get(jobId)
+    if (!job || !job.awaitingInput || !this.worker) return false
+    job.awaitingInput = false
+    this.worker.postMessage({ type: 'input', id: jobId, text } satisfies WorkerInMessage)
     return true
   }
 
@@ -498,7 +536,7 @@ class LispRuntime {
           const job: Job = {
             id, code, callbacks, stdout: [], stderr: [],
             resolve, reject, started: true, t0, kind: 'eval', plots: [],
-            lastFrames: [], debugRestarts: [], paused: false,
+            lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
           }
           this.jobs.set(id, job)
           this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug } satisfies WorkerInMessage)
@@ -557,7 +595,7 @@ class LispRuntime {
           id, code: `(load-project ${files.length} files)`, callbacks,
           stdout: [], stderr: [], resolve, reject, started: true,
           t0: performance.now(), kind: 'load', plots: [],
-          lastFrames: [], debugRestarts: [], paused: false,
+          lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
         }
         this.jobs.set(id, job)
         this.worker!.postMessage({ type: 'load-project', id, files })

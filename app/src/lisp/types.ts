@@ -28,6 +28,19 @@ export interface EvalResult {
   frames?: string[]
   /** The restart the user picked while the job was paused in the debugger. */
   restartUsed?: string
+  /** Condition slots worth showing (worker ;;DETAIL: markers), e.g. datum/expected for a type-error. */
+  details?: ConditionDetail[]
+}
+
+/** One `;;DETAIL: key|value` line printed at signal time. */
+export interface ConditionDetail {
+  key: string
+  value: string
+}
+
+/** A job waiting on standard input (worker ;;READ-WAIT). */
+export interface InputRequest {
+  jobId: number
 }
 
 /** Per-job evaluation options (mirrors the settings drawer). */
@@ -50,6 +63,7 @@ export interface DebugPause {
   jobId: number
   condition: string
   errorType?: string
+  details: ConditionDetail[]
   frames: string[]
   restarts: DebugRestart[]
 }
@@ -78,6 +92,7 @@ export type LoadEvent =
 export type WorkerInMessage =
   | { type: 'eval'; id: number; code: string; compile?: boolean; debug?: boolean }
   | { type: 'restart'; id: number; index: number; value?: string }
+  | { type: 'input'; id: number; text: string | null }
   | { type: 'load-project'; id: number; files: ProjectFilePayload[] }
   | { type: 'modules-snapshot'; id: number }
   | { type: 'modules-restore'; id: number; files: { path: string; content: string }[] }

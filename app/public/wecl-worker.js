@@ -31,6 +31,8 @@
  *        (compile: bytecodes-compile each form; debug: pause on error)
  *      | {type:'restart', id, index, value?}  answer for a paused job
  *        (index into the ;;RESTART: list, -1 declines; value = Lisp form)
+ *      | {type:'input', id, text}   a line for a job waiting on stdin
+ *        (;;READ-WAIT); text null = end of file
  *      | {type:'load-project', id, files:[{path, content}]}
  *   out: {type:'boot', line} | {type:'ready'} | {type:'bootfail', message}
  *        {type:'stdout', id, text} | {type:'stderr', id, text}
@@ -42,8 +44,9 @@
  * Every eval job ends with a ;;PACKAGE: <name> stdout marker (the package
  * the NEXT job will read in — (in-package …) persists across cells).
  * An unhandled condition prints, on stderr, ;;ERRTYPE: <type-of>, then
- * ;;FRAME: <fn> per named user frame (innermost first, captured at signal
- * time), then the existing ;;ERROR: <report>.
+ * ;;DETAIL: key|value per interesting condition slot, then ;;FRAME: <fn>
+ * per named user frame (innermost first, captured at signal time), then
+ * the existing ;;ERROR: <report>.
  * Project loads additionally stream structured markers on stdout (parsed
  * main-side, never shown as output): ;;FILE: path|status|message,
  * ;;PKG: name|external-count, ;;SYM: pkg|symbol.
@@ -133,10 +136,34 @@ var CC_HELPER_SRC = [
   '                    (not (eq (symbol-package n) cc))',
   '                    (not (eq (symbol-package n) si)))',
   '            collect (prin1-to-string n))))',
+  /* condition slots worth showing: printed as ;;DETAIL: key|value */
+  '(defun %condition-details (e)',
+  '  (let ((out nil))',
+  '    (flet ((add (k v) (push (cons k (%oneline (handler-case (prin1-to-string v) (serious-condition () "?")))) out)))',
+  '      (handler-case',
+  '          (progn',
+  '            (when (typep e (quote type-error))',
+  '              (add "datum" (type-error-datum e))',
+  '              (add "expected" (type-error-expected-type e)))',
+  '            (when (typep e (quote cell-error))',
+  '              (add "name" (cell-error-name e)))',
+  '            (when (typep e (quote arithmetic-error))',
+  '              (add "operation" (arithmetic-error-operation e))',
+  '              (add "operands" (arithmetic-error-operands e)))',
+  '            (when (typep e (quote package-error))',
+  '              (add "package" (package-error-package e)))',
+  '            (when (typep e (quote file-error))',
+  '              (add "pathname" (file-error-pathname e)))',
+  '            (when (typep e (quote stream-error))',
+  '              (add "stream" (stream-error-stream e))))',
+  '        (serious-condition () nil)))',
+  '    (nreverse out)))',
   '(defun %note-error (e)',
   '  (handler-case',
   '      (progn',
   '        (format *error-output* "~&;;ERRTYPE: ~A~%" (type-of e))',
+  '        (dolist (d (%condition-details e))',
+  '          (format *error-output* "~&;;DETAIL: ~A|~A~%" (car d) (cdr d)))',
   '        (dolist (f (%user-frames))',
   '          (format *error-output* "~&;;FRAME: ~A~%" f)))',
   '    (serious-condition () nil)))',
@@ -177,6 +204,7 @@ var CC_HELPER_SRC = [
   '  (when *debug-enabled*',
   '    (let ((restarts (compute-restarts e)))',
   '      (loop',
+  '        (handler-case (%flush-out) (serious-condition () nil))',
   '        (format *error-output* "~&;;DEBUG: ~A~%" (%oneline (%report e)))',
   '        (loop for r in restarts for i from 0',
   '              do (format *error-output* "~&;;RESTART: ~D|~A|~A~%"',
@@ -206,6 +234,20 @@ var CC_HELPER_SRC = [
   '                    (retry ()',
   '                      :report "Retry evaluating this form"',
   '                      (return-from eval-one (eval-one form)))',
+  /* set-and-retry restarts: only offered (via :test) when the condition
+   * is the matching cell-error — the two mistakes every REPL session makes */
+  /* NB: invoke-restart re-checks :test with NIL for the condition, so the
+   * tests must accept NIL or the restart reports "not active" */
+  '                    (store-value (v)',
+  '                      :test (lambda (c) (or (null c) (typep c (quote unbound-variable))))',
+  '                      :report "Set the variable to a value, then retry this form"',
+  '                      (setf (symbol-value (cell-error-name *debug-condition*)) v)',
+  '                      (return-from eval-one (eval-one form)))',
+  '                    (define-function (f)',
+  '                      :test (lambda (c) (or (null c) (typep c (quote undefined-function))))',
+  '                      :report "Define the function (a lambda or a function name), then retry this form"',
+  '                      (setf (symbol-function (cell-error-name *debug-condition*)) (coerce f (quote function)))',
+  '                      (return-from eval-one (eval-one form)))',
   '                    (abort ()',
   '                      :report "Abort this form and return to top level"',
   '                      (format *error-output* "~&;;ERROR: ~A~%"',
@@ -227,6 +269,7 @@ var CC_HELPER_SRC = [
   '        (*eval-compile* compile)',
   '        (*debug-enabled* debug)',
   '        (*debug-condition* nil))',
+  '    (handler-case (%stdin-reset) (serious-condition () nil))',
   '    (with-input-from-string (in src)',
   '      (loop for form = (handler-case (read in nil :eof)',
   '                         (serious-condition (e)',
@@ -766,6 +809,68 @@ var CC_HELPER_SRC = [
   '    (format t "~&;; package ~A uninstalled — files removed from /modules/~A/~%" nm nm)',
   '    (format t ";; note: definitions already loaded remain in the image until the runtime restarts~%")',
   '    t))',
+  /* ---- standard input (Sprint 4) ----
+   * The image's fd-0 stream has no reader in wasm. %stdin is a Gray
+   * character input stream whose buffer holds one line; when it runs dry
+   * it prints ;;READ-WAIT (stderr, so a with-output-to-string around the
+   * read cannot swallow it) and suspends on js-wait until the page answers
+   * {type:'input', id, text}. A lone #\Eot (code 4) means end of file. It
+   * is installed as *standard-input* and as the input half of *terminal-io*
+   * (so *query-io* / y-or-n-p work) at bootstrap. */
+  '(defclass %stdin (gray:fundamental-character-input-stream)',
+  '  ((buf :initform "" :accessor %sbuf)',
+  '   (pos :initform 0 :accessor %spos)',
+  '   (eof :initform nil :accessor %seof)))',
+  /* Emscripten's TTY holds a partial stdout line (a prompt like "Name? ")
+   * until a newline arrives; %flush-out asks the worker to push it through
+   * Module.print NOW, so the prompt reaches the cell before the wait marker. */
+  '(defun %flush-out ()',
+  '  (finish-output)',
+  '  (handler-case (eu.turtleware.wecl/implementation::js-eval "__ccFlush()")',
+  '    (serious-condition () nil))',
+  '  nil)',
+  '(defun %stdin-reset ()',
+  '  ;; each job starts with a fresh stdin: no leftover line, no sticky EOF',
+  '  (let ((s *standard-input*))',
+  '    (when (typep s (quote %stdin))',
+  '      (setf (%sbuf s) "" (%spos s) 0 (%seof s) nil))))',
+  '(defun %stdin-fill (s)',
+  '  (unless (%seof s)',
+  '    (%flush-out)',
+  '    (format *error-output* "~&;;READ-WAIT~%")',
+  '    (finish-output *error-output*)',
+  '    (let ((line (handler-case',
+  '                    (eu.turtleware.wecl/implementation::js-wait "__ccReadWait()")',
+  '                  (serious-condition () (string (code-char 4))))))',
+  '      (if (and (= (length line) 1) (char= (char line 0) (code-char 4)))',
+  '          (setf (%seof s) t (%sbuf s) "" (%spos s) 0)',
+  '          (setf (%sbuf s) (concatenate (quote string) line (string #\\Newline))',
+  '                (%spos s) 0)))))',
+  '(defmethod gray:stream-read-char ((s %stdin))',
+  '  (when (>= (%spos s) (length (%sbuf s))) (%stdin-fill s))',
+  '  (if (>= (%spos s) (length (%sbuf s)))',
+  '      :eof',
+  '      (prog1 (char (%sbuf s) (%spos s)) (incf (%spos s)))))',
+  '(defmethod gray:stream-unread-char ((s %stdin) c)',
+  '  (declare (ignore c))',
+  '  (when (> (%spos s) 0) (decf (%spos s)))',
+  '  nil)',
+  '(defmethod gray:stream-peek-char ((s %stdin))',
+  '  (when (>= (%spos s) (length (%sbuf s))) (%stdin-fill s))',
+  '  (if (>= (%spos s) (length (%sbuf s))) :eof (char (%sbuf s) (%spos s))))',
+  '(defmethod gray:stream-listen ((s %stdin))',
+  '  (< (%spos s) (length (%sbuf s))))',
+  '(defmethod gray:stream-clear-input ((s %stdin))',
+  '  (setf (%sbuf s) "" (%spos s) 0)',
+  '  nil)',
+  '(defun %install-stdin ()',
+  '  (handler-case',
+  '      (let ((in (make-instance (quote %stdin))))',
+  '        (setf *standard-input* in)',
+  '        (setf *terminal-io* (make-two-way-stream in *standard-output*))',
+  '        t)',
+  '    (serious-condition () nil)))',
+  '(%install-stdin)',
   /* make the four symbols read unqualified from CL-USER sessions */
   '(import (list (find-symbol (string :package-install) (find-package :cc))',
   '              (find-symbol (string :package-list) (find-package :cc))',
@@ -823,6 +928,39 @@ function answerDebug(id, index, value) {
   var p = pendingDebug;
   pendingDebug = null;
   p.resolve(value != null && value !== '' ? String(index) + ' ' + String(value) : String(index));
+  return true;
+}
+
+/* Push any partial stdout/stderr line the Emscripten TTY is holding through
+ * Module.print/printErr right now (prompts have no trailing newline).
+ * Called synchronously from Lisp via js-eval before a wait marker. */
+self.__ccFlush = function () {
+  try {
+    if (typeof TTY !== 'undefined' && TTY && TTY.ttys) {
+      TTY.ttys.forEach(function (tty) {
+        if (tty && tty.output && tty.output.length > 0 && tty.ops && tty.ops.fsync) tty.ops.fsync(tty);
+      });
+    }
+  } catch (e) { /* best effort */ }
+  return '';
+};
+
+/* ---- stdin (Sprint 4): same mechanism, one pending read per job ---- */
+var pendingRead = null; /* { id, resolve(text) } */
+self.__ccReadWait = function () {
+  return new Promise(function (resolve) {
+    pendingRead = {
+      id: currentJobId,
+      resolve: function (s) { resolve({ text: function () { return String(s); } }); },
+    };
+  });
+};
+/* text null/undefined = end of file (a lone EOT char, which no line can be) */
+function answerInput(id, text) {
+  if (!pendingRead || pendingRead.id !== id) return false;
+  var p = pendingRead;
+  pendingRead = null;
+  p.resolve(text == null ? '' : String(text).replace(/\r?\n$/, ''));
   return true;
 }
 
@@ -1010,6 +1148,7 @@ self.onmessage = function (ev) {
   var m = ev.data || {};
   if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug });
   else if (m.type === 'restart') answerDebug(m.id, m.index, m.value);
+  else if (m.type === 'input') answerInput(m.id, m.text);
   else if (m.type === 'load-project') runLoadProject(m.id, m.files || []);
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };

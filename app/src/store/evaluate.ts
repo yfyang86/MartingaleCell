@@ -20,7 +20,7 @@ export function stripOutMarkers(stdout: string): string {
 
 /** A cell that still occupies the (serialized) runtime: queued, running, or paused in the debugger. */
 export function isBusy(c: Cell): boolean {
-  return c.status === 'running' || c.status === 'queued' || c.status === 'paused'
+  return c.status === 'running' || c.status === 'queued' || c.status === 'paused' || c.status === 'input'
 }
 
 /** Evaluate a code string; appends a cell and mirrors warnings/errors into the log. */
@@ -80,6 +80,12 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.appendCellStdout(cell.id, `; debugger: ${message}`)
         s.addLog('WARN', 'EVAL', `debugger: ${message}`, { cellRef: cell.n })
       },
+      onInputRequest: (req) => {
+        /* (read-line) & co.: the image is suspended until the cell answers */
+        const s = useWorkspace.getState()
+        s.updateCell(cell.id, { status: 'input', inputRequest: req })
+        s.addLog('INFO', 'EVAL', `cell [${cell.n}] is waiting for standard input`, { cellRef: cell.n })
+      },
     }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError })
     .then((result) => {
       const s = useWorkspace.getState()
@@ -107,6 +113,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
           error: result.error,
           errorType: result.errorType,
           frames: result.frames,
+          details: result.details,
           warnings: result.warnings,
           values: result.values,
           durationMs: result.durationMs,
