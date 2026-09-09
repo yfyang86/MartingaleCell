@@ -22,7 +22,7 @@ const CARDS = [
   {
     Icon: Search,
     title: 'Search & go to definition',
-    body: 'Ctrl+Shift+F searches open buffers and every Lisp file of the project — match case, whole symbol, regex, and a code-only mode that skips strings and comments. Results are grouped by file; a click opens the file at the line. F12 jumps to a definition: the loader indexes every form it loads, and Ctrl+Enter (or the session box) indexes what you evaluate, so the most recent definition wins. Shift+F12 runs the search for the symbol at point — whole symbol, code only — which is find references.',
+    body: 'Ctrl+Shift+F searches open buffers and every Lisp file of the project — match case, whole symbol, regex, and a code-only mode that skips strings and comments. Results are grouped by file; a click opens the file at the line. F12 jumps to a definition: the loader indexes every form it loads, and Ctrl+Enter (or the session box) indexes what you evaluate, so the most recent definition wins. Shift+F12 runs the search for the symbol at point — whole symbol, code only — which is find references. Ctrl+Shift+O opens an outline of what the buffer, the project and the session box define; the index survives a reload.',
   },
   {
     Icon: FileUp,

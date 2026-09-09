@@ -26,6 +26,8 @@ interface UiState {
   explorerOpen: boolean
   /** workspace search panel (explorer column) */
   searchOpen: boolean
+  /** definition outline panel (explorer column) */
+  outlineOpen: boolean
   /** bumps every time openSearch() runs so the panel can refocus its input */
   searchFocusTick: number
   /** the search panel's query and options live here so find-references can preset them */
@@ -41,6 +43,9 @@ interface UiState {
   setExplorerOpen: (v: boolean) => void
   toggleExplorer: () => void
   setSearchOpen: (v: boolean) => void
+  setOutlineOpen: (v: boolean) => void
+  /** open the explorer and toggle the outline */
+  toggleOutline: () => void
   /** open the explorer and the search panel, focus the query box; with a preset, run that search */
   openSearch: (preset?: SearchPreset) => void
   setSearchQuery: (q: string) => void
@@ -58,6 +63,7 @@ export const useUi = create<UiState>((set) => ({
   bannerDismissed: typeof localStorage !== 'undefined' && localStorage.getItem('conscell-banner-dismissed') === '1',
   explorerOpen: true,
   searchOpen: false,
+  outlineOpen: false,
   searchFocusTick: 0,
   searchQuery: '',
   searchOpts: loadSearchOpts(),
@@ -70,6 +76,8 @@ export const useUi = create<UiState>((set) => ({
   setExplorerOpen: (explorerOpen) => set({ explorerOpen }),
   toggleExplorer: () => set((s) => ({ explorerOpen: !s.explorerOpen })),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
+  setOutlineOpen: (outlineOpen) => set({ outlineOpen }),
+  toggleOutline: () => set((s) => ({ explorerOpen: s.outlineOpen ? s.explorerOpen : true, outlineOpen: !s.outlineOpen })),
   openSearch: (preset) => set((s) => ({
     explorerOpen: true, searchOpen: true, searchFocusTick: s.searchFocusTick + 1,
     ...(preset ? { searchQuery: preset.query, searchOpts: saveSearchOpts({ ...s.searchOpts, ...preset.opts }) } : {}),

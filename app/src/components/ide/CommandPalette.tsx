@@ -91,6 +91,7 @@ function PaletteBody({ close }: { close: () => void }) {
         },
       },
       { id: 'search-ws', group: 'View', name: 'Search in workspace', desc: 'open buffers + project files', kbd: 'Ctrl⇧F', run: () => ui().openSearch() },
+      { id: 'outline', group: 'View', name: 'Toggle definition outline', desc: 'buffer, project and session definitions', kbd: 'Ctrl⇧O', run: () => ui().toggleOutline() },
       { id: 'find-refs', group: 'View', name: 'Find references of symbol at point', desc: 'whole symbol, code only', kbd: '⇧F12', run: () => findReferences() },
       { id: 'focus-editor', group: 'View', name: 'Focus editor', run: focusEditor },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
