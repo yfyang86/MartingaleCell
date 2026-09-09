@@ -24,8 +24,9 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # boot harness + package test + settings test (real wasm, Node)
+pnpm test            # boot + package + settings + debugger tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
 pnpm check           # lint + build + test
 ```
 
