@@ -48,3 +48,6 @@ jobs:
 
       - name: in-package persistence regression test
         run: node scripts/package-test.mjs
+
+      - name: settings + condition-reporting regression test
+        run: node scripts/settings-test.mjs
