@@ -1,6 +1,6 @@
 # Sprint 5 — Test and fix log
 
-PR: _filled in below once opened_ (`sprint5` → `dev`)
+PR: https://github.com/yfyang86/ConsCell/pull/5 (`sprint5` → `dev`)
 
 ## Local verification
 
