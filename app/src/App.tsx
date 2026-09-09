@@ -1,20 +1,35 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import Home from '@/pages/Home'
-import Ide from '@/pages/Ide'
-import Examples from '@/pages/Examples'
-import Docs from '@/pages/Docs'
+
+/* Route-level code splitting: the IDE (CodeMirror, runtime client, plot
+ * renderer) and the Docs/Examples pages each load on demand; the landing
+ * page stays in the entry chunk. */
+const Ide = lazy(() => import('@/pages/Ide'))
+const Examples = lazy(() => import('@/pages/Examples'))
+const Docs = lazy(() => import('@/pages/Docs'))
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center font-mono text-[12.5px] text-muted" aria-busy="true">
+      λ loading…
+    </div>
+  )
+}
 
 export default function App() {
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Home />} />
-        <Route path="ide" element={<Ide />} />
-        <Route path="examples" element={<Examples />} />
-        <Route path="docs" element={<Docs />} />
-        <Route path="*" element={<Home />} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="ide" element={<Ide />} />
+          <Route path="examples" element={<Examples />} />
+          <Route path="docs" element={<Docs />} />
+          <Route path="*" element={<Home />} />
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }

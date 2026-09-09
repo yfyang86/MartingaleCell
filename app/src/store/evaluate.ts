@@ -7,7 +7,7 @@ import { autoDownloadSavedPlots } from '@/plot/download'
 /** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
  * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
  * report) have their own dedicated UI — they must never appear in the OUT well. */
-export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|PLOT64|PACKAGE:)/
+export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|FRAME:|PLOT64|PACKAGE:)/
 
 /** Drop engine protocol marker lines from captured stdout. */
 export function stripOutMarkers(stdout: string): string {
@@ -46,9 +46,13 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { status: 'running', startedAt: Date.now() })
         s.setEvaluating(true)
       },
-      onStream: (chunk) => {
+      onStream: (chunk, isErr) => {
         const kept = chunk.split('\n').filter((l) => !OUT_MARKER_RE.test(l.trimStart()))
         if (kept.length > 0) useWorkspace.getState().appendCellStdout(cell.id, kept.join('\n'))
+        /* verbosity "verbose": mirror engine stderr noise into the log too */
+        if (isErr && kept.length > 0 && useWorkspace.getState().settings.verbosity === 'verbose') {
+          useWorkspace.getState().addLog('DEBUG', 'RUNTIME', kept.join(' '), { cellRef: cell.n })
+        }
       },
       onPlot: (plot) => {
         /* stream gnuplot captures into the cell live, while it runs */
@@ -57,7 +61,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { plots: [...(cur?.plots ?? []), plot] })
         s.addLog('INFO', 'EVAL', `gnuplot intercepted — plot rendered in cell [${cell.n}]`, { cellRef: cell.n })
       },
-    })
+    }, { compile: store.settings.evalMode === 'compile' })
     .then((result) => {
       const s = useWorkspace.getState()
       /* (in-package …) persists in the image — mirror it into the pill/prompt */
@@ -78,13 +82,17 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
           status: 'error',
           error: result.error,
           errorType: result.errorType,
+          frames: result.frames,
           warnings: result.warnings,
           values: result.values,
           durationMs: result.durationMs,
           stdout: mergeStdout(cell.id, result.stdout),
           ...(result.plots ? { plots: result.plots } : {}),
         })
-        s.addLog('ERROR', 'EVAL', `${result.errorType ?? 'ERROR'} — ${truncate(result.error, 120)} — see cell [${cell.n}]`, { cellRef: cell.n, details: result.error })
+        s.addLog('ERROR', 'EVAL', `${result.errorType ?? 'ERROR'} — ${truncate(result.error, 120)} — see cell [${cell.n}]`, {
+          cellRef: cell.n,
+          details: result.frames?.length ? `${result.error}\n\nframes (innermost first):\n  ${result.frames.join('\n  ')}` : result.error,
+        })
         result.warnings.forEach((w) => s.addLog('WARN', 'EVAL', w, { cellRef: cell.n }))
       } else {
         s.updateCell(cell.id, {

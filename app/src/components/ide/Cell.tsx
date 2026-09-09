@@ -288,6 +288,22 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
               <div className="whitespace-pre-wrap break-words px-3 pb-1.5 font-mono text-[12.5px] leading-relaxed text-primary/90">
                 {cell.error}
               </div>
+              {/* frames captured at signal time (innermost first) — ECL only */}
+              {cell.frames && cell.frames.length > 0 && (
+                <details className="group/frames border-t border-error/15 px-3 py-1">
+                  <summary className="cursor-pointer select-none font-mono text-[11px] text-muted transition-colors hover:text-secondary">
+                    frames ({cell.frames.length})
+                  </summary>
+                  <ol className="mt-1 space-y-0.5 pb-1 font-mono text-[11.5px]">
+                    {cell.frames.map((f, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="w-5 shrink-0 text-right text-muted">{i}</span>
+                        <span className={i === 0 ? 'text-error' : 'text-secondary'}>{f}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
               <div className="border-t border-error/15 py-1">
                 {RESTARTS.map((r, i) => (
                   <button
