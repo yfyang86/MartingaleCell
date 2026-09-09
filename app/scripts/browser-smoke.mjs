@@ -142,6 +142,46 @@ try {
   check('clicking a hit puts the caret on it — status bar shows Ln 1, Col 8', true)
   await box.press('Escape')
 
+  /* 4d (Sprint 10). Shift+F12 = find references: the panel opens with the symbol, whole-symbol and code-only on */
+  await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    const doc = view.state.doc.toString()
+    view.dispatch({ selection: { anchor: doc.lastIndexOf('(sq 9)') + 2 } })
+    view.focus()
+  })
+  await page.keyboard.press('Shift+F12')
+  await page.waitForFunction(() => document.querySelector('[data-testid="search-panel"] input')?.value === 'sq', null, { timeout: 5_000 })
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  const refHits = await page.locator('[data-testid="search-panel"] mark').count()
+  const wholeOn = await page.locator('button[title="Whole symbol"][aria-pressed="true"]').count()
+  const codeOn = await page.locator('button[title^="Code only"][aria-pressed="true"]').count()
+  check('Shift+F12 on `sq` fills the search with the symbol, whole-symbol + code-only on, 3 references', refHits === 3 && wholeOn === 1 && codeOn === 1, `hits=${refHits} whole=${wholeOn} code=${codeOn}`)
+  await box.press('Escape')
+
+  /* 4e (Sprint 10). a defun typed into the session box is a go-to-definition target: F12 scrolls to and flashes its cell */
+  const sessionBox = page.locator('[data-testid="session-input"] .cm-content')
+  await sessionBox.click()
+  await page.keyboard.type('(defun from-session () 1)')
+  const typed = await sessionBox.innerText()
+  await page.keyboard.press('Enter')
+  try {
+    await page.getByText('FROM-SESSION', { exact: true }).first().waitFor({ state: 'attached', timeout: 20_000 }) /* the new cell may be off-screen under content-visibility:auto */
+  } catch (e) {
+    throw new Error(`session box did not evaluate: typed=${JSON.stringify(typed)} now=${JSON.stringify(await sessionBox.innerText())} cells=${await page.locator('.cc-cell').count()} cmContents=${await page.locator('.cm-content').count()}`)
+  }
+  await setCode('(from-session)')
+  await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    view.dispatch({ selection: { anchor: 3 } })
+    view.focus()
+  })
+  await page.keyboard.press('F12')
+  await page.locator('.cc-cell.ring-2').first().waitFor({ timeout: 10_000 })
+  const flashed = await page.locator('.cc-cell.ring-2').first().innerText()
+  check('F12 on `from-session` (defined in the session box) flashes that cell', /from-session/.test(flashed), flashed.slice(0, 120))
+
   /* 5. package pill follows in-package (Sprint 1) */
   await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
   await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
@@ -155,8 +195,29 @@ try {
   ])
   const mdPath = await download.path()
   const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
+  fs.writeFileSync(path.join(root, 'dist', 'smoke-session.md'), md)
   check('export button downloads conscell-session-….md', /^conscell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
   check('the Markdown carries the cells: header, the resumed cell, the stdin cell', md.startsWith('# ConsCell session') && md.includes('_Resumed via `USE-VALUE`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
+
+  /* Sprint 10: import the transcript back — the cells are appended, marked imported */
+  const cellsBefore = await page.locator('.cc-cell').count()
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 10_000 }),
+    (async () => {
+      await page.keyboard.press('Control+k')
+      await page.keyboard.type('Import session transcript')
+      await page.keyboard.press('Enter') /* exact-prefix matches rank first in the palette */
+    })(),
+  ])
+  const accept = await chooser.element().getAttribute('accept')
+  await chooser.setFiles(mdPath)
+  const headings = (md.match(/^## Cell \d+ · /gm) || []).length
+  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length >= n, cellsBefore + 1, { timeout: 15_000 }).catch(() => {})
+  await page.waitForTimeout(500)
+  const cellsAfter = await page.locator('.cc-cell').count()
+  const importedChips = await page.getByText('imported', { exact: true }).count()
+  const toasts = await page.locator('[data-sonner-toast]').allInnerTexts()
+  check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips} accept=${accept} file=${mdPath} size=${mdPath ? fs.statSync(mdPath).size : -1} toasts=${JSON.stringify(toasts)}`)
 
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
