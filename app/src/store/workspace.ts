@@ -141,6 +141,8 @@ interface WorkspaceState {
   settings: IdeSettings
   engineStatus: EngineStatus
   engineLabel: string
+  /** true once ANY engine has reported ready (boot screen dismissal) */
+  bootDone: boolean
   evaluating: boolean
   packageName: string
   splitH: number
@@ -228,6 +230,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     settings: DEFAULT_SETTINGS,
     engineStatus: 'booting',
     engineLabel: '',
+    bootDone: false,
     evaluating: false,
     packageName: 'CL-USER',
     splitH: 55,
@@ -337,10 +340,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }))
     },
     removeCell: (id) => { set((s) => ({ cells: s.cells.filter((c) => c.id !== id) })); scheduleSave() },
-    /* clear cells + reset session state: numbering restarts at [1], package
-     * falls back to CL-USER (a fresh-session feel without touching buffers) */
+    /* clear cells: numbering restarts at [1]. The reader package is NOT
+     * touched — it mirrors the live image, and clearing the transcript does
+     * not change what the image reads in (Restart Lisp image does). */
     clearCells: () => {
-      set({ cells: [], cellCounter: 0, historyTrimmed: false, evaluating: false, packageName: 'CL-USER' })
+      set({ cells: [], cellCounter: 0, historyTrimmed: false, evaluating: false })
       scheduleSave()
     },
 
@@ -351,7 +355,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     clearLogs: () => set({ logs: [] }),
 
     setSettings: (patch) => { set((s) => ({ settings: { ...s.settings, ...patch } })); scheduleSave() },
-    setEngine: (status, label) => set({ engineStatus: status, engineLabel: label }),
+    setEngine: (status, label) => set((s) => ({
+      engineStatus: status, engineLabel: label,
+      bootDone: s.bootDone || status.startsWith('ready-'),
+    })),
     setEvaluating: (v) => set({ evaluating: v }),
     setPackageName: (p) => set({ packageName: p }),
     setSplits: (h, v) => { set({ splitH: h, splitV: v }); scheduleSave() },

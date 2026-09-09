@@ -22,6 +22,8 @@ export interface EvalResult {
   aborted?: boolean
   /** gnuplot captures (worker ;;PLOT64 markers) rendered as in-browser SVG plots. */
   plots?: PlotAttachment[]
+  /** Reader package after the job (worker ;;PACKAGE: marker) — `in-package` persists across cells. */
+  package?: string
 }
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'

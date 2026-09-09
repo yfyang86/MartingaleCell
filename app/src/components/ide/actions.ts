@@ -79,6 +79,23 @@ export async function restartRuntime() {
   toast('Runtime restarted — definitions cleared')
 }
 
+/** Toolbar package pill: switch the reader package of the live image. */
+export async function switchPackage(name: string) {
+  const ws = useWorkspace.getState()
+  const result = await runtime.setPackage(name)
+  const s = useWorkspace.getState()
+  if (result.error) {
+    s.addLog('WARN', 'EVAL', `Cannot switch reader package to ${name}: ${result.error}`)
+    toast(`Package ${name} does not exist in the image — (defpackage …) it first`)
+  }
+  /* the image reports the package actually in effect; trust it over the click */
+  const effective = result.package ?? ws.packageName
+  if (effective !== ws.packageName) {
+    s.setPackageName(effective)
+    s.addLog('DEBUG', 'UI', `Reader package → ${effective}`)
+  }
+}
+
 /* ---- buffers ---- */
 
 export function newBuffer() {
@@ -190,8 +207,8 @@ export async function loadExamples(): Promise<ExampleItem[]> {
     /* src/data/examples is owned by another agent. import.meta.glob keeps this
      * branch compiling standalone (empty map when the file is absent) and picks
      * the module up automatically in the merged build. */
-    const loaders = Object.values(import.meta.glob('@/data/examples.ts'))
-    const mod: any = loaders.length ? await loaders[0]() : null
+    const loaders = Object.values(import.meta.glob<{ EXAMPLES?: unknown }>('@/data/examples.ts'))
+    const mod = loaders.length ? await loaders[0]() : null
     const list = mod?.EXAMPLES
     examplesCache = Array.isArray(list) ? (list as ExampleItem[]) : []
   } catch {
@@ -211,4 +228,39 @@ export function loadExampleIntoBuffer(ex: ExampleItem) {
 /** Focus helper for palette commands. */
 export function focusEditor() {
   editorView?.focus()
+}
+
+/* ---- caret navigation (used by session cells, context menu, keymap) ---- */
+
+/** Jump the editor caret to a 1-based line/col and flash the line. */
+export function jumpToPosition(line: number, col: number) {
+  const v = editorView
+  if (!v) return
+  const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)))
+  const pos = Math.min(l.from + Math.max(0, col - 1), l.to)
+  v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+  v.focus()
+  requestAnimationFrame(() => {
+    const el = v.dom.querySelector('.cm-activeLine') as HTMLElement | null
+    if (el) {
+      el.style.transition = 'none'
+      el.style.backgroundColor = 'rgba(110,168,220,0.28)'
+      requestAnimationFrame(() => {
+        el.style.transition = 'background-color 600ms ease'
+        el.style.backgroundColor = ''
+      })
+    }
+  })
+}
+
+/** Select the innermost form around the caret; repeat to grow outwards. */
+export function selectEnclosingForm() {
+  const v = editorView
+  if (!v) return
+  const doc = v.state.doc.toString()
+  const sel = v.state.selection.main
+  // grow: if a form is already fully selected, expand around it
+  const probe = sel.empty ? sel.head : Math.max(0, sel.from - 1)
+  const form = innermostFormAt(doc, probe)
+  if (form) v.dispatch({ selection: { anchor: form.from, head: form.to } })
 }

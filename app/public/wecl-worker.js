@@ -36,6 +36,8 @@
  *        {type:'load-note', id, note}
  *        {type:'crash', message}
  *
+ * Every eval job ends with a ;;PACKAGE: <name> stdout marker (the package
+ * the NEXT job will read in — (in-package …) persists across cells).
  * Project loads additionally stream structured markers on stdout (parsed
  * main-side, never shown as output): ;;FILE: path|status|message,
  * ;;PKG: name|external-count, ;;SYM: pkg|symbol.
@@ -113,6 +115,12 @@ var CC_HELPER_SRC = [
   '            (format t "~&;;=> ; no values~%")))',
   '    (serious-condition (e)',
   '      (format *error-output* "~&;;ERROR: ~A~%" (%report e)))))',
+  /* *package* is rebound per job so a reader error can never leave the image
+   * in a half-switched state, BUT the binding is copied back into
+   * *eval-package* when the job ends: (in-package :foo) in one cell is
+   * honored by every later cell, exactly like a terminal REPL. The final
+   * ;;PACKAGE: marker keeps the IDE's package pill in sync (parsed
+   * main-side, never shown as output). */
   '(defun eval-string (src)',
   '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*)))',
   '    (with-input-from-string (in src)',
@@ -123,7 +131,16 @@ var CC_HELPER_SRC = [
   '            until (eq form :eof)',
   '            do (progn',
   '                 (unless (eq form :cc-read-fail) (eval-one form))',
-  '                 (finish-output))))))',
+  '                 (finish-output))))',
+  '    (setf *eval-package* *package*)',
+  '    (format t "~&;;PACKAGE: ~A~%" (%package-label *package*))',
+  '    (finish-output)))',
+  /* shortest name/nickname, so the pill reads CL-USER, not COMMON-LISP-USER */
+  '(defun %package-label (p)',
+  '  (let ((names (remove nil (cons (package-name p) (package-nicknames p)))))',
+  '    (if names',
+  '        (first (sort (copy-list names) (function <) :key (function length)))',
+  '        "CL-USER")))',
   ';;; ---- project loader ----',
   '(defun %oneline (s)',
   '  (substitute #\\Space #\\Newline (substitute #\\/ #\\| (princ-to-string s))))',
