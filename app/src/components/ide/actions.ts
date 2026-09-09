@@ -103,12 +103,22 @@ export function newBuffer() {
 }
 
 /** Ctrl+S: write dirty project buffers to disk / virtual FS, then flush
- * the workspace (scratch buffers) to IndexedDB — Save All. */
+ * the workspace (scratch buffers) to IndexedDB — Save All. With the
+ * "auto-eval on save" setting, every form of the active buffer is then
+ * evaluated (one cell per form). */
 export function saveBuffers() {
   void useProject.getState().saveAllDirty().then(() => {
     useWorkspace.getState().markSaved()
   })
-  useWorkspace.getState().addLog('DEBUG', 'STORAGE', 'Buffers saved (project files + IndexedDB flush)')
+  const ws = useWorkspace.getState()
+  ws.addLog('DEBUG', 'STORAGE', 'Buffers saved (project files + IndexedDB flush)')
+  if (ws.settings.autoEvalOnSave) {
+    const buf = activeBuffer()
+    if (buf && buf.content.trim()) {
+      ws.addLog('DEBUG', 'EVAL', `auto-eval on save — ${buf.name}`)
+      evaluateAll(buf.content, buf.name)
+    }
+  }
 }
 
 /** Close a buffer; dirty project buffers get a save/discard confirmation. */

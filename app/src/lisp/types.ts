@@ -24,6 +24,14 @@ export interface EvalResult {
   plots?: PlotAttachment[]
   /** Reader package after the job (worker ;;PACKAGE: marker) — `in-package` persists across cells. */
   package?: string
+  /** Named user frames at signal time, innermost first (worker ;;FRAME: markers). */
+  frames?: string[]
+}
+
+/** Per-job evaluation options (mirrors the settings drawer). */
+export interface EvalOptions {
+  /** bytecodes-compile each top-level form before running it (evalMode: 'compile') */
+  compile?: boolean
 }
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
@@ -48,7 +56,7 @@ export type LoadEvent =
 /* ---- worker protocol (public/wecl-worker.js) ---- */
 
 export type WorkerInMessage =
-  | { type: 'eval'; id: number; code: string }
+  | { type: 'eval'; id: number; code: string; compile?: boolean }
   | { type: 'load-project'; id: number; files: ProjectFilePayload[] }
   | { type: 'modules-snapshot'; id: number }
   | { type: 'modules-restore'; id: number; files: { path: string; content: string }[] }

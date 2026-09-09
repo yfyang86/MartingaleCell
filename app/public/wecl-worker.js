@@ -27,7 +27,7 @@
  *     (EXT:CD does NOT — reading it throws SIMPLE-READER-ERROR at bootstrap).
  *
  * Protocol
- *   in : {type:'eval', id, code}
+ *   in : {type:'eval', id, code, compile?}   (compile: bytecodes-compile each form)
  *      | {type:'load-project', id, files:[{path, content}]}
  *   out: {type:'boot', line} | {type:'ready'} | {type:'bootfail', message}
  *        {type:'stdout', id, text} | {type:'stderr', id, text}
@@ -38,6 +38,9 @@
  *
  * Every eval job ends with a ;;PACKAGE: <name> stdout marker (the package
  * the NEXT job will read in — (in-package …) persists across cells).
+ * An unhandled condition prints, on stderr, ;;ERRTYPE: <type-of>, then
+ * ;;FRAME: <fn> per named user frame (innermost first, captured at signal
+ * time), then the existing ;;ERROR: <report>.
  * Project loads additionally stream structured markers on stdout (parsed
  * main-side, never shown as output): ;;FILE: path|status|message,
  * ;;PKG: name|external-count, ;;SYM: pkg|symbol.
@@ -106,10 +109,46 @@ var CC_HELPER_SRC = [
   '  (format *error-output* "~&;;WARNING: ~A~%" (%report w))',
   '  (let ((r (find-restart \'muffle-warning w)))',
   '    (when r (invoke-restart r))))',
+  /* ---- honest condition reporting ----
+   * %note-error runs INSIDE handler-bind, i.e. at signal time before the
+   * stack unwinds, so the invocation-history stack (si::ihs-*) still holds
+   * the user frames. It prints the real condition type and the named user
+   * frames (innermost first) as markers; the outer handler-case then
+   * unwinds and prints ;;ERROR: as before. A user's own inner handler-case
+   * runs first and unwinds past us, so these markers only appear for
+   * conditions that really reach the top level. */
+  '(defun %frame-name (i)',
+  '  (let* ((f (ignore-errors (si::ihs-fun i)))',
+  '         (n (and f (ignore-errors (si::compiled-function-name f)))))',
+  '    (and n (symbolp n) n)))',
+  '(defun %user-frames ()',
+  '  (let ((cc (find-package :cc)) (si (find-package :si)))',
+  '    (loop for i from (si::ihs-top) downto 1',
+  '          for n = (%frame-name i)',
+  '          until (eq n (quote eval-one))',
+  '          when (and n',
+  '                    (not (eq (symbol-package n) cc))',
+  '                    (not (eq (symbol-package n) si)))',
+  '            collect (prin1-to-string n))))',
+  '(defun %note-error (e)',
+  '  (handler-case',
+  '      (progn',
+  '        (format *error-output* "~&;;ERRTYPE: ~A~%" (type-of e))',
+  '        (dolist (f (%user-frames))',
+  '          (format *error-output* "~&;;FRAME: ~A~%" f)))',
+  '    (serious-condition () nil)))',
+  /* evalMode "compile": every top-level form goes through the bytecodes
+   * compiler as a lambda before it runs (verified in this image). */
+  '(defvar *eval-compile* nil)',
+  '(defun %run (form)',
+  '  (if *eval-compile*',
+  '      (funcall (compile nil (list (quote lambda) (quote ()) form)))',
+  '      (eval form)))',
   '(defun eval-one (form)',
   '  (handler-case',
-  '      (let ((vals (handler-bind ((warning #\'%warn))',
-  '                    (multiple-value-list (eval form)))))',
+  '      (let ((vals (handler-bind ((warning #\'%warn)',
+  '                                 (serious-condition #\'%note-error))',
+  '                    (multiple-value-list (%run form)))))',
   '        (if vals',
   '            (format t "~&;;=>~{ ~S~}~%" vals)',
   '            (format t "~&;;=> ; no values~%")))',
@@ -121,8 +160,9 @@ var CC_HELPER_SRC = [
    * honored by every later cell, exactly like a terminal REPL. The final
    * ;;PACKAGE: marker keeps the IDE's package pill in sync (parsed
    * main-side, never shown as output). */
-  '(defun eval-string (src)',
-  '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*)))',
+  '(defun eval-string (src &key compile)',
+  '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*))',
+  '        (*eval-compile* compile))',
   '    (with-input-from-string (in src)',
   '      (loop for form = (handler-case (read in nil :eof)',
   '                         (serious-condition (e)',
@@ -700,12 +740,12 @@ var CC_BOOTSTRAP =
 
 var queue = Promise.resolve();
 
-function runEval(id, code) {
+function runEval(id, code, compile) {
   queue = queue.then(function () {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
-        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '")');
+        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '"' + (compile ? ' :compile t' : '') + ')');
       })
       .then(function () {
         self.postMessage({ type: 'done', id: id });
@@ -880,7 +920,7 @@ function runModulesOp(id, msg) {
 
 self.onmessage = function (ev) {
   var m = ev.data || {};
-  if (m.type === 'eval') runEval(m.id, m.code);
+  if (m.type === 'eval') runEval(m.id, m.code, !!m.compile);
   else if (m.type === 'load-project') runLoadProject(m.id, m.files || []);
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };

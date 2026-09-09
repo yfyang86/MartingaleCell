@@ -107,7 +107,25 @@ export default function Ide() {
       runtime.subscribeBoot((line) => {
         const s = useWorkspace.getState()
         s.addBootLine(line)
-        s.addLog('INFO', 'RUNTIME', line)
+        /* verbosity: quiet keeps the transcript out of the INFO stream */
+        s.addLog(s.settings.verbosity === 'quiet' ? 'DEBUG' : 'INFO', 'RUNTIME', line)
+      })
+      /* settings → image: *print-length* on every ready transition (a fresh
+       * image forgets it) and whenever the slider moves */
+      let lastPrintLength: number | null = null
+      const applyPrintLength = (n: number) => {
+        if (runtime.engine !== 'ecl') return
+        lastPrintLength = n
+        void runtime.setPrintLength(n).then((r) => {
+          if (r.error) useWorkspace.getState().addLog('WARN', 'RUNTIME', `print length: ${r.error}`)
+        })
+      }
+      runtime.subscribeStatus(() => {
+        if (runtime.status === 'ready-ecl') applyPrintLength(useWorkspace.getState().settings.printLength)
+      })
+      useWorkspace.subscribe((s, prev) => {
+        const n = s.settings.printLength
+        if (n !== prev.settings.printLength && n !== lastPrintLength) applyPrintLength(n)
       })
       void runtime.init().then(() => {
         const s = useWorkspace.getState()

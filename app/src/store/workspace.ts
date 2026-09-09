@@ -46,6 +46,8 @@ export interface Cell {
   warnings: string[]
   error?: string
   errorType?: string
+  /** named user frames at signal time, innermost first (ECL only) */
+  frames?: string[]
   durationMs: number
   startedAt: number
   restartsUsed: number
@@ -69,18 +71,23 @@ export interface LogEntry {
   trace?: { ms: number; forms: string }
 }
 
+/* Every field here is wired to something real (Sprint 2). `minimap` and
+ * `heapSize` were removed: CodeMirror has no minimap and the wasm heap is
+ * fixed by the WECL build — stale keys in persisted data are ignored. */
 export interface IdeSettings {
   fontSize: number
   ligatures: boolean
   rainbowParens: boolean
-  minimap: boolean
   lineWrap: boolean
   autosave: boolean
   tabWidth: 2 | 4
+  /** compile: bytecodes-compile each top-level form before running it */
   evalMode: 'eval' | 'compile'
+  /** Ctrl+S also evaluates every form of the active buffer */
   autoEvalOnSave: boolean
+  /** `*print-length*` in the image; 0 = unlimited */
   printLength: number
-  heapSize: 256 | 512 | 640
+  /** how boot lines / engine noise land in the log */
   verbosity: 'quiet' | 'normal' | 'verbose'
 }
 
@@ -88,14 +95,12 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   fontSize: 13.5,
   ligatures: true,
   rainbowParens: true,
-  minimap: false,
   lineWrap: false,
   autosave: true,
   tabWidth: 2,
   evalMode: 'eval',
   autoEvalOnSave: false,
   printLength: 100,
-  heapSize: 640,
   verbosity: 'normal',
 }
 

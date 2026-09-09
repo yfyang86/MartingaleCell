@@ -9,7 +9,7 @@
  * subscribe() and logged by the workspace store.
  */
 
-import type { EngineKind, EngineStatus, EvalResult, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
+import type { EngineKind, EngineStatus, EvalOptions, EvalResult, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
 import { mockEval } from './mock'
 import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
@@ -92,6 +92,11 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
   const warnings: string[] = []
   let error: string | undefined
   let errorType: string | undefined
+  /* ;;ERRTYPE:/;;FRAME: arrive at signal time, before ;;ERROR: — keep the
+   * ones belonging to the FIRST reported error only */
+  let pendingType: string | undefined
+  let pendingFrames: string[] = []
+  let frames: string[] | undefined
   const outLines: string[] = []
 
   const handle = (line: string, isErr: boolean) => {
@@ -102,13 +107,24 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
       return
     }
     if (t.startsWith(';;WARNING:')) { warnings.push(t.slice(10).trim()); return }
+    if (t.startsWith(';;ERRTYPE:')) { pendingType = t.slice(10).trim(); pendingFrames = []; return }
+    if (t.startsWith(';;FRAME:')) { pendingFrames.push(t.slice(8).trim()); return }
     if (t.startsWith(';;ERROR:')) {
       const msg = t.slice(8).trim()
       if (!error) {
         error = msg
-        const m = msg.match(/(DIVISION-BY-ZERO|UNDEFINED-FUNCTION|UNBOUND-VARIABLE|TYPE-ERROR|SIMPLE-ERROR|READER-ERROR|reader)/i)
-        errorType = m ? m[1].toUpperCase().replace('READER', 'READER-ERROR') : 'SIMPLE-ERROR'
+        if (pendingType) {
+          /* the image's own type-of — authoritative */
+          errorType = pendingType
+          if (pendingFrames.length > 0) frames = pendingFrames
+        } else {
+          /* reader errors and non-ECL engines: best-effort guess from the text */
+          const m = msg.match(/(DIVISION-BY-ZERO|UNDEFINED-FUNCTION|UNBOUND-VARIABLE|TYPE-ERROR|SIMPLE-ERROR|READER-ERROR|reader)/i)
+          errorType = m ? m[1].toUpperCase().replace('READER', 'READER-ERROR') : 'SIMPLE-ERROR'
+        }
       }
+      pendingType = undefined
+      pendingFrames = []
       return
     }
     if (!isErr) outLines.push(t)
@@ -116,7 +132,7 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
   }
   stdoutLines.forEach((l) => handle(l, false))
   stderrLines.forEach((l) => handle(l, true))
-  return { stdout: outLines.join('\n'), values, warnings, error, errorType, durationMs }
+  return { stdout: outLines.join('\n'), values, warnings, error, errorType, durationMs, ...(frames ? { frames } : {}) }
 }
 
 class LispRuntime {
@@ -165,6 +181,20 @@ class LispRuntime {
       return Promise.resolve({ stdout: '', values: [], warnings: [], durationMs: 0, package: this.currentPackage })
     }
     return this.eval(`(in-package "${clean.replace(/["\\]/g, '')}")`)
+  }
+
+  /**
+   * Settings drawer → image: `*print-length*` is a plain global `setf`
+   * (so a user's own `(setf *print-length* …)` persists too). Called on
+   * every ready transition and whenever the setting changes. Hidden job,
+   * no session cell; nil (unlimited) when n is 0 or not finite.
+   */
+  setPrintLength(n: number): Promise<EvalResult> {
+    if (this.engine !== 'ecl') {
+      return Promise.resolve({ stdout: '', values: [], warnings: [], durationMs: 0 })
+    }
+    const v = Number.isFinite(n) && n > 0 ? Math.floor(n) : 'nil'
+    return this.eval(`(setf *print-length* ${v})`)
   }
 
   /** Boot the best available engine. Safe to call again after failure (retry). */
@@ -375,7 +405,7 @@ class LispRuntime {
   }
 
   /** Evaluate code. Always resolves with an EvalResult (never rejects on Lisp errors). */
-  eval(code: string, callbacks: EvalCallbacks = {}): Promise<EvalResult> {
+  eval(code: string, callbacks: EvalCallbacks = {}, opts: EvalOptions = {}): Promise<EvalResult> {
     return new Promise<EvalResult>((resolve, reject) => {
       const run = async () => {
         callbacks.onStart?.()
@@ -409,7 +439,7 @@ class LispRuntime {
             resolve, reject, started: true, t0, kind: 'eval', plots: [],
           }
           this.jobs.set(id, job)
-          this.worker.postMessage({ type: 'eval', id, code })
+          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile } satisfies WorkerInMessage)
           return
         }
         reject(new Error('runtime not ready'))
