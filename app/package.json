@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "pnpm run test:boot && pnpm run test:package",
+    "test:boot": "node scripts/boot-harness.mjs",
+    "test:package": "node scripts/package-test.mjs",
+    "test:modules": "node scripts/pkg-mgr-test.mjs && node scripts/pkg-persist-test.mjs",
+    "check": "pnpm run lint && pnpm run build && pnpm run test"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

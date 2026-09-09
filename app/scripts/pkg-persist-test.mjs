@@ -66,7 +66,7 @@ async function bootWorker() {
 
 /* phase 1 — load project, install, snapshot (the ;;MODULES-CHANGED flow) */
 const w1 = await bootWorker()
-const base = '/tmp/clplot/cl-plot-master'
+const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master' /* unzip public/sample-projects/cl-plot.zip */
 const files = fs.readdirSync(base).filter((n) => /\.(lisp|asd)$/i.test(n))
   .map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
 w1.send({ type: 'load-project', id: 1, files })
