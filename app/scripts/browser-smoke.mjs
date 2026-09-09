@@ -110,6 +110,19 @@ try {
   await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
   check('F12 on `sq` jumps to (defun sq …) — status bar shows Ln 1, Col 1', true)
 
+  /* 4a (Sprint 11). the outline lists the buffer's definitions and jumps */
+  await page.keyboard.press('Control+Shift+O')
+  const outline = page.locator('[data-testid="outline-panel"]')
+  await outline.waitFor({ timeout: 5_000 })
+  await outline.getByText('use-it', { exact: true }).waitFor({ timeout: 5_000 })
+  const outlineRows = await outline.locator('button:has(span.truncate)').allInnerTexts()
+  check('Ctrl⇧O outline lists sq and use-it for the active buffer', outlineRows.some((r) => /\bsq\b/.test(r)) && outlineRows.some((r) => /use-it/.test(r)), outlineRows.join(' | '))
+  await outline.getByText('use-it', { exact: true }).click()
+  await page.getByText('Ln 4, Col 1').waitFor({ timeout: 5_000 })
+  check('clicking use-it in the outline moves the caret to its defun — Ln 4, Col 1', true)
+  await page.keyboard.press('Control+Shift+O')
+  await outline.waitFor({ state: 'detached', timeout: 5_000 })
+
   /* 4b (Sprint 9). a definition evaluated from a buffer is a go-to-definition target from another buffer */
   await page.keyboard.press('Control+Shift+Enter')
   await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
@@ -218,6 +231,22 @@ try {
   const importedChips = await page.getByText('imported', { exact: true }).count()
   const toasts = await page.locator('[data-sonner-toast]').allInnerTexts()
   check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips} accept=${accept} file=${mdPath} size=${mdPath ? fs.statSync(mdPath).size : -1} toasts=${JSON.stringify(toasts)}`)
+
+  /* Sprint 11: the definition index survives a reload (buffers persist too) */
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+  await page.locator('.cm-content').first().waitFor()
+  await setCode('(sq 3)')
+  await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    view.dispatch({ selection: { anchor: 2 } })
+    view.focus()
+  })
+  await page.getByText('Ln 1, Col 3').waitFor({ timeout: 5_000 })
+  await page.keyboard.press('F12')
+  await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
+  check('after a reload, F12 on `sq` still jumps to where it was evaluated (persisted index; no defun sq in any buffer now)', true)
 
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
