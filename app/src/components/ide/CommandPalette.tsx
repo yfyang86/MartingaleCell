@@ -7,8 +7,7 @@ import { useUi } from '@/store/ui'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, replayDefinitions, gotoDefinition, type ExampleItem,
-} from './actions'
+  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
 
@@ -95,6 +94,8 @@ function PaletteBody({ close }: { close: () => void }) {
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },
       { id: 'docs', group: 'Help', name: 'Open docs', run: () => { window.location.href = '/docs' } },
+      { id: 'export-md', group: 'Workspace', name: 'Export session as Markdown (.md)', desc: 'values, warnings, errors and plots inline', run: () => void exportSession('md') },
+      { id: 'export-lisp', group: 'Workspace', name: 'Export session as Lisp transcript (.lisp)', desc: 'results as comments — the file evaluates as is', run: () => void exportSession('lisp') },
       { id: 'export-ws', group: 'Workspace', name: 'Export workspace (.json)', run: () => {
           const s = ws()
           const blob = new Blob([JSON.stringify({ buffers: s.buffers, cells: s.cells, settings: s.settings }, null, 2)], { type: 'application/json' })

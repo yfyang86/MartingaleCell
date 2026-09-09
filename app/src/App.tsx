@@ -1,11 +1,12 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
-import Home from '@/pages/Home'
 
-/* Route-level code splitting: the IDE (CodeMirror, runtime client, plot
- * renderer) and the Docs/Examples pages each load on demand; the landing
- * page stays in the entry chunk. */
+/* Route-level code splitting: every page loads on demand, so the entry
+ * chunk is the router, the chrome (navbar, footer) and the UI kit. The
+ * landing page's gsap/SplitText effects and the IDE (CodeMirror, runtime
+ * client, plot renderer) never share a chunk. */
+const Home = lazy(() => import('@/pages/Home'))
 const Ide = lazy(() => import('@/pages/Ide'))
 const Examples = lazy(() => import('@/pages/Examples'))
 const Docs = lazy(() => import('@/pages/Docs'))

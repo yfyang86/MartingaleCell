@@ -65,10 +65,51 @@ export const EXAMPLES: Example[] = [
 (bench "fib-rec " #'fib-rec 25)
 (bench "fib-iter" #'fib-iter 25)
 (bench "fib-memo" #'fib-memo 25)`,
-    expectedOutput: `;; OUT fib-rec (25) = 75025  [0.284 s]
+    expectedOutput: `;; OUT fib-rec (25) = 75025  [0.693 s]
 ;; OUT fib-iter(25) = 75025  [0.000 s]
 ;; OUT fib-memo(25) = 75025  [0.000 s]
 ;;=> NIL`,
+  },
+  {
+    slug: 'how-fast',
+    title: 'How fast is it?',
+    category: 'Basics',
+    difficulty: 1,
+    description:
+      'A tiny timing macro and a table of common loops — the bytecodes interpreter, running in WebAssembly.',
+    code: `;;;; How fast is the in-browser image? Measure, don't guess.
+;;;; Everything here runs through ECL's bytecodes interpreter compiled
+;;;; to WebAssembly; a native ECL with a C compiler would be ~50x faster.
+
+(defmacro ms (form)
+  "Evaluate FORM, return the wall-clock milliseconds it took."
+  \`(let ((t0 (get-internal-real-time)))
+     ,form
+     (round (* 1000 (- (get-internal-real-time) t0))
+            internal-time-units-per-second)))
+
+(defun identity-1 (x) x)
+
+(defun row (label millis)
+  (format t "~&~18A ~6D ms~%" label millis))
+
+(row "100k empty loop"  (ms (dotimes (i 100000))))
+(row "100k incf"        (ms (let ((n 0)) (dotimes (i 100000) (incf n i)))))
+(row "100k calls"       (ms (let ((n 0)) (dotimes (i 100000) (setq n (identity-1 i))))))
+(row "100k loop collect" (ms (length (loop for i below 100000 collect i))))
+(row "50k hash inserts" (ms (let ((h (make-hash-table)))
+                              (dotimes (i 50000) (setf (gethash i h) i)))))
+(row "sort 20k fixnums" (ms (sort (loop repeat 20000 collect (random 1000000)) #'<)))
+(row "fib 25, recursive" (ms (labels ((fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))))
+                               (fib 25))))
+;; Timings vary with the machine and the browser; the ratios do not.`,
+    expectedOutput: `;; OUT 100k empty loop       115 ms
+;; OUT 100k incf             330 ms
+;; OUT 100k calls            254 ms
+;; OUT 100k loop collect     490 ms
+;; OUT 50k hash inserts      140 ms
+;; OUT sort 20k fixnums      171 ms
+;; OUT fib 25, recursive     720 ms`,
   },
   {
     slug: 'lambda-playground',

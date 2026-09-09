@@ -1,12 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import Lenis from 'lenis'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
-
-gsap.registerPlugin(ScrollTrigger)
 
 /**
  * Smooth scrolling for marketing routes (/, /examples, /docs).
@@ -17,18 +12,32 @@ function useSmoothScroll() {
   const { pathname, hash } = useLocation()
   const isIde = pathname.startsWith('/ide')
 
+  /* Lenis and gsap are loaded on demand so the entry chunk does not carry
+   * them for /ide, which never uses them (Sprint 8 entry-chunk diet). */
   useEffect(() => {
     if (isIde) return
+    let cancelled = false
+    let cleanup: (() => void) | null = null
 
-    const lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 1 })
-    lenis.on('scroll', ScrollTrigger.update)
-    const raf = (time: number) => lenis.raf(time * 1000)
-    gsap.ticker.add(raf)
-    gsap.ticker.lagSmoothing(0)
+    void Promise.all([import('lenis'), import('gsap'), import('gsap/ScrollTrigger')]).then(([lenisMod, gsapMod, stMod]) => {
+      if (cancelled) return
+      const gsap = gsapMod.default
+      const { ScrollTrigger } = stMod
+      gsap.registerPlugin(ScrollTrigger)
+      const lenis = new lenisMod.default({ lerp: 0.09, wheelMultiplier: 1 })
+      lenis.on('scroll', ScrollTrigger.update)
+      const raf = (time: number) => lenis.raf(time * 1000)
+      gsap.ticker.add(raf)
+      gsap.ticker.lagSmoothing(0)
+      cleanup = () => {
+        gsap.ticker.remove(raf)
+        lenis.destroy()
+      }
+    })
 
     return () => {
-      gsap.ticker.remove(raf)
-      lenis.destroy()
+      cancelled = true
+      cleanup?.()
     }
   }, [isIde])
 

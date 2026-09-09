@@ -402,3 +402,39 @@ export function selectEnclosingForm() {
   const form = innermostFormAt(doc, probe)
   if (form) v.dispatch({ selection: { anchor: form.from, head: form.to } })
 }
+
+/* ---- session export (Sprint 8) ---- */
+
+function downloadText(text: string, filename: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function engineLabel(): string | undefined {
+  switch (useWorkspace.getState().engineStatus) {
+    case 'ready-ecl': return 'ECL 24.5 (WECL, in-browser)'
+    case 'ready-jscl': return 'JSCL (fallback)'
+    case 'ready-mock': return 'mock interpreter (fallback)'
+    default: return undefined
+  }
+}
+
+/** Download the session as a Markdown notebook (plots inline as SVG) or a `.lisp` transcript that evaluates as is. */
+export async function exportSession(format: 'md' | 'lisp') {
+  const cells = useWorkspace.getState().cells
+  if (!cells.length) { toast('Nothing to export — the session is empty'); return }
+  const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName } = await import('@/session/transcript')
+  const meta = { engine: engineLabel(), exportedAt: new Date() }
+  const text = format === 'md' ? buildMarkdownTranscript(cells, meta) : buildLispTranscript(cells, meta)
+  const name = transcriptFileName(format, meta.exportedAt)
+  downloadText(text, name, format === 'md' ? 'text/markdown;charset=utf-8' : 'text/x-common-lisp;charset=utf-8')
+  const plots = cells.reduce((n, c) => n + (c.plots?.length ?? 0), 0)
+  useWorkspace.getState().addLog('INFO', 'UI', `Exported ${cells.length} cells${plots ? ` and ${plots} plot${plots === 1 ? '' : 's'}` : ''} to ${name}`)
+  toast(`Saved ${name}`)
+}

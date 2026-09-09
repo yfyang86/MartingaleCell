@@ -262,6 +262,19 @@ async function run() {
     check('O: a (warn …) in the file arrives as a located warning path|offset|text', !!lw, linesOf(25).filter((l) => l.startsWith(';;WARNING')).join(' | '))
     check('O: the file still loads ok (a warning is not an error)', linesOf(25).some((l) => /;;FILE:.*defs\.lisp\|ok\|/.test(l)), linesOf(25).filter((l) => l.startsWith(';;FILE')).join(' | '))
 
+    /* O (Sprint 8): block comments before a form do not shift its offset */
+    console.log('\n--- job 26: #|…|# before a form → ;;DEF: offset is the form, not the comment')
+    const blk = '#| header block\n   with (defun fake-in-comment ()) inside |#\n\n(defun after-block (x) x)\n\n#| outer #| nested |# still outer |#\n(defparameter *after-nested* 1)\n#+ecl (defun with-feature () :ecl)\n#-nonexistent-feature\n(defun after-feature () :ok)\n#\'car\n(defun last-one () :last)\n'
+    send({ type: 'load-project', id: 26, files: [{ path: 'blk.lisp', content: blk }], debug: false })
+    await untilDone(26)
+    const defs26 = linesOf(26).filter((l) => l.startsWith(';;DEF:')).map((l) => l.slice(6).trim().split('|'))
+    const off26 = (n) => { const d = defs26.find((d) => d[2] === n); return d ? parseInt(d[1], 10) : -1 }
+    check('O: the file loads ok and the form inside the comment is not a definition', linesOf(26).some((l) => /;;FILE:.*blk\.lisp\|ok\|/.test(l)) && !defs26.some((d) => d[2] === 'FAKE-IN-COMMENT'), JSON.stringify(defs26))
+    check('O: offset after a block comment is the (defun itself', off26('AFTER-BLOCK') === blk.indexOf('(defun after-block'), `got ${off26('AFTER-BLOCK')} want ${blk.indexOf('(defun after-block')}`)
+    check('O: offset after a nested block comment is the (defparameter itself', off26('*AFTER-NESTED*') === blk.indexOf('(defparameter *after-nested*'), `got ${off26('*AFTER-NESTED*')} want ${blk.indexOf('(defparameter *after-nested*')}`)
+    check('O: a #+ / #- prefixed form keeps the offset of the prefix', off26('WITH-FEATURE') === blk.indexOf('#+ecl') && off26('AFTER-FEATURE') === blk.indexOf('#-nonexistent'), `got ${off26('WITH-FEATURE')} / ${off26('AFTER-FEATURE')}`)
+    check('O: a form after #\'car (a # that is not a comment) is still found', off26('LAST-ONE') === blk.indexOf('(defun last-one'), `got ${off26('LAST-ONE')} want ${blk.indexOf('(defun last-one')}`)
+
     /* I: still healthy; in-package still persists */
     await evalJob(24, '(+ 40 2)')
     await untilDone(24)
