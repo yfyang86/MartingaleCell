@@ -24,6 +24,18 @@ export interface LoadedPackage {
   symbols: string[]
 }
 
+/** Where a project symbol was defined during the last Load Project (go-to-definition). */
+export interface ProjectDefinition {
+  /** upper-case symbol name, e.g. "FIGURE" or "(SETF FOO)" */
+  name: string
+  /** defun / defmacro / defclass / … */
+  kind: string
+  /** project-relative path */
+  path: string
+  line: number
+  col: number
+}
+
 const IDB_HANDLE = 'conscell-dir-handle'
 const IDB_VIRTUAL = 'conscell-virtual-project-v1'
 
@@ -48,6 +60,8 @@ interface ProjectState {
   canReopen: boolean
   busy: boolean
   loadedPackages: LoadedPackage[]
+  /** definitions reported by the last Load Project (cleared when the project changes) */
+  definitions: ProjectDefinition[]
 
   hydrateProject: () => Promise<void>
   openFolder: () => Promise<void>
@@ -72,6 +86,7 @@ interface ProjectState {
   deletePath: (path: string) => Promise<void>
 
   setLoadedPackages: (pkgs: LoadedPackage[]) => void
+  setDefinitions: (defs: ProjectDefinition[]) => void
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -93,7 +108,7 @@ export const useProject = create<ProjectState>((set, get) => {
   const setVirtual = (name: string, files: Record<string, string>, attribution: string | null) => {
     rootHandle = null
     void idbDel(IDB_HANDLE)
-    set({ kind: 'virtual', name, files, tree: buildTree(Object.keys(files).map((p) => ({ path: p }))), attribution, canReopen: false, loadedPackages: [] })
+    set({ kind: 'virtual', name, files, tree: buildTree(Object.keys(files).map((p) => ({ path: p }))), attribution, canReopen: false, loadedPackages: [], definitions: [] })
     persistVirtual()
   }
 
@@ -101,7 +116,7 @@ export const useProject = create<ProjectState>((set, get) => {
     const tree = await fsa.readTree(handle)
     rootHandle = handle
     void idbSet(IDB_HANDLE, handle).catch(() => {})
-    set({ kind: 'fsaccess', name: handle.name, tree, files: {}, attribution: null, canReopen: true, loadedPackages: [] })
+    set({ kind: 'fsaccess', name: handle.name, tree, files: {}, attribution: null, canReopen: true, loadedPackages: [], definitions: [] })
   }
 
   const rebuildVirtualTree = () => {
@@ -139,6 +154,7 @@ export const useProject = create<ProjectState>((set, get) => {
     canReopen: false,
     busy: false,
     loadedPackages: [],
+    definitions: [],
 
     hydrateProject: async () => {
       try {
@@ -277,7 +293,7 @@ export const useProject = create<ProjectState>((set, get) => {
       detachBuffers(() => true)
       rootHandle = null
       void idbDel(IDB_VIRTUAL)
-      set({ kind: null, name: null, tree: [], files: {}, attribution: null, loadedPackages: [] })
+      set({ kind: null, name: null, tree: [], files: {}, attribution: null, loadedPackages: [], definitions: [] })
       log('Project closed')
     },
 
@@ -492,8 +508,21 @@ export const useProject = create<ProjectState>((set, get) => {
     },
 
     setLoadedPackages: (pkgs) => set({ loadedPackages: pkgs }),
+    setDefinitions: (defs) => set({ definitions: defs }),
   }
 })
+
+/** Convert a byte offset (ECL `file-position`, UTF-8) in `content` to a 1-based line/col. */
+export function byteOffsetToLineCol(content: string, byteOffset: number): { line: number; col: number } {
+  let bytes = 0, line = 1, col = 1
+  for (const ch of content) {
+    if (bytes >= byteOffset) break
+    const cp = ch.codePointAt(0) ?? 0
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+    if (ch === '\n') { line++; col = 1 } else col++
+  }
+  return { line, col }
+}
 
 /** Lisp-source files of the current project, fresh. */
 export async function collectLispFiles(): Promise<{ path: string; content: string }[]> {

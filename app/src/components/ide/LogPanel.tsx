@@ -7,7 +7,7 @@ import { Search, Magnet, Clock, Download, Trash2, ChevronRight } from 'lucide-re
 import { cn } from '@/lib/utils'
 import { useWorkspace, type LogEntry } from '@/store/workspace'
 import type { LogLevel } from '@/lisp/types'
-import { copyText } from './actions'
+import { copyText, gotoLocation } from './actions'
 
 type Tab = 'log' | 'trace' | 'warnings'
 const LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR']
@@ -83,6 +83,15 @@ function LogRow({ entry, showTs }: { entry: LogEntry; showTs: boolean }) {
             ? <>eval · {entry.trace.forms} · {entry.trace.ms.toFixed(1)}ms{entry.trace.ms > 50 && <span className="ml-2 rounded-sm bg-warning/10 px-1 py-px text-[9px] text-warning">slow</span>}</>
             : entry.message}
         </span>
+        {entry.location && (
+          <button
+            className="shrink-0 rounded-full border border-hairline px-1.5 text-[10px] text-steel hover:border-strong hover:text-steel-bright"
+            title={`Open ${entry.location.path} at line ${entry.location.line}`}
+            onClick={() => gotoLocation(entry.location!.path, entry.location!.line, entry.location!.col)}
+          >
+            {entry.location.path.split('/').pop()}:{entry.location.line}
+          </button>
+        )}
         {entry.cellRef != null && (
           <button className="shrink-0 text-[10px] text-steel hover:text-steel-bright" onClick={gotoCell}>
             cell [{entry.cellRef}]

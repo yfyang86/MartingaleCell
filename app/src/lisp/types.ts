@@ -30,6 +30,8 @@ export interface EvalResult {
   restartUsed?: string
   /** Condition slots worth showing (worker ;;DETAIL: markers), e.g. datum/expected for a type-error. */
   details?: ConditionDetail[]
+  /** Warnings that carry a project file location (load jobs). `warnings` holds their text too. */
+  locatedWarnings?: LocatedWarning[]
 }
 
 /** One `;;DETAIL: key|value` line printed at signal time. */
@@ -86,6 +88,15 @@ export type LoadEvent =
   | { kind: 'note'; message: string }
   | { kind: 'hint'; message: string }
   | { kind: 'plot'; plot: PlotAttachment }
+  | { kind: 'definition'; path: string; offset: number; name: string; defKind: string }
+
+/** A warning raised while a project form loaded, with where (worker ;;WARNING: path|offset|text). */
+export interface LocatedWarning {
+  path: string
+  /** byte offset of the form in the file (file-position) */
+  offset: number
+  message: string
+}
 
 /* ---- worker protocol (public/wecl-worker.js) ---- */
 

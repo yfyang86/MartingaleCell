@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { runtime } from '@/lisp/runtime'
 import type { LoadEvent } from '@/lisp/types'
 import { useWorkspace, type ProjectLoadInfo } from '@/store/workspace'
-import { useProject, collectLispFiles } from '@/store/project'
-import { registerProjectSymbols } from '@/components/ide/completion'
+import { useProject, collectLispFiles, byteOffsetToLineCol, type ProjectDefinition } from '@/store/project'
+import { registerProjectSymbols, registerProjectDefinitions } from '@/components/ide/completion'
 import { autoDownloadSavedPlots } from '@/plot/download'
 
 function truncate(s: string, n: number): string {
@@ -87,6 +87,8 @@ export async function loadProjectIntoRuntime(): Promise<void> {
 
   const symbolMap = new Map<string, string[]>()
   const fileReport: string[] = []
+  const definitions: ProjectDefinition[] = []
+  const contentOf = new Map(files.map((f) => [f.path, f.content]))
   let workerHint: string | undefined
 
   const onLoadEvent = (e: LoadEvent) => {
@@ -111,6 +113,13 @@ export async function loadProjectIntoRuntime(): Promise<void> {
       const list = symbolMap.get(e.pkg) ?? []
       list.push(e.name)
       symbolMap.set(e.pkg, list)
+    } else if (e.kind === 'definition') {
+      /* byte offset from the image → line/col against the file we sent */
+      const rel = matchFile(files, e.path)
+      if (rel) {
+        const { line, col } = byteOffsetToLineCol(contentOf.get(rel) ?? '', e.offset)
+        definitions.push({ name: e.name.toUpperCase(), kind: e.defKind, path: rel, line, col })
+      }
     } else if (e.kind === 'plot') {
       /* load-time (show fig) — attach the gnuplot capture to this load cell */
       const cur = s.cells.find((c) => c.id === cell.id)
@@ -172,6 +181,17 @@ export async function loadProjectIntoRuntime(): Promise<void> {
     /* register autocomplete + build the "then call it" hint */
     const pkgs = [...symbolMap.entries()].map(([name, symbols]) => ({ name, symbols: symbols.sort() }))
     registerProjectSymbols(pkgs)
+    registerProjectDefinitions(definitions)
+    useProject.getState().setDefinitions(definitions)
+    if (definitions.length > 0) s.addLog('DEBUG', 'PROJECT', `${definitions.length} definition${definitions.length === 1 ? '' : 's'} indexed — F12 / Ctrl+click jumps to them`, { cellRef: cell.n })
+
+    /* warnings that know where they came from → log rows with a jump link */
+    for (const w of result.locatedWarnings ?? []) {
+      const rel = matchFile(files, w.path)
+      if (!rel) continue
+      const { line, col } = byteOffsetToLineCol(contentOf.get(rel) ?? '', w.offset)
+      s.addLog('WARN', 'PROJECT', w.message, { cellRef: cell.n, location: { path: rel, line, col } })
+    }
     useProject.getState().setLoadedPackages(
       pkgs.map((p) => ({
         name: p.name,
@@ -214,7 +234,9 @@ export async function loadProjectIntoRuntime(): Promise<void> {
         `Project "${info.projectName}" loaded — ${okCount}/${files.length} files ok${result.error ? ` — ${truncate(result.error, 120)}` : ''}`,
         { cellRef: cell.n, details: fileReport.join('\n') || undefined },
       )
-      result.warnings.forEach((w) => s.addLog('WARN', 'PROJECT', w, { cellRef: cell.n }))
+      /* located warnings were logged above with their jump links */
+      const located = new Set((result.locatedWarnings ?? []).map((w) => w.message))
+      result.warnings.filter((w) => !located.has(w)).forEach((w) => s.addLog('WARN', 'PROJECT', w, { cellRef: cell.n }))
       if (!result.error) toast(`Project loaded — ${okCount}/${files.length} files, ${pkgs.length} package(s)`)
     }
   } catch (e) {

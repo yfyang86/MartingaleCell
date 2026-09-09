@@ -77,6 +77,8 @@ export interface LogEntry {
   cellRef?: number
   /** TRACE rows */
   trace?: { ms: number; forms: string }
+  /** a project file position to jump to (located load warnings) */
+  location?: { path: string; line: number; col: number }
 }
 
 /* Every field here is wired to something real (Sprint 2). `minimap` and
@@ -186,7 +188,7 @@ interface WorkspaceState {
   removeCell: (id: string) => void
   clearCells: () => void
   // logs
-  addLog: (level: LogLevel, source: LogSource, message: string, opts?: { details?: string; cellRef?: number; trace?: { ms: number; forms: string } }) => void
+  addLog: (level: LogLevel, source: LogSource, message: string, opts?: { details?: string; cellRef?: number; trace?: { ms: number; forms: string }; location?: { path: string; line: number; col: number } }) => void
   clearLogs: () => void
   // misc
   setSettings: (patch: Partial<IdeSettings>) => void

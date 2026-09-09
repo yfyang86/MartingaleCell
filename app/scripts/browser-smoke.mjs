@@ -96,7 +96,20 @@ try {
   await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
   check('typed line completes the read → (:HELLO "Ada")', true)
 
-  /* 4. package pill follows in-package (Sprint 1) */
+  /* 4. F12 on a symbol jumps to its defun in the buffer (fallback path) */
+  await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
+  await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    const doc = view.state.doc.toString()
+    view.dispatch({ selection: { anchor: doc.lastIndexOf('sq') + 1 } })
+    view.focus()
+  })
+  await page.keyboard.press('F12')
+  await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
+  check('F12 on `sq` jumps to (defun sq …) — status bar shows Ln 1, Col 1', true)
+
+  /* 5. package pill follows in-package (Sprint 1) */
   await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
   await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
   await page.getByText('SMOKE', { exact: true }).first().waitFor({ timeout: 20_000 })

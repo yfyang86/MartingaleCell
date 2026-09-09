@@ -8,7 +8,7 @@ import { useUi } from '@/store/ui'
 import { useProject } from '@/store/project'
 import { evaluateCode, evaluateAll, splitTopLevelForms, firstSymbol } from '@/store/evaluate'
 import { runtime } from '@/lisp/runtime'
-import { topLevelFormAt, innermostFormAt } from './lisp-utils'
+import { topLevelFormAt, innermostFormAt, findSymbolPosition } from './lisp-utils'
 
 /* ---- editor registry (set by EditorPanel) ---- */
 
@@ -329,6 +329,66 @@ export function jumpToPosition(line: number, col: number) {
       })
     }
   })
+}
+
+/* ---- go to definition (Sprint 6) ---- */
+
+const SYMBOL_CHAR = /[\w*+/<>=!?$%&.:-]/
+
+/** The symbol under `pos` in `doc` (package prefix and quote stripped), or null. */
+export function symbolAtOffset(doc: string, pos: number): string | null {
+  let a = pos, b = pos
+  while (a > 0 && SYMBOL_CHAR.test(doc[a - 1])) a--
+  while (b < doc.length && SYMBOL_CHAR.test(doc[b])) b++
+  const raw = doc.slice(a, b).replace(/^[#']+/, '')
+  if (!raw || /^[\d.+-]+$/.test(raw) || raw.startsWith(':')) return null
+  return raw.replace(/^[^:]+::?/, '')
+}
+
+/** The symbol under the editor caret, or null. */
+export function symbolAtPoint(): string | null {
+  const v = editorView
+  if (!v) return null
+  return symbolAtOffset(v.state.doc.toString(), v.state.selection.main.head)
+}
+
+/** Open a project file and put the caret on line/col (flashing the line). */
+export function gotoLocation(path: string, line: number, col = 1) {
+  const ws = useWorkspace.getState()
+  const already = ws.buffers.find((b) => b.origin?.type === 'project' && b.origin.path === path)
+  const jump = () => setTimeout(() => jumpToPosition(line, col), already && already.id === ws.activeBufferId ? 0 : 40)
+  if (already) { ws.setActiveBuffer(already.id); jump(); return }
+  void useProject.getState().openFile(path).then(jump)
+}
+
+/**
+ * Jump to where `name` (default: the symbol at point) is defined: project
+ * definitions reported by the last Load Project first, then a defining
+ * form in any open buffer, else a toast.
+ */
+export function gotoDefinition(name?: string) {
+  const sym = name ?? symbolAtPoint()
+  if (!sym) { toast('No symbol at point'); return }
+  const key = sym.toUpperCase()
+  const ws = useWorkspace.getState()
+  const def = useProject.getState().definitions.find((d) => d.name === key)
+  if (def) {
+    ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${def.path}:${def.line} (${def.kind})`)
+    gotoLocation(def.path, def.line, def.col)
+    return
+  }
+  /* open buffers: the active one first */
+  const ordered = [...ws.buffers].sort((a, b) => (a.id === ws.activeBufferId ? -1 : b.id === ws.activeBufferId ? 1 : 0))
+  for (const b of ordered) {
+    const pos = findSymbolPosition(b.content, sym)
+    if (pos) {
+      if (b.id !== ws.activeBufferId) ws.setActiveBuffer(b.id)
+      setTimeout(() => jumpToPosition(pos.line, pos.col), b.id === ws.activeBufferId ? 0 : 40)
+      ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${b.name}:${pos.line}`)
+      return
+    }
+  }
+  toast(`No definition of ${sym} in the loaded project or open buffers`)
 }
 
 /** Select the innermost form around the caret; repeat to grow outwards. */

@@ -51,7 +51,10 @@
  * the existing ;;ERROR: <report>.
  * Project loads additionally stream structured markers on stdout (parsed
  * main-side, never shown as output): ;;FILE: path|status|message,
- * ;;PKG: name|external-count, ;;SYM: pkg|symbol.
+ * ;;PKG: name|external-count, ;;SYM: pkg|symbol, and
+ * ;;DEF: path|byte-offset|NAME|kind per defining form (go-to-definition).
+ * Warnings raised while a project form loads are located:
+ * ;;WARNING: path|byte-offset|text.
  *
  * All wecl_* functions are Asyncify async — always awaited, always serialized.
  */
@@ -108,13 +111,25 @@ var CC_HELPER_SRC = [
   '(defpackage :cc (:use :cl) (:export :eval-string :load-project :package-install :package-list :package-uninstall :package-load))',
   '(in-package :cc)',
   '(defvar *eval-package* (find-package :cl-user))',
+  /* (path . byte-offset) of the project form being loaded, so warnings and
+   * definitions can be located — bound in %load-file-forms (Sprint 6) */
+  '(defvar *load-context* nil)',
   '(defun %report (e)',
   '  (let ((s (princ-to-string e)))',
   '    (if (and (> (length s) 1) (char= (char s 0) #\\#))',
   '        (format nil "~A signalled" (type-of e))',
   '        s)))',
+  /* ;;WARNING: text  — or, while a project form is loading,
+   * ;;WARNING: /project/path|byte-offset|text (a located warning) */
+  '(defun %say-warning (msg)',
+  '  (if *load-context*',
+  '      (format *error-output* "~&;;WARNING: ~A|~D|~A~%"',
+  '              (substitute #\\/ #\\| (princ-to-string (car *load-context*)))',
+  '              (or (cdr *load-context*) 0)',
+  '              (substitute #\\Space #\\Newline (princ-to-string msg)))',
+  '      (format *error-output* "~&;;WARNING: ~A~%" msg)))',
   '(defun %warn (w)',
-  '  (format *error-output* "~&;;WARNING: ~A~%" (%report w))',
+  '  (%say-warning (%report w))',
   '  (let ((r (find-restart \'muffle-warning w)))',
   '    (when r (invoke-restart r))))',
   /* ---- honest condition reporting ----
@@ -500,6 +515,15 @@ var CC_HELPER_SRC = [
    * themselves naturally when the form is evaluated. Per-form failures are
    * reported as ;;WARNING: on stderr (a raw ;;ERROR: would mark the whole
    * load job as failed main-side) and folded into the ;;FILE: status. */
+  /* skip whitespace AND ;-comments so file-position lands on the form
+   * itself (read consumes comments, peek-char only skips whitespace) */
+  '(defun %skip-blank (in)',
+  '  (loop',
+  '    (peek-char t in nil nil)',
+  '    (let ((c (peek-char nil in nil nil)))',
+  '      (if (eql c #\\;)',
+  '          (read-line in nil nil)',
+  '          (return)))))',
   '(defun %load-file-forms (path)',
   '  (let ((nok 0) (nerr 0) (first-err nil))',
   '    (handler-case',
@@ -508,19 +532,22 @@ var CC_HELPER_SRC = [
   '                (*load-pathname* (pathname path))',
   '                (*load-truename* (pathname path)))',
   '            (loop',
-  '              (let ((form (handler-case (read in nil :eof)',
-  '                            (serious-condition (e)',
-  '                              (setf first-err (or first-err (format nil "reader: ~A" (%report e))))',
-  '                              :cc-read-fail))))',
+  '              (%skip-blank in)',
+  '              (let* ((pos (or (ignore-errors (file-position in)) 0))',
+  '                     (*load-context* (cons path pos))',
+  '                     (form (handler-case (read in nil :eof)',
+  '                             (serious-condition (e)',
+  '                               (setf first-err (or first-err (format nil "reader: ~A" (%report e))))',
+  '                               :cc-read-fail))))',
   '                (cond ((eq form :eof) (return))',
   '                      ((eq form :cc-read-fail)',
   '                       (incf nerr)',
-  '                       (format *error-output* "~&;;WARNING: ~A: ~A~%" path first-err)',
+  '                       (%say-warning first-err)',
   '                       (return))',
   '                      (t',
   '                       (let ((r (%load-one-form path form)))',
   '                         (case r',
-  '                           (:ok (incf nok))',
+  '                           (:ok (incf nok) (%say-def path pos form))',
   '                           (:abort-load',
   '                            (incf nerr)',
   '                            (setf first-err (or first-err "load aborted from the debugger"))',
@@ -537,6 +564,25 @@ var CC_HELPER_SRC = [
    * failure is folded into the file status. Returns :ok, :abort-load, or
    * the report string of the skipped form. */
   '(defvar *load-aborted* nil)',
+  /* ;;DEF: path|byte-offset|NAME|kind for every defining form a project
+   * file evaluated — the page turns these into go-to-definition targets */
+  '(defvar *def-heads* (list "DEFUN" "DEFMACRO" "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFCLASS"',
+  '                           "DEFSTRUCT" "DEFGENERIC" "DEFMETHOD" "DEFTYPE" "DEFINE-CONDITION" "DEFPACKAGE"))',
+  '(defun %def-name (n)',
+  '  (cond ((and (consp n) (symbolp (car n)) (string= (symbol-name (car n)) "SETF") (consp (cdr n)))',
+  '         (format nil "(SETF ~A)" (%def-name (cadr n))))',
+  '        ((consp n) (%def-name (car n)))',
+  '        ((symbolp n) (symbol-name n))',
+  '        ((stringp n) (string-upcase n))',
+  '        (t (%oneline (prin1-to-string n)))))',
+  '(defun %say-def (path pos form)',
+  '  (handler-case',
+  '      (when (and (consp form) (symbolp (car form)) (consp (cdr form))',
+  '                 (member (symbol-name (car form)) *def-heads* :test (function string=)))',
+  '        (format t "~&;;DEF: ~A|~D|~A|~A~%"',
+  '                (%oneline path) pos (%def-name (cadr form)) (string-downcase (symbol-name (car form))))',
+  '        (finish-output))',
+  '    (serious-condition () nil)))',
   '(defun %load-one-form (path form)',
   '  (loop',
   '    (let ((outcome',
@@ -548,12 +594,12 @@ var CC_HELPER_SRC = [
   '                        (eval form))',
   '                      :ok)',
   '                  (serious-condition (e)',
-  '                    (format *error-output* "~&;;WARNING: ~A: ~A~%" path (%report e))',
+  '                    (%say-warning (%report e))',
   '                    (%report e)))',
   '              (skip-form ()',
   '                :report "Skip this form and keep loading the project"',
   '                (let ((msg (if *debug-condition* (%report *debug-condition*) "skipped")))',
-  '                  (format *error-output* "~&;;WARNING: ~A: ~A (skipped)~%" path msg)',
+  '                  (%say-warning (format nil "~A (skipped)" msg))',
   '                  msg))',
   '              (retry ()',
   '                :report "Retry this form"',
