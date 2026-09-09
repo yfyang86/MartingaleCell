@@ -3,7 +3,7 @@
 
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
-import type { DebugPause, EngineStatus, LogLevel, LogSource } from '@/lisp/types'
+import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
@@ -19,7 +19,8 @@ export interface IdeBuffer {
 }
 
 /** paused = the image is suspended in the debugger, waiting for a restart choice */
-export type CellStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'aborted'
+/** 'paused' = in the debugger; 'input' = blocked on standard input */
+export type CellStatus = 'queued' | 'running' | 'paused' | 'input' | 'done' | 'error' | 'aborted'
 
 export interface ProjectFileStatus {
   path: string
@@ -49,6 +50,10 @@ export interface Cell {
   errorType?: string
   /** named user frames at signal time, innermost first (ECL only) */
   frames?: string[]
+  /** condition slots (datum/expected/name/…) at signal time (ECL only) */
+  details?: ConditionDetail[]
+  /** the job is blocked on standard input (status 'input') */
+  inputRequest?: InputRequest
   /** live debugger state while status === 'paused' */
   debug?: DebugPause
   durationMs: number

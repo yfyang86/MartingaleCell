@@ -97,6 +97,21 @@ export function chooseRestart(cellId: string, index: number, value?: string) {
   ws.addLog('INFO', 'EVAL', `cell [${cell.n}] → ${name}${value?.trim() ? ` ${value.trim()}` : ''}`, { cellRef: cell.n })
 }
 
+/** Answer a cell blocked on standard input with one line (null = end of file).
+ * The line is echoed into the cell's OUT well, like a terminal would. */
+export function provideInput(cellId: string, text: string | null) {
+  const ws = useWorkspace.getState()
+  const cell = ws.cells.find((c) => c.id === cellId)
+  if (!cell || cell.status !== 'input' || !cell.inputRequest) return
+  if (!runtime.provideInput(cell.inputRequest.jobId, text)) {
+    toast('The waiting job is gone — the runtime was restarted')
+    return
+  }
+  ws.updateCell(cellId, { status: 'running', inputRequest: undefined })
+  ws.appendCellStdout(cellId, text == null ? '^D' : text)
+  ws.addLog('DEBUG', 'EVAL', `cell [${cell.n}] stdin ← ${text == null ? 'end of file' : JSON.stringify(text)}`, { cellRef: cell.n })
+}
+
 /* ---- session replay ---- */
 
 const DEFINING_HEAD = /^(def[\w-]*|in-package|declaim|proclaim|require|use-package|import|export)$/i

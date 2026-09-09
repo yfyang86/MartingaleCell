@@ -54,3 +54,6 @@ jobs:
 
       - name: interactive debugger protocol test
         run: node scripts/debugger-test.mjs
+
+      - name: standard input (read-line / read / y-or-n-p) test
+        run: node scripts/stdin-test.mjs
