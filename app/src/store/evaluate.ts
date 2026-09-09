@@ -18,6 +18,11 @@ export function stripOutMarkers(stdout: string): string {
     .join('\n')
 }
 
+/** A cell that still occupies the (serialized) runtime: queued, running, or paused in the debugger. */
+export function isBusy(c: Cell): boolean {
+  return c.status === 'running' || c.status === 'queued' || c.status === 'paused'
+}
+
 /** Evaluate a code string; appends a cell and mirrors warnings/errors into the log. */
 export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
   const store = useWorkspace.getState()
@@ -34,7 +39,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
     startedAt: Date.now(),
     restartsUsed: 0,
   })
-  const pending = useWorkspace.getState().cells.some((c) => c.id !== cell.id && (c.status === 'running' || c.status === 'queued'))
+  const pending = useWorkspace.getState().cells.some((c) => c.id !== cell.id && isBusy(c))
   if (pending) store.updateCell(cell.id, { status: 'queued' })
 
   useWorkspace.getState().setEvaluating(true)
@@ -61,9 +66,28 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { plots: [...(cur?.plots ?? []), plot] })
         s.addLog('INFO', 'EVAL', `gnuplot intercepted — plot rendered in cell [${cell.n}]`, { cellRef: cell.n })
       },
-    }, { compile: store.settings.evalMode === 'compile' })
+      onDebug: (pause) => {
+        /* the image is suspended inside the handler — show the live restarts */
+        const s = useWorkspace.getState()
+        s.updateCell(cell.id, { status: 'paused', debug: pause, errorType: pause.errorType, frames: pause.frames })
+        s.addLog('WARN', 'EVAL', `${pause.errorType ?? 'ERROR'} — paused in debugger — ${truncate(pause.condition, 100)} — cell [${cell.n}]`, {
+          cellRef: cell.n,
+          details: `${pause.condition}\n\nrestarts:\n  ${pause.restarts.map((r) => `[${r.index}] ${r.name} — ${r.report}`).join('\n  ')}`,
+        })
+      },
+      onDebugNote: (message) => {
+        const s = useWorkspace.getState()
+        s.appendCellStdout(cell.id, `; debugger: ${message}`)
+        s.addLog('WARN', 'EVAL', `debugger: ${message}`, { cellRef: cell.n })
+      },
+    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError })
     .then((result) => {
       const s = useWorkspace.getState()
+      /* the resolution line: which restart brought the job back */
+      if (result.restartUsed) {
+        const cur = s.cells.find((c) => c.id === cell.id)
+        s.updateCell(cell.id, { resumedVia: result.restartUsed, restartsUsed: (cur?.restartsUsed ?? 0) + 1, debug: undefined })
+      }
       /* (in-package …) persists in the image — mirror it into the pill/prompt */
       if (result.package && result.package !== s.packageName) {
         s.setPackageName(result.package)
@@ -119,8 +143,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
     })
     .finally(() => {
       const s = useWorkspace.getState()
-      const stillBusy = s.cells.some((c) => c.status === 'running' || c.status === 'queued')
-      if (!stillBusy) s.setEvaluating(false)
+      if (!s.cells.some(isBusy)) s.setEvaluating(false)
     })
 }
 

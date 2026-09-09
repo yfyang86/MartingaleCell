@@ -9,7 +9,7 @@
  * subscribe() and logged by the workspace store.
  */
 
-import type { EngineKind, EngineStatus, EvalOptions, EvalResult, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
+import type { DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
 import { mockEval } from './mock'
 import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
@@ -32,6 +32,10 @@ export interface EvalCallbacks {
   onStream?: (chunk: string, isErr: boolean) => void
   /** gnuplot capture arrived mid-job (worker ;;PLOT64 marker). */
   onPlot?: (plot: PlotAttachment) => void
+  /** the job is paused in the debugger — answer with runtime.chooseRestart(). */
+  onDebug?: (pause: DebugPause) => void
+  /** a note from the debugger while paused (e.g. a value form failed). */
+  onDebugNote?: (message: string) => void
 }
 
 export interface LoadCallbacks extends EvalCallbacks {
@@ -56,6 +60,15 @@ interface Job {
   modulesChanged?: boolean
   /** reader package reported by the ;;PACKAGE: marker */
   package?: string
+  /* ---- debugger state (streamed markers) ---- */
+  lastErrorType?: string
+  lastFrames: string[]
+  /** restart list being assembled between ;;DEBUG: and ;;DEBUG-WAIT */
+  debugCondition?: string
+  debugRestarts: DebugRestart[]
+  /** image suspended on js-wait, waiting for chooseRestart() */
+  paused: boolean
+  restartUsed?: string
 }
 
 type Listener = () => void
@@ -281,6 +294,7 @@ class LispRuntime {
                 break
               }
               if (job.kind === 'load' && m.type === 'stdout' && this.handleLoadMarker(job, line)) break
+              if (m.type === 'stderr' && this.handleDebugMarker(job, line)) break
               ;(m.type === 'stdout' ? job.stdout : job.stderr).push(line)
               job.callbacks.onStream?.(line, m.type === 'stderr')
             }
@@ -314,6 +328,7 @@ class LispRuntime {
               const r = parseEclOutput(job.stdout, job.stderr, performance.now() - job.t0)
               if (job.plots.length > 0) r.plots = job.plots
               if (job.package) r.package = job.package
+              if (job.restartUsed) r.restartUsed = job.restartUsed
               if (job.modulesChanged) void this.persistModules()
               job.resolve(r)
             }
@@ -355,6 +370,52 @@ class LispRuntime {
     } catch {
       job.stdout.push('; [gnuplot plot payload could not be decoded]')
     }
+  }
+
+  /**
+   * Debugger markers (stderr). ;;ERRTYPE:/;;FRAME: are mirrored (not
+   * consumed) so parseEclOutput still sees them; ;;DEBUG:/;;RESTART:/
+   * ;;DEBUG-WAIT/;;DEBUG-NOTE: are consumed. Returns true when consumed.
+   */
+  private handleDebugMarker(job: Job, line: string): boolean {
+    const t = line.trimStart()
+    if (t.startsWith(';;ERRTYPE:')) { job.lastErrorType = t.slice(10).trim(); job.lastFrames = []; return false }
+    if (t.startsWith(';;FRAME:')) { job.lastFrames.push(t.slice(8).trim()); return false }
+    if (t.startsWith(';;DEBUG:')) { job.debugCondition = t.slice(8).trim(); job.debugRestarts = []; return true }
+    if (t.startsWith(';;RESTART:')) {
+      const [idx = '0', name = '', ...rest] = t.slice(10).trim().split('|')
+      job.debugRestarts.push({ index: parseInt(idx, 10) || 0, name, report: rest.join('|') })
+      return true
+    }
+    if (t.startsWith(';;DEBUG-NOTE:')) { job.callbacks.onDebugNote?.(t.slice(13).trim()); return true }
+    if (t.startsWith(';;DEBUG-WAIT')) {
+      job.paused = true
+      job.callbacks.onDebug?.({
+        jobId: job.id,
+        condition: job.debugCondition ?? '',
+        errorType: job.lastErrorType,
+        frames: job.lastFrames.slice(),
+        restarts: job.debugRestarts.slice(),
+      })
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Answer a paused job: invoke restart `index` (from the DebugPause list),
+   * optionally with a Lisp form whose value is passed to the restart.
+   * index -1 declines: the error is reported as if no debugger was on.
+   */
+  chooseRestart(jobId: number, index: number, value?: string): boolean {
+    const job = this.jobs.get(jobId)
+    if (!job || !job.paused || !this.worker) return false
+    job.paused = false
+    const chosen = job.debugRestarts.find((r) => r.index === index)
+    job.restartUsed = index < 0 ? 'DECLINE' : (chosen?.name ?? `#${index}`)
+    const msg: WorkerInMessage = { type: 'restart', id: jobId, index, ...(value != null && value.trim() ? { value: value.trim() } : {}) }
+    this.worker.postMessage(msg)
+    return true
   }
 
   /** Parse a ;;FILE:/;;PKG:/;;SYM: marker line into a LoadEvent. Returns true when consumed. */
@@ -437,9 +498,10 @@ class LispRuntime {
           const job: Job = {
             id, code, callbacks, stdout: [], stderr: [],
             resolve, reject, started: true, t0, kind: 'eval', plots: [],
+            lastFrames: [], debugRestarts: [], paused: false,
           }
           this.jobs.set(id, job)
-          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile } satisfies WorkerInMessage)
+          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug } satisfies WorkerInMessage)
           return
         }
         reject(new Error('runtime not ready'))
@@ -495,6 +557,7 @@ class LispRuntime {
           id, code: `(load-project ${files.length} files)`, callbacks,
           stdout: [], stderr: [], resolve, reject, started: true,
           t0: performance.now(), kind: 'load', plots: [],
+          lastFrames: [], debugRestarts: [], paused: false,
         }
         this.jobs.set(id, job)
         this.worker!.postMessage({ type: 'load-project', id, files })
