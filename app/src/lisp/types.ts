@@ -51,6 +51,19 @@ export interface EvalOptions {
   compile?: boolean
   /** pause in the debugger on an unhandled error (worker ;;DEBUG: protocol) */
   debug?: boolean
+  /** buffer name; when set, each definition evaluated prints ;;DEF: path|offset|NAME|kind */
+  path?: string
+}
+
+/** One `;;DEF:` line from an eval or load job: a definition and where its form starts. */
+export interface DefinitionEvent {
+  path: string
+  /** byte offset of the form in the source string / file */
+  offset: number
+  /** upper-case name, e.g. "FOO" or "(SETF FOO)" */
+  name: string
+  /** defun / defmacro / defclass / … */
+  defKind: string
 }
 
 /** One live restart offered while a job is paused. */
@@ -101,7 +114,7 @@ export interface LocatedWarning {
 /* ---- worker protocol (public/wecl-worker.js) ---- */
 
 export type WorkerInMessage =
-  | { type: 'eval'; id: number; code: string; compile?: boolean; debug?: boolean }
+  | { type: 'eval'; id: number; code: string; compile?: boolean; debug?: boolean; path?: string }
   | { type: 'restart'; id: number; index: number; value?: string }
   | { type: 'input'; id: number; text: string | null }
   | { type: 'load-project'; id: number; files: ProjectFilePayload[]; debug?: boolean }

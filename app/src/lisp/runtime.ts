@@ -9,7 +9,7 @@
  * subscribe() and logged by the workspace store.
  */
 
-import type { ConditionDetail, DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, InputRequest, LoadEvent, LocatedWarning, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
+import type { ConditionDetail, DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, InputRequest, LoadEvent, LocatedWarning, ProjectFilePayload, WorkerInMessage, WorkerOutMessage, DefinitionEvent } from './types'
 import { mockEval } from './mock'
 import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
@@ -38,10 +38,21 @@ export interface EvalCallbacks {
   onDebugNote?: (message: string) => void
   /** the job is blocked on standard input — answer with runtime.provideInput(). */
   onInputRequest?: (req: InputRequest) => void
+  /** a definition was evaluated (worker ;;DEF:, eval jobs with a `path`). */
+  onDefinition?: (d: DefinitionEvent) => void
 }
 
 export interface LoadCallbacks extends EvalCallbacks {
   onLoadEvent?: (e: LoadEvent) => void
+}
+
+/** `;;DEF: path|offset|NAME|kind` → DefinitionEvent (null when malformed). */
+function parseDefMarker(line: string): DefinitionEvent | null {
+  const t = line.trimStart()
+  if (!t.startsWith(';;DEF:')) return null
+  const [path = '', offset = '0', name = '', defKind = ''] = t.slice(6).trim().split('|')
+  if (!path || !name) return null
+  return { path, offset: parseInt(offset, 10) || 0, name, defKind }
 }
 
 interface Job {
@@ -327,6 +338,11 @@ class LispRuntime {
                 break
               }
               if (job.kind === 'load' && m.type === 'stdout' && this.handleLoadMarker(job, line)) break
+              if (job.kind === 'eval' && m.type === 'stdout' && line.trimStart().startsWith(';;DEF:')) {
+                const d = parseDefMarker(line)
+                if (d) job.callbacks.onDefinition?.(d)
+                break
+              }
               if (m.type === 'stderr' && this.handleDebugMarker(job, line)) break
               ;(m.type === 'stdout' ? job.stdout : job.stderr).push(line)
               job.callbacks.onStream?.(line, m.type === 'stderr')
@@ -501,8 +517,8 @@ class LispRuntime {
       return true
     }
     if (t.startsWith(';;DEF:')) {
-      const [path = '', offset = '0', name = '', defKind = ''] = t.slice(6).trim().split('|')
-      if (path && name) emit({ kind: 'definition', path, offset: parseInt(offset, 10) || 0, name, defKind })
+      const d = parseDefMarker(t)
+      if (d) emit({ kind: 'definition', ...d })
       return true
     }
     if (t.startsWith(';;HINT:')) {
@@ -565,7 +581,7 @@ class LispRuntime {
             lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
           }
           this.jobs.set(id, job)
-          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug } satisfies WorkerInMessage)
+          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug, ...(opts.path ? { path: opts.path } : {}) } satisfies WorkerInMessage)
           return
         }
         reject(new Error('runtime not ready'))

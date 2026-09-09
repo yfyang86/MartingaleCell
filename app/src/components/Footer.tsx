@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { cn } from '@/lib/utils'
 
 const COLUMNS: { title: string; links: { label: string; to: string; external?: boolean }[] }[] = [
   {
@@ -28,23 +29,35 @@ const COLUMNS: { title: string; links: { label: string; to: string; external?: b
   },
 ]
 
+/** true once the element has scrolled into view (once; CSS does the staggered reveal) */
+function useRevealOnView<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setShown(true); io.disconnect() }
+    }, { threshold: 0.4 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return { ref, shown }
+}
+
+const REVEAL = 'transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] motion-reduce:transition-none'
+const HIDDEN = 'opacity-0 translate-y-6'
+const SHOWN = 'opacity-100 translate-y-0'
+
 export default function Footer() {
+  const { ref, shown } = useRevealOnView<HTMLDivElement>()
   return (
     <footer className="border-t border-hairline bg-panel">
-      <motion.div
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, amount: 0.9 }}
-        variants={{
-          hidden: {},
-          show: { transition: { staggerChildren: 0.08 } },
-        }}
+      <div
+        ref={ref}
         className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 md:grid-cols-4"
       >
-        <motion.div
-          variants={{ hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0 } }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        >
+        <div className={cn(REVEAL, shown ? SHOWN : HIDDEN)}>
           <div className="flex items-center gap-2.5">
             <img src="/logo.svg" alt="" width={24} height={24} className="h-6 w-6" />
             <span className="font-display text-[16px] font-semibold tracking-tight">
@@ -55,13 +68,13 @@ export default function Footer() {
           <p className="mt-3 text-[13px] leading-relaxed text-secondary">
             The browser is the Lisp machine.
           </p>
-        </motion.div>
+        </div>
 
-        {COLUMNS.map((col) => (
-          <motion.div
+        {COLUMNS.map((col, i) => (
+          <div
             key={col.title}
-            variants={{ hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0 } }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className={cn(REVEAL, shown ? SHOWN : HIDDEN)}
+            style={{ transitionDelay: `${0.08 * (i + 1)}s` }}
           >
             <h4 className="font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               {col.title}
@@ -89,9 +102,9 @@ export default function Footer() {
                 </li>
               ))}
             </ul>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       <div className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-5 sm:flex-row sm:justify-between sm:px-6">

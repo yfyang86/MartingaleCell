@@ -275,6 +275,22 @@ async function run() {
     check('O: a #+ / #- prefixed form keeps the offset of the prefix', off26('WITH-FEATURE') === blk.indexOf('#+ecl') && off26('AFTER-FEATURE') === blk.indexOf('#-nonexistent'), `got ${off26('WITH-FEATURE')} / ${off26('AFTER-FEATURE')}`)
     check('O: a form after #\'car (a # that is not a comment) is still found', off26('LAST-ONE') === blk.indexOf('(defun last-one'), `got ${off26('LAST-ONE')} want ${blk.indexOf('(defun last-one')}`)
 
+    /* P (Sprint 9): definitions evaluated from a buffer print ;;DEF: with the form offset */
+    console.log('\n--- job 27: eval with a path → ;;DEF: per successful definition')
+    const src27 = '(defun p-one (x) x)\n#| block (defun p-fake ()) |#\n(defun p-two (y) "(defun p-in-string ()" y)\n(defparameter *p-err* (error "boom"))\n(defparameter *p-var* 1)\n'
+    send({ type: 'eval', id: 27, code: src27, path: 'scratch.lisp' })
+    await untilDone(27)
+    const defs27 = linesOf(27).filter((l) => l.startsWith(';;DEF:')).map((l) => l.slice(6).trim().split('|'))
+    const off27 = (n) => { const d = defs27.find((d) => d[2] === n); return d ? parseInt(d[1], 10) : -1 }
+    check('P: ;;DEF: lines carry the path and the definition kind', defs27.length === 3 && defs27.every((d) => d[0] === 'scratch.lisp') && defs27.find((d) => d[2] === 'P-ONE')[3] === 'defun' && defs27.find((d) => d[2] === '*P-VAR*')[3] === 'defparameter', JSON.stringify(defs27))
+    check('P: offsets are the form starts, past the block comment', off27('P-ONE') === 0 && off27('P-TWO') === src27.indexOf('(defun p-two') && off27('*P-VAR*') === src27.indexOf('(defparameter *p-var*'), JSON.stringify(defs27))
+    check('P: a definition whose evaluation errors prints no ;;DEF: (and no fake ones from comments/strings)', !defs27.some((d) => ['*P-ERR*', 'P-FAKE', 'P-IN-STRING'].includes(d[2])) && linesOf(27).some((l) => l.startsWith(';;ERROR:')), linesOf(27).join(' | '))
+    check('P: the ;;DEF: lines are not in the ordinary output', !linesOf(27).some((l) => l.startsWith(';;=> ') && l.includes('DEF')), linesOf(27).join(' | '))
+    console.log('\n--- job 28: eval WITHOUT a path prints no ;;DEF:')
+    await evalJob(28, '(defun p-three () 3)')
+    await untilDone(28)
+    check('P: no path → no ;;DEF:, values as usual', !linesOf(28).some((l) => l.startsWith(';;DEF:')) && linesOf(28).includes(';;=> P-THREE'), linesOf(28).join(' | '))
+
     /* I: still healthy; in-package still persists */
     await evalJob(24, '(+ 40 2)')
     await untilDone(24)

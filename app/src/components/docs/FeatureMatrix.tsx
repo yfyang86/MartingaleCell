@@ -20,7 +20,7 @@ const ROWS: Row[] = [
   { area: 'Numbers', status: 'full', notes: 'Bignums, ratios, complex; floats are IEEE doubles' },
   { area: 'Sequences, arrays, hash tables', status: 'full', notes: 'Including displaced & adjustable arrays' },
   { area: 'LOOP / FORMAT / pretty printer', status: 'full', notes: 'format via gray streams into the OUT block' },
-  { area: 'Packages & symbols', status: 'full', notes: 'defpackage; in-package persists across cells and drives the package pill; project symbols feed completion and go-to-definition' },
+  { area: 'Packages & symbols', status: 'full', notes: 'defpackage; in-package persists across cells and drives the package pill; project symbols feed completion; go-to-definition knows every form the loader loaded and every form you evaluated' },
   { area: 'MOP', status: 'partial', notes: 'slot-value-using-class etc.; ensure-generic-function edge cases pending' },
   { area: 'Gray streams', status: 'partial', notes: 'Core protocol; *standard-input* is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)' },
   { area: 'Pathnames & files', status: 'partial', notes: 'In-memory FS persisted to IndexedDB; no host filesystem access' },

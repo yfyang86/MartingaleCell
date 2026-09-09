@@ -181,8 +181,8 @@ export async function loadProjectIntoRuntime(): Promise<void> {
     /* register autocomplete + build the "then call it" hint */
     const pkgs = [...symbolMap.entries()].map(([name, symbols]) => ({ name, symbols: symbols.sort() }))
     registerProjectSymbols(pkgs)
-    registerProjectDefinitions(definitions)
     useProject.getState().setDefinitions(definitions)
+    registerProjectDefinitions(useProject.getState().definitionsForCompletion())
     if (definitions.length > 0) s.addLog('DEBUG', 'PROJECT', `${definitions.length} definition${definitions.length === 1 ? '' : 's'} indexed — F12 / Ctrl+click jumps to them`, { cellRef: cell.n })
 
     /* warnings that know where they came from → log rows with a jump link */

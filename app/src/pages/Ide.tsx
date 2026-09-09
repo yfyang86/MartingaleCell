@@ -179,6 +179,7 @@ export default function Ide() {
       else if (mod && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); ui.setPaletteOpen(true) }
       else if (mod && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); newBuffer() }
       else if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveBuffers() }
+      else if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); ui.openSearch() }
       else if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); ui.toggleExplorer() }
       else if (mod && e.shiftKey && (e.key === 'L' || e.key === 'l')) { e.preventDefault(); ui.setConfirm('clear-session') }
       else if (mod && e.key === '/') { e.preventDefault(); ui.setShortcutsOpen(!ui.shortcutsOpen) }

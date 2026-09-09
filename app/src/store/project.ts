@@ -36,6 +36,17 @@ export interface ProjectDefinition {
   col: number
 }
 
+/** A definition evaluated from an open buffer (Ctrl+Enter, region, evaluate-all); most recent first. */
+export interface BufferDefinition {
+  /** upper-case symbol name, e.g. "FIGURE" or "(SETF FOO)" */
+  name: string
+  kind: string
+  bufferId: string
+  bufferName: string
+  line: number
+  col: number
+}
+
 const IDB_HANDLE = 'conscell-dir-handle'
 const IDB_VIRTUAL = 'conscell-virtual-project-v1'
 
@@ -62,6 +73,8 @@ interface ProjectState {
   loadedPackages: LoadedPackage[]
   /** definitions reported by the last Load Project (cleared when the project changes) */
   definitions: ProjectDefinition[]
+  /** definitions evaluated from open buffers (worker ;;DEF: on eval jobs); not persisted */
+  bufferDefinitions: BufferDefinition[]
 
   hydrateProject: () => Promise<void>
   openFolder: () => Promise<void>
@@ -87,6 +100,10 @@ interface ProjectState {
 
   setLoadedPackages: (pkgs: LoadedPackage[]) => void
   setDefinitions: (defs: ProjectDefinition[]) => void
+  /** remember where a name was last evaluated (replaces an earlier entry for the same name) */
+  recordBufferDefinition: (def: BufferDefinition) => void
+  /** project-load definitions, then buffer definitions (later entries win in the completion registry) */
+  definitionsForCompletion: () => { name: string; kind: string; path: string; line: number }[]
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -155,6 +172,7 @@ export const useProject = create<ProjectState>((set, get) => {
     busy: false,
     loadedPackages: [],
     definitions: [],
+    bufferDefinitions: [],
 
     hydrateProject: async () => {
       try {
@@ -509,6 +527,14 @@ export const useProject = create<ProjectState>((set, get) => {
 
     setLoadedPackages: (pkgs) => set({ loadedPackages: pkgs }),
     setDefinitions: (defs) => set({ definitions: defs }),
+    recordBufferDefinition: (def) => set((s) => ({ bufferDefinitions: [def, ...s.bufferDefinitions.filter((d) => d.name !== def.name)] })),
+    definitionsForCompletion: () => {
+      const s = get()
+      return [
+        ...s.definitions,
+        ...[...s.bufferDefinitions].reverse().map((d) => ({ name: d.name, kind: d.kind, path: d.bufferName, line: d.line })),
+      ]
+    },
   }
 })
 

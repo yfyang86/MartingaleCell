@@ -272,30 +272,38 @@ var CC_HELPER_SRC = [
   '                      (return-from eval-one nil)))))',
   '        (if vals',
   '            (format t "~&;;=>~{ ~S~}~%" vals)',
-  '            (format t "~&;;=> ; no values~%")))',
+  '            (format t "~&;;=> ; no values~%"))',
+  '        t)',
   '    (serious-condition (e)',
-  '      (format *error-output* "~&;;ERROR: ~A~%" (%report e)))))',
+  '      (format *error-output* "~&;;ERROR: ~A~%" (%report e))',
+  '      nil)))',
   /* *package* is rebound per job so a reader error can never leave the image
    * in a half-switched state, BUT the binding is copied back into
    * *eval-package* when the job ends: (in-package :foo) in one cell is
    * honored by every later cell, exactly like a terminal REPL. The final
    * ;;PACKAGE: marker keeps the IDE's package pill in sync (parsed
    * main-side, never shown as output). */
-  '(defun eval-string (src &key compile debug)',
+  /* PATH (the buffer name, when the page knows it) makes each successfully
+   * evaluated definition print ;;DEF: path|offset|NAME|kind, offset being
+   * the form's position in SRC — same probe as the project loader */
+  '(defun eval-string (src &key compile debug path)',
   '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*))',
   '        (*eval-compile* compile)',
   '        (*debug-enabled* debug)',
   '        (*debug-condition* nil))',
   '    (handler-case (%stdin-reset) (serious-condition () nil))',
   '    (with-input-from-string (in src)',
-  '      (loop for form = (handler-case (read in nil :eof)',
-  '                         (serious-condition (e)',
-  '                           (format *error-output* "~&;;ERROR: reader: ~A~%" (%report e))',
-  '                           :cc-read-fail))',
-  '            until (eq form :eof)',
-  '            do (progn',
-  '                 (unless (eq form :cc-read-fail) (eval-one form))',
-  '                 (finish-output))))',
+  '      (loop',
+  '        (when path (handler-case (%skip-blank in) (serious-condition () nil)))',
+  '        (let* ((pos (or (ignore-errors (file-position in)) 0))',
+  '               (form (handler-case (read in nil :eof)',
+  '                       (serious-condition (e)',
+  '                         (format *error-output* "~&;;ERROR: reader: ~A~%" (%report e))',
+  '                         :cc-read-fail))))',
+  '          (when (eq form :eof) (return))',
+  '          (unless (eq form :cc-read-fail)',
+  '            (when (and (eval-one form) path) (%say-def path pos form)))',
+  '          (finish-output))))',
   '    (setf *eval-package* *package*)',
   '    (format t "~&;;PACKAGE: ~A~%" (%package-label *package*))',
   '    (finish-output)))',
@@ -1095,7 +1103,8 @@ function runEval(id, code, opts) {
     return Promise.resolve()
       .then(function () {
         return wecl_eval(guardTopLevel('(cc:eval-string "' + escapeLispString(code) + '"' +
-          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') + ')'));
+          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') +
+          (opts.path ? ' :path "' + escapeLispString(String(opts.path)) + '"' : '') + ')'));
       })
       .then(function () {
         self.postMessage({ type: 'done', id: id });
@@ -1270,7 +1279,7 @@ function runModulesOp(id, msg) {
 
 self.onmessage = function (ev) {
   var m = ev.data || {};
-  if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug });
+  if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug, path: m.path || '' });
   else if (m.type === 'restart') answerDebug(m.id, m.index, m.value);
   else if (m.type === 'input') answerInput(m.id, m.text);
   else if (m.type === 'load-project') runLoadProject(m.id, m.files || [], !!m.debug);

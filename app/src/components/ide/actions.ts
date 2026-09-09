@@ -32,7 +32,7 @@ export function evaluateFormAtPoint() {
   const form = topLevelFormAt(doc, pos)
   const code = form ? doc.slice(form.from, form.to) : doc
   if (!code.trim()) return
-  void evaluateCode(code, buf.name)
+  void evaluateCode(code, buf.name, { bufferId: buf.id, from: form ? form.from : 0 })
 }
 
 export function evaluateRegion() {
@@ -42,13 +42,13 @@ export function evaluateRegion() {
   const sel = view.state.selection.main
   if (sel.empty) return evaluateFormAtPoint()
   const code = view.state.doc.sliceString(sel.from, sel.to)
-  if (code.trim()) void evaluateCode(code, buf.name)
+  if (code.trim()) void evaluateCode(code, buf.name, { bufferId: buf.id, from: sel.from })
 }
 
 export function evaluateAllForms() {
   const buf = activeBuffer()
   if (!buf) return
-  evaluateAll(buf.content, buf.name)
+  evaluateAll(buf.content, buf.name, { bufferId: buf.id, from: 0 })
 }
 
 export function macroexpandAtPoint() {
@@ -366,11 +366,27 @@ export function gotoLocation(path: string, line: number, col = 1) {
  * definitions reported by the last Load Project first, then a defining
  * form in any open buffer, else a toast.
  */
+/** Activate an open buffer and put the caret at line/col. */
+export function gotoBuffer(bufferId: string, line: number, col = 1) {
+  const ws = useWorkspace.getState()
+  if (!ws.buffers.some((b) => b.id === bufferId)) return
+  const switching = bufferId !== ws.activeBufferId
+  if (switching) ws.setActiveBuffer(bufferId)
+  setTimeout(() => jumpToPosition(line, col), switching ? 40 : 0)
+}
+
 export function gotoDefinition(name?: string) {
   const sym = name ?? symbolAtPoint()
   if (!sym) { toast('No symbol at point'); return }
   const key = sym.toUpperCase()
   const ws = useWorkspace.getState()
+  /* most recent evaluation of the name wins over the last project load */
+  const bdef = useProject.getState().bufferDefinitions.find((d) => d.name === key && ws.buffers.some((b) => b.id === d.bufferId))
+  if (bdef) {
+    ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${bdef.bufferName}:${bdef.line} (${bdef.kind}, evaluated)`)
+    gotoBuffer(bdef.bufferId, bdef.line, bdef.col)
+    return
+  }
   const def = useProject.getState().definitions.find((d) => d.name === key)
   if (def) {
     ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${def.path}:${def.line} (${def.kind})`)
