@@ -28,7 +28,7 @@ import { depthAt, callContextAt, topLevelForms } from './lisp-utils'
 import {
   registerEditor, evaluateFormAtPoint, evaluateAllForms, evaluateRegion,
   macroexpandAtPoint, copyText, pasteIntoEditor, saveBuffers, requestCloseBuffer,
-  selectEnclosingForm, gotoDefinition, symbolAtOffset,
+  selectEnclosingForm, gotoDefinition, findReferences, symbolAtOffset,
 } from './actions'
 
 /** Marks the transactions of the first-visit typing animation, so the
@@ -91,6 +91,7 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
     { label: 'Macroexpand-1', run: macroexpandAtPoint },
     { label: 'Select enclosing form', kbd: 'Ctrl⇧↑', run: selectEnclosingForm },
     { label: 'Go to definition', kbd: 'F12', run: () => gotoDefinition() },
+    { label: 'Find references', kbd: '⇧F12', run: () => findReferences() },
     { label: 'Copy', kbd: 'Ctrl C', run: () => {
         const v = getViewSafe()
         if (v) { const s = v.state.selection.main; if (!s.empty) void copyText(v.state.sliceDoc(s.from, s.to), 'Copied selection') }
@@ -308,6 +309,7 @@ function EditorSurface() {
           keymap.of([
             { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
             { key: 'F12', run: () => { gotoDefinition(); return true } },
+            { key: 'Shift-F12', run: () => { findReferences(); return true } },
             /* Ctrl/⌘+Shift+F: workspace search — bound here too so CodeMirror's Mod-f (in-buffer search) fallback never eats it */
             { key: 'Mod-Shift-f', run: () => { useUi.getState().openSearch(); return true } },
             { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },

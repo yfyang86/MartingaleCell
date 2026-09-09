@@ -41,10 +41,13 @@ export interface BufferDefinition {
   /** upper-case symbol name, e.g. "FIGURE" or "(SETF FOO)" */
   name: string
   kind: string
+  /** empty for a definition typed into the session box */
   bufferId: string
   bufferName: string
   line: number
   col: number
+  /** set when the definition came from the session box: the cell to scroll to */
+  cellN?: number
 }
 
 const IDB_HANDLE = 'conscell-dir-handle'

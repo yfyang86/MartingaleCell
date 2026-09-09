@@ -25,8 +25,7 @@ import BootScreen from '@/components/ide/BootScreen'
 import Modals from '@/components/ide/Modals'
 import {
   evaluateFormAtPoint, evaluateAllForms, newBuffer, saveBuffers,
-  decodeShareHash, loadExamples, loadExampleIntoBuffer,
-} from '@/components/ide/actions'
+  decodeShareHash, loadExamples, loadExampleIntoBuffer, findReferences } from '@/components/ide/actions'
 import { cn } from '@/lib/utils'
 
 function useMediaQuery(query: string): boolean {
@@ -183,6 +182,7 @@ export default function Ide() {
       else if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); ui.toggleExplorer() }
       else if (mod && e.shiftKey && (e.key === 'L' || e.key === 'l')) { e.preventDefault(); ui.setConfirm('clear-session') }
       else if (mod && e.key === '/') { e.preventDefault(); ui.setShortcutsOpen(!ui.shortcutsOpen) }
+      else if (e.key === 'F12' && e.shiftKey) { e.preventDefault(); findReferences() }
       else if (e.key === 'Escape') { if (ui.paletteOpen) ui.setPaletteOpen(false) }
     }
     window.addEventListener('keydown', onKey)

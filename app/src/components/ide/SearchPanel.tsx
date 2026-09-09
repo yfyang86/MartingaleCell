@@ -10,11 +10,6 @@ import { useUi } from '@/store/ui'
 import { searchSources, mergeSources, type SearchOptions, type SearchResults, type SearchFileResult, type SearchMatch } from '@/search/workspace-search'
 import { gotoBuffer, gotoLocation } from './actions'
 
-const OPTS_KEY = 'conscell-search-opts'
-function loadOpts(): SearchOptions {
-  try { return JSON.parse(localStorage.getItem(OPTS_KEY) ?? '{}') as SearchOptions } catch { return {} }
-}
-
 function Toggle({ on, title, onClick, children }: { on: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -55,15 +50,16 @@ export default function SearchPanel() {
   const files = useProject((s) => s.files)
   const focusTick = useUi((s) => s.searchFocusTick)
   const setSearchOpen = useUi((s) => s.setSearchOpen)
+  const query = useUi((s) => s.searchQuery)
+  const setQuery = useUi((s) => s.setSearchQuery)
+  const opts = useUi((s) => s.searchOpts)
+  const setSearchOpts = useUi((s) => s.setSearchOpts)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
-  const [opts, setOpts] = useState<SearchOptions>(loadOpts)
   const [results, setResults] = useState<(SearchResults & { query: string }) | null>(null)
   const [searching, setSearching] = useState(false)
   const projectCache = useRef<{ at: number; key: string; files: { path: string; content: string }[] } | null>(null)
 
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [focusTick])
-  useEffect(() => { try { localStorage.setItem(OPTS_KEY, JSON.stringify(opts)) } catch { /* private mode */ } }, [opts])
 
   const projectFiles = useCallback(async () => {
     if (!projectKind) return []
@@ -105,7 +101,7 @@ export default function SearchPanel() {
     return `${shown.totalMatches}${shown.truncated ? '+' : ''} in ${shown.files.length} file${shown.files.length === 1 ? '' : 's'}`
   }, [query, shown, projectKind])
 
-  const flip = (k: keyof SearchOptions) => setOpts((o) => ({ ...o, [k]: !o[k] }))
+  const flip = (k: keyof SearchOptions) => setSearchOpts({ [k]: !opts[k] })
 
   return (
     <div className="flex max-h-[55%] shrink-0 flex-col border-b border-hairline" data-testid="search-panel">
