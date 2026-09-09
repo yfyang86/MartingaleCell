@@ -7,7 +7,7 @@ import { autoDownloadSavedPlots } from '@/plot/download'
 /** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
  * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
  * report) have their own dedicated UI — they must never appear in the OUT well. */
-export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|FRAME:|PLOT64|PACKAGE:)/
+export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|DETAIL:|FRAME:|PLOT64|PACKAGE:)/
 
 /** Drop engine protocol marker lines from captured stdout. */
 export function stripOutMarkers(stdout: string): string {
