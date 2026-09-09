@@ -35,4 +35,5 @@ PR: https://github.com/yfyang86/ConsCell/pull/5 (`sprint5` → `dev`)
 
 ## CI
 
-- CI run on PR head: _pending; recorded on merge_.
+- CI run on PR head `c8fc266`: **success** — https://github.com/yfyang86/ConsCell/actions/runs/34368663873 (lint · build · wasm tests, 67 s).
+- Merged into `dev` as `9c34811` via merge commit.
