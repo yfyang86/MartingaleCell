@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import { Github, Menu, X, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -32,12 +31,9 @@ export default function Navbar() {
   const close = () => setOpen(false)
 
   return (
-    <motion.header
-      initial={{ y: -64 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
+    <header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 h-16 border-b transition-colors duration-150 ease-snap',
+        'cc-anim fixed inset-x-0 top-0 z-50 h-16 border-b transition-colors duration-150 ease-snap animate-[cc-nav-in_.4s_cubic-bezier(.19,1,.22,1)_both]',
         scrolled
           ? 'border-hairline bg-[#07080D]/80 backdrop-blur-xl'
           : 'border-transparent bg-transparent'
@@ -117,50 +113,32 @@ export default function Navbar() {
         </button>
       </nav>
 
-      {/* Mobile drawer */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, x: 320 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 320 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            className="fixed inset-y-0 right-0 top-16 z-40 flex w-full max-w-xs flex-col gap-1 border-l border-hairline bg-panel p-6 md:hidden"
-          >
-            {NAV_LINKS.map((link, i) => (
-              <motion.div
-                key={link.label}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.06 * i, duration: 0.25 }}
-              >
-                <Link
-                  to={link.to}
-                  onClick={close}
-                  className="block rounded-md px-3 py-2.5 text-[15px] font-medium text-secondary hover:bg-raised hover:text-white"
-                >
-                  {link.label}
-                </Link>
-              </motion.div>
-            ))}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.06 * NAV_LINKS.length, duration: 0.25 }}
-              className="mt-4"
-            >
+      {/* Mobile drawer (CSS entrance; it simply unmounts on close) */}
+      {open && (
+        <div className="cc-anim fixed inset-y-0 right-0 top-16 z-40 flex w-full max-w-xs flex-col gap-1 border-l border-hairline bg-panel p-6 animate-[cc-drawer-in_.3s_cubic-bezier(.19,1,.22,1)_both] md:hidden">
+          {NAV_LINKS.map((link, i) => (
+            <div key={link.label} className="cc-anim animate-[cc-rise_.25s_ease-out_both]" style={{ animationDelay: `${0.06 * i}s` }}>
               <Link
-                to="/ide"
+                to={link.to}
                 onClick={close}
-                className="flex items-center justify-center gap-1.5 rounded-md bg-steel px-4 py-2.5 text-[14px] font-semibold text-abyss hover:bg-steel-bright"
+                className="block rounded-md px-3 py-2.5 text-[15px] font-medium text-secondary hover:bg-raised hover:text-white"
               >
-                Launch IDE
-                <ArrowRight size={15} strokeWidth={2} />
+                {link.label}
               </Link>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.header>
+            </div>
+          ))}
+          <div className="cc-anim mt-4 animate-[cc-rise_.25s_ease-out_both]" style={{ animationDelay: `${0.06 * NAV_LINKS.length}s` }}>
+            <Link
+              to="/ide"
+              onClick={close}
+              className="flex items-center justify-center gap-1.5 rounded-md bg-steel px-4 py-2.5 text-[14px] font-semibold text-abyss hover:bg-steel-bright"
+            >
+              Launch IDE
+              <ArrowRight size={15} strokeWidth={2} />
+            </Link>
+          </div>
+        </div>
+      )}
+    </header>
   )
 }

@@ -110,6 +110,38 @@ try {
   await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
   check('F12 on `sq` jumps to (defun sq …) — status bar shows Ln 1, Col 1', true)
 
+  /* 4b (Sprint 9). a definition evaluated from a buffer is a go-to-definition target from another buffer */
+  await page.keyboard.press('Control+Shift+Enter')
+  await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
+  await page.locator('button[title="New buffer (Ctrl N)"]').first().click()
+  await setCode('(sq 3)')
+  await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    view.dispatch({ selection: { anchor: 2 } })
+    view.focus()
+  })
+  await page.keyboard.press('F12')
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defun sq') && view.state.selection.main.head === 0
+  }, null, { timeout: 10_000 })
+  check('F12 on `sq` in a second buffer jumps to the evaluated (defun sq …) in the first', true)
+
+  /* 4c (Sprint 9). workspace search across open buffers, click to jump */
+  await page.keyboard.press('Control+Shift+F')
+  const box = page.locator('[data-testid="search-panel"] input')
+  await box.waitFor({ timeout: 5_000 })
+  await box.fill('sq')
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  const hits = await page.locator('[data-testid="search-panel"] mark').count()
+  check('Ctrl⇧F search finds `sq` in both open buffers (defun, call, call)', hits === 3, String(hits))
+  await page.locator('[data-testid="search-panel"] mark').first().click()
+  await page.getByText('Ln 1, Col 8').waitFor({ timeout: 10_000 })
+  check('clicking a hit puts the caret on it — status bar shows Ln 1, Col 8', true)
+  await box.press('Escape')
+
   /* 5. package pill follows in-package (Sprint 1) */
   await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
   await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
