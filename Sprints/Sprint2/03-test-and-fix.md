@@ -57,4 +57,5 @@ the landing page; trimming that is a separate, cosmetic task.
 
 ## CI
 
-- CI run on PR head: _pending; recorded on merge_.
+- CI run on PR head `a3e40de`: **success** — https://github.com/yfyang86/ConsCell/actions/runs/34358081200 (lint · build · wasm tests, 67 s).
+- Merged into `dev` as `6560619` (merge commit, four logical commits preserved).
