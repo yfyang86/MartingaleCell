@@ -63,4 +63,5 @@ pill follows `(in-package :smoke)`. Screenshots: `smoke-paused.png` and
 
 ## CI
 
-- CI run on PR head: _pending; recorded on merge_.
+- CI run on PR head `40fdb39`: **success** — https://github.com/yfyang86/ConsCell/actions/runs/34364048892 (lint · build · wasm tests incl. the debugger harness, 61 s).
+- Merged into `dev` as `192dabf` (merge commit, four logical commits preserved).
