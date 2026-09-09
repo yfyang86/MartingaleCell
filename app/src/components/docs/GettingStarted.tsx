@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 const STEPS = [
   {

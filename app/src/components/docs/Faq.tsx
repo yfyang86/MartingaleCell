@@ -5,7 +5,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 const FAQS = [
   {

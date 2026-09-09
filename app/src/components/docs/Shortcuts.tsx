@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Search } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 interface Shortcut {
   keys: string[]

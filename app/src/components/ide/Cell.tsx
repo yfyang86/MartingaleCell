@@ -1,7 +1,7 @@
 /* A single session cell: input echo, streamed OUT block, values, warnings,
  * error mini-debugger with restarts, running/queued states. */
 
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2 } from 'lucide-react'
@@ -9,9 +9,8 @@ import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
 import { LispCode } from './LispCode'
-import { copyText, getEditor } from './actions'
+import { copyText, getEditor, jumpToPosition } from './actions'
 import { evaluateCode } from '@/store/evaluate'
-import { jumpToPosition } from './EditorPanel'
 import { findSymbolPosition } from './lisp-utils'
 import { firstSymbol, stripOutMarkers } from '@/store/evaluate'
 import { ProjectLoadBody } from './ProjectLoadCell'
@@ -115,6 +114,18 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
   // values/warnings/errors have dedicated UI — never show their markers in the OUT well
   const outText = useMemo(() => stripOutMarkers(cell.stdout).replace(/\n+$/, ''), [cell.stdout])
 
+  const chooseRestart = useCallback((name: string) => {
+    if (name === 'RETRY') {
+      setResumed('RETRY')
+      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'RETRY' })
+      void evaluateCode(cell.input, cell.bufferName)
+    } else if (name === 'ABORT') {
+      setResumed('ABORT')
+      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'ABORT' })
+      useWorkspace.getState().addLog('DEBUG', 'EVAL', `cell [${cell.n}] resumed via ABORT`, { cellRef: cell.n })
+    }
+  }, [cell.id, cell.restartsUsed, cell.input, cell.bufferName, cell.n, updateCell])
+
   // number-key restart selection while an error cell is shown
   useEffect(() => {
     if (cell.status !== 'error' || isProject) return
@@ -125,20 +136,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cell.status, cell.id])
-
-  const chooseRestart = (name: string) => {
-    if (name === 'RETRY') {
-      setResumed('RETRY')
-      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'RETRY' })
-      void evaluateCode(cell.input, cell.bufferName)
-    } else if (name === 'ABORT') {
-      setResumed('ABORT')
-      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'ABORT' })
-      useWorkspace.getState().addLog('DEBUG', 'EVAL', `cell [${cell.n}] resumed via ABORT`, { cellRef: cell.n })
-    }
-  }
+  }, [cell.status, isProject, chooseRestart])
 
   const cellText = useMemo(() => {
     const parts = [`${cell.pkg}> ${cell.input}`]

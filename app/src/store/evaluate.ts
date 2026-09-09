@@ -4,10 +4,10 @@ import { runtime } from '@/lisp/runtime'
 import { useWorkspace, type Cell } from './workspace'
 import { autoDownloadSavedPlots } from '@/plot/download'
 
-/** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, and the
- * `;;PLOT64` gnuplot capture channel) have their own dedicated cell UI —
- * they must never appear in the OUT well. */
-export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|PLOT64)/
+/** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
+ * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
+ * report) have their own dedicated UI — they must never appear in the OUT well. */
+export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|PLOT64|PACKAGE:)/
 
 /** Drop engine protocol marker lines from captured stdout. */
 export function stripOutMarkers(stdout: string): string {
@@ -60,6 +60,11 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
     })
     .then((result) => {
       const s = useWorkspace.getState()
+      /* (in-package …) persists in the image — mirror it into the pill/prompt */
+      if (result.package && result.package !== s.packageName) {
+        s.setPackageName(result.package)
+        s.addLog('DEBUG', 'EVAL', `reader package → ${result.package}`, { cellRef: cell.n })
+      }
       if (result.plots && result.plots.length > 0) {
         /* cl-plot (save fig "name.png" …) — honor `set output` with an
          * automatic PNG download, still inside the user's click window */

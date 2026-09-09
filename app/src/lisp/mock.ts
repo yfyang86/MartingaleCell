@@ -457,7 +457,7 @@ export function mockEval(src: string): EvalResult {
 
   function evalLoop(body: SExpr[], env: Env): SExpr {
     // supports: (loop for i from a [to|below] b do/collect f) and (loop for x in list do/collect f)
-    let acc: SExpr[] = []
+    const acc: SExpr[] = []
     let collecting = false
     let i = 0
     while (i < body.length) {

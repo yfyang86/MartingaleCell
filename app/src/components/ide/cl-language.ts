@@ -4,7 +4,7 @@
 
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { StreamParser } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
+import { tags, type Tag } from '@lezer/highlight'
 import { EditorView } from '@codemirror/view'
 
 const KEYWORDS = new Set([
@@ -45,8 +45,24 @@ interface ClState {
 const SYMBOL_CHARS = /[^\s()'"`,;#"]/
 const SPECIAL_VAR_RE = /^\*[^*]*\*$/
 
+/* Map our custom token names onto tags (read at StreamLanguage.define time). */
+export const clTokenTable: Record<string, Tag> = {
+  paren: tags.paren,
+  keyword: tags.keyword,
+  symbol: tags.variableName,
+  constant: tags.atom,
+  string: tags.string,
+  comment: tags.comment,
+  number: tags.number,
+  reader: tags.meta,
+  package: tags.namespace,
+  type: tags.typeName,
+  var: tags.special(tags.variableName),
+}
+
 export const clStreamParser: StreamParser<ClState> = {
   name: 'common-lisp',
+  tokenTable: clTokenTable,
   startState: (): ClState => ({ inString: false, blockComment: 0, expectSymbol: false }),
 
   token(stream, state): string | null {
@@ -136,22 +152,6 @@ export const clStreamParser: StreamParser<ClState> = {
     closeBrackets: { brackets: ['(', '"'] },
   },
 }
-
-/* Map our custom token names onto tags (read at StreamLanguage.define time). */
-export const clTokenTable: Record<string, any> = {
-  paren: tags.paren,
-  keyword: tags.keyword,
-  symbol: tags.variableName,
-  constant: tags.atom,
-  string: tags.string,
-  comment: tags.comment,
-  number: tags.number,
-  reader: tags.meta,
-  package: tags.namespace,
-  type: tags.typeName,
-  var: tags.special(tags.variableName),
-}
-;(clStreamParser as any).tokenTable = clTokenTable
 
 export const commonLispLanguage = StreamLanguage.define(clStreamParser)
 

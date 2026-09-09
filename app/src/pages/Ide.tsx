@@ -78,14 +78,8 @@ export default function Ide() {
   const groupH = useGroupRef()
   const groupV = useGroupRef()
   const deepLinkHandled = useRef(false)
-  const [bootDone, setBootDone] = useState(false)
-
-  /* boot completes the first time any engine becomes ready */
-  useEffect(() => {
-    if (engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock') {
-      setBootDone(true)
-    }
-  }, [engineStatus])
+  /* boot completes the first time any engine becomes ready (store-derived) */
+  const bootDone = useWorkspace((s) => s.bootDone)
 
   /* hydrate, then boot the runtime */
   useEffect(() => {
@@ -97,6 +91,8 @@ export default function Ide() {
         const s = useWorkspace.getState()
         const prev = s.engineStatus
         s.setEngine(runtime.status, runtime.versionLabel)
+        /* a fresh image reads in CL-USER — keep the pill honest after restart/interrupt */
+        if (s.packageName !== runtime.currentPackage) s.setPackageName(runtime.currentPackage)
         if (prev !== runtime.status) {
           const names: Record<string, string> = {
             'booting': 'starting runtime…',
@@ -119,7 +115,6 @@ export default function Ide() {
       }).catch(() => useWorkspace.getState().setBootFailed(true))
     })
     return () => { /* singleton runtime survives route changes */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* boot failure detection: runtime falls back to jscl/mock internally, so
@@ -148,7 +143,8 @@ export default function Ide() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated])
 
-  /* global keyboard shortcuts (design §8) */
+  /* app-wide keyboard shortcuts (design §8). NB: a comment must not begin
+   * with "global" — ESLint reads that as a globals directive. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return /* CodeMirror (or an input) already handled it */

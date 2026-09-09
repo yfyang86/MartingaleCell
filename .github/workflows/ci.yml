@@ -1,0 +1,50 @@
+# ConsCell CI — the "green" gate for merging into dev.
+# Runs on every PR and on pushes to dev: lint, type-check + build, then the
+# real ECL/WASM image booted through the real worker in Node (boot harness +
+# in-package regression test). No browser needed.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint · build · wasm tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check and build
+        run: pnpm build
+
+      - name: Boot the ECL image (real worker + wasm, Node harness)
+        run: node scripts/boot-harness.mjs --timeout-ms 120000
+
+      - name: in-package persistence regression test
+        run: node scripts/package-test.mjs

@@ -18,6 +18,8 @@ import { get as idbGet, set as idbSet } from 'idb-keyval'
 const BOOT_TIMEOUT_MS = 30_000
 const MODULES_IDB_KEY = 'conscell-modules-v1'
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
+/** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
+const PACKAGE_MARKER = ';;PACKAGE:'
 
 /** One file of the persisted /modules tree (registry + package sources). */
 export interface ModuleFile {
@@ -52,6 +54,8 @@ interface Job {
   plots: PlotAttachment[]
   /** job touched /modules (package-install/uninstall) → persist after done. */
   modulesChanged?: boolean
+  /** reader package reported by the ;;PACKAGE: marker */
+  package?: string
 }
 
 type Listener = () => void
@@ -119,6 +123,8 @@ class LispRuntime {
   status: EngineStatus = 'booting'
   engine: EngineKind = null
   versionLabel = ''
+  /** Reader package of the live image (follows every ;;PACKAGE: marker; CL-USER after a (re)boot). */
+  currentPackage = 'CL-USER'
   private worker: Worker | null = null
   private jobs = new Map<number, Job>()
   private queue: Promise<void> = Promise.resolve()
@@ -140,7 +146,25 @@ class LispRuntime {
     this.status = s
     this.engine = engine
     this.versionLabel = label
+    /* a fresh image (boot, restart, interrupt-respawn) always reads in CL-USER */
+    if (s === 'booting' || s.startsWith('ready-')) this.currentPackage = 'CL-USER'
     this.emitStatus()
+  }
+
+  /**
+   * Switch the reader package of the live image (toolbar package pill).
+   * Runs `(in-package …)` as a hidden job — no session cell — and resolves
+   * with the job result; `result.package` is the package actually in effect
+   * (unchanged when the package does not exist, with `result.error` set).
+   */
+  setPackage(name: string): Promise<EvalResult> {
+    const clean = name.trim().toUpperCase()
+    if (this.engine !== 'ecl') {
+      /* jscl / mock have no real package system — track the label only */
+      this.currentPackage = clean || 'CL-USER'
+      return Promise.resolve({ stdout: '', values: [], warnings: [], durationMs: 0, package: this.currentPackage })
+    }
+    return this.eval(`(in-package "${clean.replace(/["\\]/g, '')}")`)
   }
 
   /** Boot the best available engine. Safe to call again after failure (retry). */
@@ -221,6 +245,11 @@ class LispRuntime {
             if (job) {
               if (m.type === 'stdout' && line.trimStart().startsWith(PLOT_MARKER)) { this.handlePlotMarker(job, line); break }
               if (m.type === 'stdout' && line.trimStart().startsWith(MODULES_CHANGED_MARKER)) { job.modulesChanged = true; break }
+              if (m.type === 'stdout' && line.trimStart().startsWith(PACKAGE_MARKER)) {
+                const name = line.trimStart().slice(PACKAGE_MARKER.length).trim()
+                if (name) { job.package = name; this.currentPackage = name }
+                break
+              }
               if (job.kind === 'load' && m.type === 'stdout' && this.handleLoadMarker(job, line)) break
               ;(m.type === 'stdout' ? job.stdout : job.stderr).push(line)
               job.callbacks.onStream?.(line, m.type === 'stderr')
@@ -254,6 +283,7 @@ class LispRuntime {
               this.jobs.delete(m.id)
               const r = parseEclOutput(job.stdout, job.stderr, performance.now() - job.t0)
               if (job.plots.length > 0) r.plots = job.plots
+              if (job.package) r.package = job.package
               if (job.modulesChanged) void this.persistModules()
               job.resolve(r)
             }

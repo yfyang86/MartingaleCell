@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 const CARDS = [
   {

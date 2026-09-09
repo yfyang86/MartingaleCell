@@ -11,9 +11,10 @@ import {
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
+import { useProject } from '@/store/project'
 import {
   evaluateFormAtPoint, evaluateAllForms, loadExamples, loadExampleIntoBuffer,
-  shareWorkspace, type ExampleItem,
+  shareWorkspace, switchPackage, type ExampleItem,
 } from './actions'
 
 /* -------- dropdown primitive -------- */
@@ -108,17 +109,20 @@ export function EnginePill() {
 
 function PackagePill() {
   const packageName = useWorkspace((s) => s.packageName)
-  const setPackageName = useWorkspace((s) => s.setPackageName)
   const buffers = useWorkspace((s) => s.buffers)
+  const loadedPackages = useProject((s) => s.loadedPackages)
+  /* candidates: the live package, the standard ones, packages a loaded
+   * project defined, and every (defpackage …) found in an open buffer */
   const packages = useMemo(() => {
-    const found = new Set<string>(['CL-USER', 'CL', 'KEYWORD'])
-    const re = /\(\s*defpackage\s+:?([\w.-]+)/gi
+    const found = new Set<string>([packageName, 'CL-USER', 'CL', 'KEYWORD'])
+    for (const p of loadedPackages) found.add(p.name.toUpperCase())
+    const re = /\(\s*defpackage\s+(?::|#:|")?([\w.-]+)/gi
     for (const b of buffers) {
       let m: RegExpExecArray | null
       while ((m = re.exec(b.content))) found.add(m[1].toUpperCase())
     }
     return [...found]
-  }, [buffers])
+  }, [buffers, loadedPackages, packageName])
   return (
     <Dropdown
       trigger={
@@ -139,9 +143,8 @@ function PackagePill() {
                 p === packageName ? 'text-steel' : 'text-secondary hover:text-primary',
               )}
               onClick={() => {
-                setPackageName(p)
-                useWorkspace.getState().addLog('DEBUG', 'UI', `Reader package → ${p}`)
                 close()
+                if (p !== packageName) void switchPackage(p)
               }}
             >
               {p}

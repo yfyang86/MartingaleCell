@@ -29,20 +29,31 @@ function fuzzy(query: string, text: string): boolean {
   return qi === q.length
 }
 
+/* The palette body is mounted only while open, so its query/cursor state
+ * starts fresh on every open without effect-driven resets. */
 export default function CommandPalette() {
   const open = useUi((s) => s.paletteOpen)
   const setOpen = useUi((s) => s.setPaletteOpen)
-  const [query, setQuery] = useState('')
+  return (
+    <AnimatePresence>
+      {open && <PaletteBody close={() => setOpen(false)} />}
+    </AnimatePresence>
+  )
+}
+
+function PaletteBody({ close }: { close: () => void }) {
+  const [query, setQueryState] = useState('')
   const [cursor, setCursor] = useState(0)
   const [examples, setExamples] = useState<ExampleItem[]>([])
 
+  /* typing resets the highlighted row */
+  const setQuery = (q: string) => { setQueryState(q); setCursor(0) }
+
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setCursor(0)
-      void loadExamples().then(setExamples)
-    }
-  }, [open])
+    let cancelled = false
+    void loadExamples().then((list) => { if (!cancelled) setExamples(list) })
+    return () => { cancelled = true }
+  }, [])
 
   const commands = useMemo<Cmd[]>(() => {
     const ui = useUi.getState
@@ -105,16 +116,12 @@ export default function CommandPalette() {
 
   const filtered = useMemo(() => commands.filter((c) => !query || fuzzy(query, c.name) || fuzzy(query, c.group)), [commands, query])
 
-  useEffect(() => { setCursor(0) }, [query])
-
   const runCmd = (c: Cmd) => {
-    setOpen(false)
+    close()
     c.run()
   }
 
   return (
-    <AnimatePresence>
-      {open && (
         <motion.div
           className="fixed inset-0 z-50 flex items-start justify-center pt-[16vh]"
           initial={{ opacity: 0 }}
@@ -122,7 +129,7 @@ export default function CommandPalette() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
         >
-          <div className="absolute inset-0 bg-[rgba(4,5,9,.7)] backdrop-blur-[6px]" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-[rgba(4,5,9,.7)] backdrop-blur-[6px]" onClick={close} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -140,7 +147,7 @@ export default function CommandPalette() {
                   if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(c + 1, filtered.length - 1)) }
                   if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)) }
                   if (e.key === 'Enter' && filtered[cursor]) runCmd(filtered[cursor])
-                  if (e.key === 'Escape') setOpen(false)
+                  if (e.key === 'Escape') close()
                 }}
                 placeholder="Type a command…"
                 className="h-12 w-full bg-transparent text-[14px] text-primary placeholder:text-muted focus:outline-none"
@@ -167,8 +174,6 @@ export default function CommandPalette() {
             </div>
           </motion.div>
         </motion.div>
-      )}
-    </AnimatePresence>
   )
 }
 

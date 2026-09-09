@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  /* dist: build output. public: hand-written worker + third-party WECL glue,
+   * served verbatim (never bundled) — not part of the TypeScript app. */
+  globalIgnores(['dist', 'public']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +20,18 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+  {
+    /* src/components/ui is generated shadcn/ui code (see components.json).
+     * It exports cva variants next to components and follows upstream hook
+     * patterns; it is vendored, not authored here, so the fast-refresh and
+     * React Compiler rules are relaxed for that directory only. */
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
     },
   },
 ])
