@@ -57,3 +57,6 @@ jobs:
 
       - name: standard input (read-line / read / y-or-n-p) test
         run: node scripts/stdin-test.mjs
+
+      - name: performance floor (fast setjmp trampolines)
+        run: node scripts/perf-test.mjs

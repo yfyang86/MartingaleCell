@@ -24,7 +24,7 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # boot + package + settings + debugger + stdin tests (real wasm, Node)
+pnpm test            # boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
 pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
 pnpm check           # lint + build + test
@@ -37,7 +37,7 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build and the five wasm tests on every
+`.github/workflows/ci.yml` runs lint, build and the six wasm tests on every
 pull request and on pushes to `dev`.
 
 ## How it is put together
@@ -45,7 +45,7 @@ pull request and on pushes to `dev`.
 | Layer | Where | What |
 |---|---|---|
 | Runtime image | `public/wecl/` | Third-party: `boot.js`, Emscripten glue `wecl.js`, `wecl.wasm` (9 MB). Asyncify build; `wecl_eval` is async. |
-| Worker | `public/wecl-worker.js` | Hand-written classic Web Worker. Half of it is a Common Lisp helper library (package `cc`) embedded as a string: the eval loop, the project loader (parses `.asd` itself — the image has no ASDF), `ext:shell` polyfill with gnuplot capture, and the `package-install` family. |
+| Worker | `public/wecl-worker.js` | Hand-written classic Web Worker. Half of it is a Common Lisp helper library (package `cc`) embedded as a string: the eval loop, the project loader (parses `.asd` itself — the image has no ASDF), `ext:shell` polyfill with gnuplot capture, and the `package-install` family. It also swaps Emscripten's `invoke_*` setjmp trampolines for lean ones at instantiation — the interpreter runs ~30× faster for it (see `Sprints/Sprint7`). |
 | Runtime client | `src/lisp/` | `runtime.ts` owns the fallback ladder (ECL worker → JSCL from CDN → built-in mock), serialises jobs, parses markers. `symbols.ts` feeds completion and doc popovers. |
 | Stores | `src/store/` | Zustand: `workspace` (buffers, cells, logs, settings; persisted to IndexedDB), `evaluate` (cell orchestration), `project` (local folder via File System Access API or virtual ZIP project), `ui`, `editor-meta`. |
 | Project loading, plots | `src/project/`, `src/plot/` | Streams per-file load status into a cell; parses the gnuplot subset cl-plot emits and renders SVG. |
