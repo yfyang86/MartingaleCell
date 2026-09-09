@@ -14,7 +14,8 @@ import esbuild from 'esbuild'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
-const timeoutMs = Number(process.argv[process.argv.indexOf('--timeout-ms') + 1] || 90_000)
+const timeoutIdx = process.argv.indexOf('--timeout-ms')
+const timeoutMs = timeoutIdx >= 0 ? Number(process.argv[timeoutIdx + 1]) || 90_000 : 90_000
 
 const messages = []
 const t0 = Date.now()

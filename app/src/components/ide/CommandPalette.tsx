@@ -7,7 +7,7 @@ import { useUi } from '@/store/ui'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, type ExampleItem,
+  copyText, replayDefinitions, type ExampleItem,
 } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
@@ -79,6 +79,7 @@ function PaletteBody({ close }: { close: () => void }) {
         },
       },
       { id: 'restart', group: 'Runtime', name: 'Restart Lisp image', run: () => ui().setConfirm('restart') },
+      { id: 'replay', group: 'Runtime', name: 'Replay definitions from session (after a restart)', run: replayDefinitions },
       {
         id: 'mem-report', group: 'Runtime', name: 'Memory report', run: () => {
           const perf = performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }

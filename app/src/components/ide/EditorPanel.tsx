@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X } from 'lucide-react'
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState, Compartment, Annotation } from '@codemirror/state'
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, rectangularSelection,
@@ -30,6 +30,10 @@ import {
   macroexpandAtPoint, copyText, pasteIntoEditor, saveBuffers, requestCloseBuffer,
   selectEnclosingForm,
 } from './actions'
+
+/** Marks the transactions of the first-visit typing animation, so the
+ * update listener can tell them from real edits (which must always win). */
+const welcomeTick = Annotation.define<boolean>()
 
 /* -------- lisp-aware indentation (2-space, body-aware) -------- */
 
@@ -270,6 +274,14 @@ function EditorSurface() {
     const initialDoc = buf?.content ?? ''
     const doTypingWelcome = s.freshVisit && !typedRef.current && initialDoc.length > 0
 
+    /* the typing animation's timer lives here so a user edit can cancel it
+     * from inside the update listener */
+    let welcomeTimer: ReturnType<typeof setTimeout> | null = null
+    const stopWelcome = () => {
+      if (welcomeTimer) { clearTimeout(welcomeTimer); welcomeTimer = null }
+      typingWelcomeRef.current = false
+    }
+
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
@@ -341,10 +353,16 @@ function EditorSurface() {
             ...defaultKeymap,
           ]),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged && !typingWelcomeRef.current) {
-              const st = useWorkspace.getState()
-              const id = st.activeBufferId
-              if (id) st.updateBufferContent(id, u.state.doc.toString())
+            if (u.docChanged) {
+              const isAnimationTick = u.transactions.length > 0 && u.transactions.every((tr) => tr.annotation(welcomeTick))
+              if (!isAnimationTick) {
+                /* a real edit during the welcome animation: the user wins —
+                 * stop typing the welcome text and keep what they wrote */
+                if (typingWelcomeRef.current) stopWelcome()
+                const st = useWorkspace.getState()
+                const id = st.activeBufferId
+                if (id) st.updateBufferContent(id, u.state.doc.toString())
+              }
             }
             if (u.selectionSet || u.docChanged) updateMeta(u.view)
           }),
@@ -364,24 +382,20 @@ function EditorSurface() {
       let i = 0
       const target = initialDoc
       const tick = () => {
-        if (!viewRef.current) return
+        if (!viewRef.current || !typingWelcomeRef.current) return
         i = Math.min(target.length, i + 1)
-        view.dispatch({ changes: { from: view.state.doc.length, insert: target.slice(i - 1, i) } })
-        if (i < target.length) timer = setTimeout(tick, 12)
-        else typingWelcomeRef.current = false
+        view.dispatch({
+          changes: { from: view.state.doc.length, insert: target.slice(i - 1, i) },
+          annotations: welcomeTick.of(true),
+        })
+        if (i < target.length) welcomeTimer = setTimeout(tick, 12)
+        else stopWelcome()
       }
-      let timer = setTimeout(tick, 350)
-      return () => {
-        clearTimeout(timer)
-        typingWelcomeRef.current = false
-        registerEditor(null)
-        viewRef.current = null
-        view.destroy()
-      }
+      welcomeTimer = setTimeout(tick, 350)
     }
 
     return () => {
-      typingWelcomeRef.current = false
+      stopWelcome()
       registerEditor(null)
       viewRef.current = null
       view.destroy()
