@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown } from 'lucide-react'
+import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown, Download } from 'lucide-react'
 import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { autocompletion, completionKeymap, completionStatus, closeCompletion, startCompletion } from '@codemirror/autocomplete'
@@ -10,7 +10,7 @@ import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
 import { CellView } from './Cell'
-import { copyText, pasteIntoEditor } from './actions'
+import { copyText, pasteIntoEditor, exportSession } from './actions'
 import { clCompletionSource } from './completion'
 import { clEditorTheme, clSyntaxExtension } from './cl-language'
 
@@ -235,6 +235,9 @@ export default function SessionPanel() {
         <div className="flex items-center gap-0.5">
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Copy all as transcript" onClick={copyAll}>
             <ClipboardCopy size={14} />
+          </button>
+          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Export session as Markdown (⇧click: .lisp transcript)" onClick={(e) => void exportSession(e.shiftKey ? 'lisp' : 'md')}>
+            <Download size={14} />
           </button>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Paste into editor" onClick={() => void pasteIntoEditor()}>
             <ClipboardPaste size={14} />

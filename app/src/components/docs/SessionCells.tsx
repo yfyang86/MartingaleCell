@@ -41,6 +41,10 @@ const SPECS = [
     body: 'Copy all yields a plain-text transcript with ;;=> markers — paste it into a gist or a bug report as-is.',
   },
   {
+    title: 'Export',
+    body: 'The download button (or the palette) saves the session as a Markdown notebook — code, output, values, warnings, errors and plots inline as SVG — or as a .lisp transcript with results as comments that evaluates as is.',
+  },
+  {
     title: 'Truncation',
     body: 'Long values truncate at 60 chars / 20 lines; an expand chip reveals the full printed form.',
   },

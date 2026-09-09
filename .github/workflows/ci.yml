@@ -43,6 +43,9 @@ jobs:
       - name: Type-check and build
         run: pnpm build
 
+      - name: session export (Markdown / .lisp transcript) test
+        run: node scripts/transcript-test.mjs
+
       - name: Boot the ECL image (real worker + wasm, Node harness)
         run: node scripts/boot-harness.mjs --timeout-ms 120000
 
