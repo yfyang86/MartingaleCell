@@ -65,6 +65,8 @@ export interface Cell {
   project?: ProjectLoadInfo
   /** gnuplot captures (worker ;;PLOT64 markers) rendered as SVG plots */
   plots?: PlotAttachment[]
+  /** appended from a Markdown transcript, not evaluated in this session */
+  imported?: boolean
 }
 
 export interface LogEntry {

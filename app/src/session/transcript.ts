@@ -169,3 +169,110 @@ export function buildLispTranscript(cells: Cell[], meta: TranscriptMeta = {}): s
   }
   return [head, ...body].join('\n\n') + '\n'
 }
+
+/* ---- Markdown import (the inverse of buildMarkdownTranscript) ---- */
+
+/** A cell reconstructed from a Markdown transcript; enough to append it to a session. */
+export interface ImportedCell {
+  n: number
+  pkg: string
+  input: string
+  status: 'done' | 'error' | 'aborted'
+  stdout: string
+  values: string[]
+  warnings: string[]
+  error?: string
+  errorType?: string
+  resumedVia?: string
+  durationMs: number
+  kind?: 'project'
+  project?: { projectName: string; files: { path: string; status: 'ok' | 'warn' | 'error' | 'skipped' | 'pending'; message?: string }[] }
+}
+
+interface Fence { lang: string; text: string }
+
+/** Split a section into a list of fences and non-fence lines (in order). */
+function tokenize(section: string): (Fence | string)[] {
+  const out: (Fence | string)[] = []
+  const lines = section.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(`{3,})([\w-]*)\s*$/)
+    if (m) {
+      const ticks = m[1]
+      const body: string[] = []
+      let j = i + 1
+      while (j < lines.length && lines[j] !== ticks) { body.push(lines[j]); j++ }
+      out.push({ lang: m[2], text: body.join('\n') })
+      i = j
+    } else {
+      out.push(lines[i])
+    }
+  }
+  return out
+}
+
+function parseDuration(s: string | undefined): number {
+  if (!s) return 0
+  const m = s.match(/([\d.]+)\s*(ms|s)/)
+  if (!m) return 0
+  return m[2] === 's' ? Math.round(parseFloat(m[1]) * 1000) : parseInt(m[1], 10)
+}
+
+const unescapeCell = (s: string) => s.replace(/\\\|/g, '|').trim()
+
+/**
+ * Parse a transcript produced by buildMarkdownTranscript (or edited by
+ * hand: prose outside the recognised blocks is ignored). Sections start
+ * at `## Cell n · …`; anything before the first one is skipped.
+ */
+export function parseMarkdownTranscript(md: string): ImportedCell[] {
+  const cells: ImportedCell[] = []
+  const parts = md.replace(/\r\n/g, '\n').split(/^(?=## Cell \d+ · )/m).slice(1)
+  for (const part of parts) {
+    const nl = part.indexOf('\n')
+    const head = (nl === -1 ? part : part.slice(0, nl)).trim()
+    const body = nl === -1 ? '' : part.slice(nl + 1)
+    const hm = head.match(/^## Cell (\d+) · (.*)$/)
+    if (!hm) continue
+    const n = parseInt(hm[1], 10)
+    const tail = hm[2].split(' · ')
+    const cell: ImportedCell = { n, pkg: 'CL-USER', input: '', status: 'done', stdout: '', values: [], warnings: [], durationMs: 0 }
+    if (tail[0].startsWith('project load')) {
+      cell.kind = 'project'
+      const pm = tail[0].match(/^project load(?: `(.*)`)?$/)
+      cell.project = { projectName: pm?.[1] ?? 'project', files: [] }
+      cell.durationMs = parseDuration(tail[1])
+    } else {
+      const pm = tail[0].match(/^`(.*)`$/)
+      cell.pkg = pm ? pm[1] : tail[0]
+      cell.durationMs = parseDuration(tail[1])
+    }
+    let expectOutput = false, expectError = false, haveInput = cell.kind === 'project'
+    for (const tok of tokenize(body)) {
+      if (typeof tok !== 'string') {
+        if (expectOutput) { cell.stdout = tok.text ? tok.text + '\n' : ''; expectOutput = false; continue }
+        if (expectError) { cell.error = tok.text; expectError = false; continue }
+        const ls = tok.text.split('\n')
+        if (tok.text && ls.every((l) => l.startsWith(';;=> '))) { cell.values.push(...ls.map((l) => l.slice(5))); continue }
+        if (!haveInput && tok.lang === 'lisp') { cell.input = tok.text; haveInput = true; continue }
+        continue
+      }
+      const line = tok
+      if (/^\*\*Output\*\*/.test(line)) { expectOutput = true; continue }
+      const em = line.match(/^\*\*Error\*\*(?: `(.*)`)?/)
+      if (em) { expectError = true; cell.status = 'error'; if (em[1]) cell.errorType = em[1]; continue }
+      if (line.startsWith('> ⚠️ ')) { cell.warnings.push(line.slice(5)); continue }
+      if (line.startsWith('> ') && cell.warnings.length && !line.startsWith('> Hint:')) { cell.warnings[cell.warnings.length - 1] += '\n' + line.slice(2); continue }
+      const rm = line.match(/^_Resumed via `(.*)`\._$/)
+      if (rm) { cell.resumedVia = rm[1]; continue }
+      if (line === '_Evaluation aborted._') { cell.status = 'aborted'; continue }
+      const tm = line.match(/^\| `(.*)` \| (\w+) \| (.*) \|$/)
+      if (tm && cell.project) {
+        cell.project.files.push({ path: unescapeCell(tm[1]), status: tm[2] as 'ok' | 'warn' | 'error' | 'skipped' | 'pending', message: unescapeCell(tm[3]) || undefined })
+        continue
+      }
+    }
+    cells.push(cell)
+  }
+  return cells
+}

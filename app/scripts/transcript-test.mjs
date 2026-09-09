@@ -23,7 +23,7 @@ const built = await esbuild.build({
   logLevel: 'silent',
 })
 const mod = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
-const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot } = mod
+const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot, parseMarkdownTranscript } = mod
 
 const plotSpec = parseGnuplot('set title "squares"\nplot "/tmp/d.dat" using 1:2 with lines title "y = x^2"\n', [{ path: '/tmp/d.dat', content: '0 0\n1 1\n2 4\n3 9\n' }])
 const base = { bufferName: undefined, warnings: [], values: [], stdout: '', durationMs: 12, startedAt: 0, restartsUsed: 0 }
@@ -69,6 +69,58 @@ check('lisp: in-package is emitted when the package changes, not for the first C
 check('lisp: resumed / plot / aborted notes', lisp.includes(';; resumed via STORE-VALUE') && lisp.includes(';; 1 plot captured') && lisp.includes('(loop)\n;; Evaluation aborted.'))
 check('lisp: project cell lists files as comments only', lisp.includes(';;; ---- cell 6 · project load cl-plot · 12 ms ----\n;;   ok      src/a.lisp  ; 3 forms\n;;   warn    src/b|c.lisp  ; careful: HERE'), lisp.split('cell 6')[1]?.split('cell 7')[0])
 check('lisp: every non-comment line is one of the inputs (the file evaluates as it is)', lisp.split('\n').filter((l) => l && !l.startsWith(';')).every((l) => l.startsWith('(in-package') || cells.some((c) => c.input.split('\n').includes(l))), lisp.split('\n').filter((l) => l && !l.startsWith(';')).join(' | '))
+
+/* Markdown import: the export round-trips */
+const back = parseMarkdownTranscript(md)
+check('import: one cell per section, numbers and packages preserved', back.length === 8 && back.map((c) => c.n).join() === '1,2,3,4,5,6,7,8' && back[3].pkg === 'MY-PKG' && back[0].pkg === 'CL-USER', JSON.stringify(back.map((c) => [c.n, c.pkg])))
+check('import: inputs and values round-trip', back[0].input === cells[0].input && back[0].values.join('|') === 'SQ|144' && back[7].values[0] === '"a ``` b"' && back[7].input === '"a ``` b"', JSON.stringify([back[0], back[7]]))
+check('import: output and warnings', back[1].stdout === 'hi\nthere\n' && back[1].warnings.join() === 'careful' && back[1].values.join() === 'NIL,NIL', JSON.stringify(back[1]))
+check('import: error with type, no values, duration in seconds', back[2].status === 'error' && back[2].error === 'Division by zero' && back[2].errorType === 'DIVISION-BY-ZERO' && back[2].values.length === 0 && back[2].durationMs === 2300, JSON.stringify(back[2]))
+check('import: resumed-via and aborted state', back[3].resumedVia === 'STORE-VALUE' && back[3].status === 'done' && back[6].status === 'aborted' && back[6].input === '(loop)', JSON.stringify([back[3], back[6]]))
+check('import: a plot cell keeps its input and values (the image is dropped)', back[4].input === '(plot fig)' && back[4].values.join() === 'NIL', JSON.stringify(back[4]))
+check('import: project cell with file table, | unescaped, no input', back[5].kind === 'project' && back[5].project.projectName === 'cl-plot' && back[5].project.files.length === 2 && back[5].project.files[1].path === 'src/b|c.lisp' && back[5].project.files[1].status === 'warn' && back[5].project.files[1].message === 'careful: HERE' && back[5].input === '', JSON.stringify(back[5]))
+const hand = `# Notes I wrote by hand
+
+Some prose before the first cell that must be ignored, with a stray \`\`\`lisp fence:
+
+\`\`\`lisp
+(not-a-cell)
+\`\`\`
+
+## Cell 3 · \`CL-USER\`
+
+Explanation of what I am about to do.
+
+\`\`\`\`lisp
+(defun f (x)
+  "has \`\`\` inside"
+  x)
+\`\`\`\`
+
+\`\`\`\`lisp
+;;=> F
+\`\`\`\`
+
+> ⚠️ first line
+> second line
+
+## Cell 4 · \`CL-USER\` · 1.50 s
+\`\`\`lisp
+(f 1)
+\`\`\`
+**Output**
+\`\`\`text
+printed
+\`\`\`
+\`\`\`lisp
+;;=> 1
+\`\`\`
+`
+const h = parseMarkdownTranscript(hand)
+check('import: hand-edited transcript — prose and a fence before the first cell are ignored', h.length === 2 && h[0].n === 3 && h[1].n === 4, JSON.stringify(h.map((c) => c.n)))
+check('import: four-backtick fences and a multi-line warning', h[0].input === '(defun f (x)\n  "has ``` inside"\n  x)' && h[0].values.join() === 'F' && h[0].warnings[0] === 'first line\nsecond line', JSON.stringify(h[0]))
+check('import: output fence and duration without a package label', h[1].stdout === 'printed\n' && h[1].durationMs === 1500 && h[1].values.join() === '1', JSON.stringify(h[1]))
+check('import: an empty or unrelated document yields no cells', parseMarkdownTranscript('').length === 0 && parseMarkdownTranscript('# just a title\n\ntext').length === 0)
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
