@@ -42,4 +42,5 @@ PR: https://github.com/yfyang86/ConsCell/pull/1 (`sprint1` → `dev`)
 The workflow added in this sprint runs on the PR itself. Its result is
 recorded below once it completes.
 
-- CI run on PR head: _pending at the time of writing; see the PR checks tab_.
+- CI run on PR head `3b74497`: **success** — https://github.com/yfyang86/ConsCell/actions/runs/34355692220 (lint · build · wasm tests, 62 s).
+- Merged into `dev` as `8d92729` (merge commit, three logical commits preserved).
