@@ -30,6 +30,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
     shortcuts: [
       { keys: ['Ctrl', 'B'], action: 'Toggle project explorer' },
       { keys: ['Ctrl', 'Shift', 'F'], action: 'Search the workspace (open buffers + project files); Enter jumps to the first hit' },
+      { keys: ['Ctrl', 'Shift', 'O'], action: 'Outline of definitions: buffer (✓ = evaluated), project, session box — click to jump' },
     ],
   },
   {

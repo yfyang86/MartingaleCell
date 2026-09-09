@@ -49,6 +49,9 @@ jobs:
       - name: workspace search matcher test
         run: node scripts/search-test.mjs
 
+      - name: definition outline scanner test
+        run: node scripts/outline-test.mjs
+
       - name: Boot the ECL image (real worker + wasm, Node harness)
         run: node scripts/boot-harness.mjs --timeout-ms 120000
 

@@ -51,6 +51,7 @@ export interface BufferDefinition {
 }
 
 const IDB_HANDLE = 'conscell-dir-handle'
+const IDB_DEFS = 'conscell-definitions-v1'
 const IDB_VIRTUAL = 'conscell-virtual-project-v1'
 
 /** The live FS-Access root handle (not serializable into state — module scope). */
@@ -107,11 +108,22 @@ interface ProjectState {
   recordBufferDefinition: (def: BufferDefinition) => void
   /** project-load definitions, then buffer definitions (later entries win in the completion registry) */
   definitionsForCompletion: () => { name: string; kind: string; path: string; line: number }[]
+  /** drop index entries whose buffer or cell no longer exists (after both stores hydrated) */
+  pruneIndex: (liveBufferIds: Set<string>, liveCellNs: Set<number>) => void
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 export const useProject = create<ProjectState>((set, get) => {
+  /* debounced IndexedDB write of the definition index */
+  let indexTimer: ReturnType<typeof setTimeout> | null = null
+  const saveIndex = () => {
+    if (indexTimer) clearTimeout(indexTimer)
+    indexTimer = setTimeout(() => {
+      const s = get()
+      idbSet(IDB_DEFS, { definitions: s.definitions, bufferDefinitions: s.bufferDefinitions }).catch(() => {})
+    }, 300)
+  }
   const log = (msg: string) => useWorkspace.getState().addLog('INFO', 'PROJECT', msg)
   const logErr = (msg: string) => useWorkspace.getState().addLog('ERROR', 'PROJECT', msg)
 
@@ -178,6 +190,11 @@ export const useProject = create<ProjectState>((set, get) => {
     bufferDefinitions: [],
 
     hydrateProject: async () => {
+      /* the definition index (Sprint 11): restored first, pruned by Ide once buffers/cells are known */
+      try {
+        const d = await idbGet<{ definitions: ProjectDefinition[]; bufferDefinitions: BufferDefinition[] }>(IDB_DEFS)
+        if (d) set({ definitions: Array.isArray(d.definitions) ? d.definitions : [], bufferDefinitions: Array.isArray(d.bufferDefinitions) ? d.bufferDefinitions : [] })
+      } catch { /* start empty */ }
       try {
         const v = await idbGet<VirtualPersisted>(IDB_VIRTUAL)
         if (v && v.files && Object.keys(v.files).length > 0) {
@@ -529,8 +546,12 @@ export const useProject = create<ProjectState>((set, get) => {
     },
 
     setLoadedPackages: (pkgs) => set({ loadedPackages: pkgs }),
-    setDefinitions: (defs) => set({ definitions: defs }),
-    recordBufferDefinition: (def) => set((s) => ({ bufferDefinitions: [def, ...s.bufferDefinitions.filter((d) => d.name !== def.name)] })),
+    setDefinitions: (defs) => { set({ definitions: defs }); saveIndex() },
+    recordBufferDefinition: (def) => { set((s) => ({ bufferDefinitions: [def, ...s.bufferDefinitions.filter((d) => d.name !== def.name)] })); saveIndex() },
+    pruneIndex: (liveBufferIds, liveCellNs) => {
+      set((s) => ({ bufferDefinitions: s.bufferDefinitions.filter((d) => (d.cellN != null ? liveCellNs.has(d.cellN) : liveBufferIds.has(d.bufferId))) }))
+      saveIndex()
+    },
     definitionsForCompletion: () => {
       const s = get()
       return [
