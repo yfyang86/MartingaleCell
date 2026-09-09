@@ -12,6 +12,7 @@ import { X } from 'lucide-react'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { useProject } from '@/store/project'
+import { registerProjectDefinitions } from '@/components/ide/completion'
 import { runtime } from '@/lisp/runtime'
 import Toolbar from '@/components/ide/Toolbar'
 import EditorPanel from '@/components/ide/EditorPanel'
@@ -83,8 +84,14 @@ export default function Ide() {
   /* hydrate, then boot the runtime */
   useEffect(() => {
     const ws = useWorkspace.getState()
-    void useProject.getState().hydrateProject()
+    const projectHydrated = useProject.getState().hydrateProject()
     void ws.hydrate().then(() => {
+      /* Sprint 11: the persisted definition index only keeps entries whose buffer / cell survived */
+      void projectHydrated.then(() => {
+        const w = useWorkspace.getState()
+        useProject.getState().pruneIndex(new Set(w.buffers.map((b) => b.id)), new Set(w.cells.map((c) => c.n)))
+        registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+      })
       /* engine status mirror + transition logging */
       runtime.subscribeStatus(() => {
         const s = useWorkspace.getState()
@@ -179,6 +186,7 @@ export default function Ide() {
       else if (mod && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); newBuffer() }
       else if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveBuffers() }
       else if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); ui.openSearch() }
+      else if (mod && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); ui.toggleOutline() }
       else if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); ui.toggleExplorer() }
       else if (mod && e.shiftKey && (e.key === 'L' || e.key === 'l')) { e.preventDefault(); ui.setConfirm('clear-session') }
       else if (mod && e.key === '/') { e.preventDefault(); ui.setShortcutsOpen(!ui.shortcutsOpen) }
