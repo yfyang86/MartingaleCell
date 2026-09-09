@@ -7,7 +7,7 @@ import { useUi } from '@/store/ui'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, replayDefinitions, type ExampleItem,
+  copyText, replayDefinitions, gotoDefinition, type ExampleItem,
 } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
@@ -62,6 +62,7 @@ function PaletteBody({ close }: { close: () => void }) {
       { id: 'eval-form', group: 'Evaluate', name: 'Evaluate form at point', kbd: 'Ctrl↵', run: evaluateFormAtPoint },
       { id: 'eval-all', group: 'Evaluate', name: 'Evaluate all forms', kbd: 'Ctrl⇧↵', run: evaluateAllForms },
       { id: 'interrupt', group: 'Evaluate', name: 'Interrupt evaluation', kbd: 'Ctrl.', run: () => ui().setConfirm('interrupt') },
+      { id: 'goto-def', group: 'Evaluate', name: 'Go to definition of symbol at point', kbd: 'F12', run: () => gotoDefinition() },
       { id: 'new-buffer', group: 'Buffer', name: 'New buffer', kbd: 'Ctrl N', run: newBuffer },
       { id: 'close-others', group: 'Buffer', name: 'Close other buffers', run: () => { const s = ws(); if (s.activeBufferId) s.closeOtherBuffers(s.activeBufferId) } },
       { id: 'save', group: 'Buffer', name: 'Save buffers', kbd: 'Ctrl S', run: saveBuffers },

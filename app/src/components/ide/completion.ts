@@ -52,20 +52,35 @@ export interface ProjectPackageSymbols {
 }
 
 let projectPackages: ProjectPackageSymbols[] = []
+/** upper-case name → "file.lisp:12 · defun" for project definitions (go-to-definition targets) */
+let projectDefinitionDetail = new Map<string, { where: string; kind: string }>()
 
 /** Replace the project-provided completion source (called by project/load.ts). */
 export function registerProjectSymbols(pkgs: ProjectPackageSymbols[]): void {
   projectPackages = pkgs
 }
 
+/** Definitions reported by the loader — used for completion details and types. */
+export function registerProjectDefinitions(defs: { name: string; kind: string; path: string; line: number }[]): void {
+  projectDefinitionDetail = new Map(defs.map((d) => [d.name.toUpperCase(), { where: `${d.path.split('/').pop()}:${d.line}`, kind: d.kind }]))
+}
+
+const DEF_KIND_TO_TYPE: Record<string, string> = {
+  defun: 'function', defgeneric: 'function', defmethod: 'function',
+  defmacro: 'macro',
+  defvar: 'variable', defparameter: 'variable', defconstant: 'constant',
+  defclass: 'class', defstruct: 'class', 'define-condition': 'class', deftype: 'class',
+}
+
 function projectSymbols(): Completion[] {
   const out: Completion[] = []
   for (const p of projectPackages) {
     for (const s of p.symbols) {
+      const def = projectDefinitionDetail.get(s.toUpperCase())
       out.push({
         label: s.toLowerCase(),
-        type: 'function',
-        detail: p.name,
+        type: (def && DEF_KIND_TO_TYPE[def.kind]) || 'function',
+        detail: def ? `${p.name} · ${def.where}` : p.name,
         boost: 1,
       })
     }

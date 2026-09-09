@@ -28,7 +28,7 @@ import { depthAt, callContextAt, topLevelForms } from './lisp-utils'
 import {
   registerEditor, evaluateFormAtPoint, evaluateAllForms, evaluateRegion,
   macroexpandAtPoint, copyText, pasteIntoEditor, saveBuffers, requestCloseBuffer,
-  selectEnclosingForm,
+  selectEnclosingForm, gotoDefinition, symbolAtOffset,
 } from './actions'
 
 /** Marks the transactions of the first-visit typing animation, so the
@@ -90,6 +90,7 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
     { label: 'Evaluate region', run: evaluateRegion },
     { label: 'Macroexpand-1', run: macroexpandAtPoint },
     { label: 'Select enclosing form', kbd: 'Ctrl⇧↑', run: selectEnclosingForm },
+    { label: 'Go to definition', kbd: 'F12', run: () => gotoDefinition() },
     { label: 'Copy', kbd: 'Ctrl C', run: () => {
         const v = getViewSafe()
         if (v) { const s = v.state.selection.main; if (!s.empty) void copyText(v.state.sliceDoc(s.from, s.to), 'Copied selection') }
@@ -306,6 +307,7 @@ function EditorSurface() {
           wrapComp.current.of(useWorkspace.getState().settings.lineWrap ? EditorView.lineWrapping : []),
           keymap.of([
             { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
+            { key: 'F12', run: () => { gotoDefinition(); return true } },
             { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
             { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
             { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },
@@ -352,6 +354,19 @@ function EditorSurface() {
             ...historyKeymap,
             ...defaultKeymap,
           ]),
+          /* Ctrl/⌘+click on a symbol → go to definition */
+          EditorView.domEventHandlers({
+            mousedown: (e, v) => {
+              if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false
+              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY })
+              if (pos == null) return false
+              const sym = symbolAtOffset(v.state.doc.toString(), pos)
+              if (!sym) return false
+              e.preventDefault()
+              gotoDefinition(sym)
+              return true
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
               const isAnimationTick = u.transactions.length > 0 && u.transactions.every((tr) => tr.annotation(welcomeTick))

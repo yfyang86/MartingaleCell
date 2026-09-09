@@ -9,7 +9,7 @@
  * subscribe() and logged by the workspace store.
  */
 
-import type { ConditionDetail, DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, InputRequest, LoadEvent, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
+import type { ConditionDetail, DebugPause, DebugRestart, EngineKind, EngineStatus, EvalOptions, EvalResult, InputRequest, LoadEvent, LocatedWarning, ProjectFilePayload, WorkerInMessage, WorkerOutMessage } from './types'
 import { mockEval } from './mock'
 import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
@@ -117,6 +117,7 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
   let pendingDetails: ConditionDetail[] = []
   let frames: string[] | undefined
   let details: ConditionDetail[] | undefined
+  const locatedWarnings: LocatedWarning[] = []
   const outLines: string[] = []
 
   const handle = (line: string, isErr: boolean) => {
@@ -126,7 +127,16 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
       if (payload && payload !== '; no values') values.push(...splitValues(payload))
       return
     }
-    if (t.startsWith(';;WARNING:')) { warnings.push(t.slice(10).trim()); return }
+    if (t.startsWith(';;WARNING:')) {
+      const body = t.slice(10).trim()
+      /* located form: /project/file.lisp|<byte-offset>|text */
+      const lw = body.match(/^(\/[^|]+)\|(\d+)\|([\s\S]*)$/)
+      if (lw) {
+        warnings.push(lw[3].trim())
+        locatedWarnings.push({ path: lw[1], offset: parseInt(lw[2], 10) || 0, message: lw[3].trim() })
+      } else warnings.push(body)
+      return
+    }
     if (t.startsWith(';;ERRTYPE:')) { pendingType = t.slice(10).trim(); pendingFrames = []; pendingDetails = []; return }
     if (t.startsWith(';;FRAME:')) { pendingFrames.push(t.slice(8).trim()); return }
     if (t.startsWith(';;DETAIL:')) { const d = parseDetail(t); if (d) pendingDetails.push(d); return }
@@ -159,6 +169,7 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
     stdout: outLines.join('\n'), values, warnings, error, errorType, durationMs,
     ...(frames ? { frames } : {}),
     ...(details ? { details } : {}),
+    ...(locatedWarnings.length > 0 ? { locatedWarnings } : {}),
   }
 }
 
@@ -487,6 +498,11 @@ class LispRuntime {
     }
     if (t.startsWith(';;NOTE:')) {
       emit({ kind: 'note', message: t.slice(7).trim() })
+      return true
+    }
+    if (t.startsWith(';;DEF:')) {
+      const [path = '', offset = '0', name = '', defKind = ''] = t.slice(6).trim().split('|')
+      if (path && name) emit({ kind: 'definition', path, offset: parseInt(offset, 10) || 0, name, defKind })
       return true
     }
     if (t.startsWith(';;HINT:')) {

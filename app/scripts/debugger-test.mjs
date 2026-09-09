@@ -245,6 +245,23 @@ async function run() {
     await untilDone(23)
     check('N: debug:false → no pause, file warn as before', waitCount(23) === 0 && linesOf(23).some((l) => /;;FILE:.*g\.lisp\|warn\|/.test(l)), linesOf(23).join(' | '))
 
+    /* O: definitions and located warnings from a project load (Sprint 6) */
+    console.log('\n--- job 25: load-project reports ;;DEF: and located ;;WARNING:')
+    send({ type: 'load-project', id: 25, files: [
+      { path: 'src/defs.lisp', content: ';;; a file with definitions\n\n(defun twice (x) (* 2 x))\n\n(defparameter *answer* 42)\n\n(defclass point () ((x :initarg :x)))\n\n(defmethod (setf px) (v (p point)) (setf (slot-value p (quote x)) v))\n\n(warn "careful: ~A" :here)\n(defstruct (pt (:constructor mk-pt)) a b)\n' },
+    ], debug: false })
+    await untilDone(25)
+    const defs = linesOf(25).filter((l) => l.startsWith(';;DEF:')).map((l) => l.slice(6).trim().split('|'))
+    const defNamed = (n) => defs.find((d) => d[2] === n)
+    check('O: ;;DEF: for defun / defparameter / defclass / defstruct with the file path', ['TWICE', '*ANSWER*', 'POINT', 'PT'].every((n) => defNamed(n) && defNamed(n)[0] === '/project/src/defs.lisp'), JSON.stringify(defs))
+    check('O: (setf px) method is reported as (SETF PX)', !!defNamed('(SETF PX)') && defNamed('(SETF PX)')[3] === 'defmethod', JSON.stringify(defs))
+    const twiceOff = parseInt((defNamed('TWICE') || [])[1], 10)
+    const answerOff = parseInt((defNamed('*ANSWER*') || [])[1], 10)
+    check('O: offsets are increasing and point past the header comment', twiceOff >= 28 && answerOff > twiceOff, `twice=${twiceOff} answer=${answerOff}`)
+    const lw = linesOf(25).find((l) => /^;;WARNING: \/project\/src\/defs\.lisp\|\d+\|careful: HERE/.test(l))
+    check('O: a (warn …) in the file arrives as a located warning path|offset|text', !!lw, linesOf(25).filter((l) => l.startsWith(';;WARNING')).join(' | '))
+    check('O: the file still loads ok (a warning is not an error)', linesOf(25).some((l) => /;;FILE:.*defs\.lisp\|ok\|/.test(l)), linesOf(25).filter((l) => l.startsWith(';;FILE')).join(' | '))
+
     /* I: still healthy; in-package still persists */
     await evalJob(24, '(+ 40 2)')
     await untilDone(24)

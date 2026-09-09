@@ -35,7 +35,8 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
     name: 'Session',
     shortcuts: [
       { keys: ['Ctrl', 'Shift', 'L'], action: 'Clear session cells' },
-      { keys: ['0', '–', '4'], action: 'Choose restart (in a debugger cell)' },
+      { keys: ['0', '–', '9'], action: 'Choose a restart while a cell is paused in the debugger' },
+      { keys: ['Ctrl', 'D'], action: 'End of file for a cell waiting on standard input' },
     ],
   },
   {
@@ -44,6 +45,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
       { keys: ['Tab'], action: 'Complete symbol at point' },
       { keys: ['Ctrl', 'Space'], action: 'Autocomplete / symbol documentation' },
       { keys: ['Ctrl', 'Shift', '↑'], action: 'Select enclosing s-expression (repeat to grow)' },
+      { keys: ['F12'], action: 'Go to definition of the symbol at point (Ctrl+click too)' },
       { keys: ['Alt', '↑ / ↓'], action: 'Move between top-level forms' },
     ],
   },
