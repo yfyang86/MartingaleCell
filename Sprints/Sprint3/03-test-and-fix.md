@@ -1,6 +1,6 @@
 # Sprint 3 — Test and fix log
 
-PR: _filled in below once opened_ (`sprint3` → `dev`)
+PR: https://github.com/yfyang86/ConsCell/pull/3 (`sprint3` → `dev`)
 
 ## Local verification
 
