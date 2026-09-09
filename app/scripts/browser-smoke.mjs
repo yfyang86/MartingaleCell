@@ -4,6 +4,7 @@
  * Resolves playwright from node_modules or the global npm root.
  * Writes screenshots next to this script's ../dist as smoke-*.png. */
 import { createRequire } from 'node:module'
+import fs from 'node:fs'
 import { execSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -114,6 +115,22 @@ try {
   await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
   await page.getByText('SMOKE', { exact: true }).first().waitFor({ timeout: 20_000 })
   check('package pill follows (in-package :smoke)', true)
+
+  /* Sprint 8: session export downloads a Markdown notebook of the cells above */
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 10_000 }),
+    page.locator('button[title^="Export session as Markdown"]').click(),
+  ])
+  const mdPath = await download.path()
+  const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
+  check('export button downloads conscell-session-….md', /^conscell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
+  check('the Markdown carries the cells: header, the resumed cell, the stdin cell', md.startsWith('# ConsCell session') && md.includes('_Resumed via `USE-VALUE`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
+
+  /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
+  await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
+  await page.locator('h1').first().waitFor({ timeout: 20_000 })
+  await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /lenis-.*\.js/.test(r.name)), null, { timeout: 20_000 })
+  check('landing page renders after code-splitting and loads its lenis chunk on demand', true)
 
   check('no uncaught page errors', errors.length === 0, errors.join(' | '))
 } catch (e) {
