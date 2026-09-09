@@ -42,4 +42,5 @@ PR: https://github.com/yfyang86/ConsCell/pull/4 (`sprint4` → `dev`)
 
 ## CI
 
-- CI run on PR head: _pending; recorded on merge_.
+- CI run on PR head `44eb204`: **success** — https://github.com/yfyang86/ConsCell/actions/runs/34366798066 (lint · build · wasm tests, 56 s).
+- Merged into `dev` as `ead294d` via merge commit.
