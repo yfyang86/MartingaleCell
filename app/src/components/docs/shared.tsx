@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
-
-export const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1]
+import { EASE_OUT } from './motion'
 
 /** Section heading: H2 + optional lead, rises on entry. */
 export function SectionHeading({

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { CheckCircle2, CircleDashed, Clock } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
 
 type Status = 'full' | 'partial' | 'planned'

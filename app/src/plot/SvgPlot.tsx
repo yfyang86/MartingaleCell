@@ -16,7 +16,7 @@ export function SvgPlot({ spec }: { spec: PlotSpec }) {
   return (
     <div
       className="cc-svg-plot overflow-x-auto rounded-md border border-hairline bg-inset [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
-      // eslint-disable-next-line react/no-danger -- buildSvg escapes all interpolated text
+      /* safe: buildSvg escapes every interpolated string (titles, labels, paths) */
       dangerouslySetInnerHTML={{ __html: buildSvg(spec) }}
     />
   )

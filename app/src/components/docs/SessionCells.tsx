@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { TriangleAlert } from 'lucide-react'
-import { SectionHeading, CalloutDot, CalloutList, EASE_OUT } from './shared'
+import { SectionHeading, CalloutDot, CalloutList } from './shared'
+import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
 
 const CALLOUTS = [

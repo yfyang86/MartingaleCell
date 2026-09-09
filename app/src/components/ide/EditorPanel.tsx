@@ -24,10 +24,11 @@ import { clSyntaxExtension, clEditorTheme } from './cl-language'
 import { rainbowParens } from './rainbow-parens'
 import { clCompletionSource } from './completion'
 import { lookupSymbol } from '@/lisp/symbols'
-import { depthAt, callContextAt, innermostFormAt, topLevelForms } from './lisp-utils'
+import { depthAt, callContextAt, topLevelForms } from './lisp-utils'
 import {
   registerEditor, evaluateFormAtPoint, evaluateAllForms, evaluateRegion,
   macroexpandAtPoint, copyText, pasteIntoEditor, saveBuffers, requestCloseBuffer,
+  selectEnclosingForm,
 } from './actions'
 
 /* -------- lisp-aware indentation (2-space, body-aware) -------- */
@@ -116,38 +117,6 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
 
 function getViewSafe(): EditorView | null { return viewRef.current }
 const viewRef: { current: EditorView | null } = { current: null }
-
-/** Jump the editor caret to a 1-based line/col and flash the line. */
-export function jumpToPosition(line: number, col: number) {
-  const v = viewRef.current
-  if (!v) return
-  const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)))
-  const pos = Math.min(l.from + Math.max(0, col - 1), l.to)
-  v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
-  v.focus()
-  requestAnimationFrame(() => {
-    const el = v.dom.querySelector('.cm-activeLine') as HTMLElement | null
-    if (el) {
-      el.style.transition = 'none'
-      el.style.backgroundColor = 'rgba(110,168,220,0.28)'
-      requestAnimationFrame(() => {
-        el.style.transition = 'background-color 600ms ease'
-        el.style.backgroundColor = ''
-      })
-    }
-  })
-}
-
-export function selectEnclosingForm() {
-  const v = viewRef.current
-  if (!v) return
-  const doc = v.state.doc.toString()
-  const sel = v.state.selection.main
-  // grow: if a form is already fully selected, expand around it
-  const probe = sel.empty ? sel.head : Math.max(0, sel.from - 1)
-  const form = innermostFormAt(doc, probe)
-  if (form) v.dispatch({ selection: { anchor: form.from, head: form.to } })
-}
 
 /* -------- tab bar -------- */
 

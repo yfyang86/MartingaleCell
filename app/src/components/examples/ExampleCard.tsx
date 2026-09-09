@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowUpRight, Copy } from 'lucide-react'
 import type { Example } from '@/data/examples'
-import { ClCode } from './highlight'
+import { ClCode } from './ClCode'
 import {
   DIFFICULTY_CLASS,
   DIFFICULTY_LABEL,

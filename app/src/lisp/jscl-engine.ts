@@ -8,8 +8,17 @@ import type { EvalResult } from './types'
 
 const JSCL_URL = 'https://cdn.jsdelivr.net/npm/jscl@0.9.0-alpha.0/dist/jscl.min.js'
 
+/** The slice of the JSCL global we rely on (jscl 0.9.0-alpha). */
+interface JsclApi {
+  evaluateString(src: string): unknown
+  internals: { lisp_to_js(value: unknown): unknown }
+  packages: {
+    JSCL: { symbols: Record<string, { fvalue: (...args: unknown[]) => unknown }> }
+  }
+}
+
 declare global {
-  interface Window { jscl?: any }
+  interface Window { jscl?: JsclApi }
 }
 
 export async function loadJsclEngine(onBoot?: (line: string) => void): Promise<(code: string) => Promise<EvalResult>> {
@@ -32,9 +41,10 @@ export async function loadJsclEngine(onBoot?: (line: string) => void): Promise<(
   return async function evaluate(code: string): Promise<EvalResult> {
     const t0 = performance.now()
     let stdout = ''
-    const orig = jscl.packages.JSCL.symbols['%WRITE-STRING'].fvalue
-    jscl.packages.JSCL.symbols['%WRITE-STRING'].fvalue = function (_values: unknown, s: unknown) {
-      stdout += jscl.internals.lisp_to_js(s)
+    const writeString = jscl.packages.JSCL.symbols['%WRITE-STRING']
+    const orig = writeString.fvalue
+    writeString.fvalue = function (_values: unknown, s: unknown) {
+      stdout += String(jscl.internals.lisp_to_js(s))
       return s
     }
     try {
@@ -45,8 +55,8 @@ export async function loadJsclEngine(onBoot?: (line: string) => void): Promise<(
         if (jsv !== undefined) values = [typeof jsv === 'string' ? jsv : JSON.stringify(jsv) ?? String(jsv)]
       } catch { values = ['; values not printable in JSCL fallback'] }
       return { stdout, values, warnings: [], durationMs: performance.now() - t0 }
-    } catch (e: any) {
-      const msg = String(e?.message ?? e ?? 'evaluation error')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e ?? 'evaluation error')
       const m = msg.match(/DIVISION.BY.ZERO/i)
       return {
         stdout, values: [], warnings: [],
@@ -55,7 +65,7 @@ export async function loadJsclEngine(onBoot?: (line: string) => void): Promise<(
         durationMs: performance.now() - t0,
       }
     } finally {
-      jscl.packages.JSCL.symbols['%WRITE-STRING'].fvalue = orig
+      writeString.fvalue = orig
     }
   }
 }
