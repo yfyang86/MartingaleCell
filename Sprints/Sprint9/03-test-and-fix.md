@@ -16,14 +16,19 @@
 
 ## Fixes made along the way
 
-- **Ctrl+Shift+F eaten by CodeMirror.** With the caret in the editor,
+- **Ctrl+Shift+F and CodeMirror.** With the caret in the editor,
   Playwright's `Control+Shift+f` reached the window handler with
-  `defaultPrevented` set: CodeMirror had matched its own `Mod-f`
-  (in-buffer search) through its shifted-key fallback. Real browsers send
-  `key: "F"` and were fine, but the editor keymap now binds `Mod-Shift-f`
-  to the workspace search explicitly, so both shapes of the event open
-  the panel. Verified in Chromium with the editor focused, lowercase and
-  uppercase key.
+  `defaultPrevented` set: CodeMirror's keymap tries the unshifted name
+  first for character keys (`Ctrl-f`, its in-buffer search), so a key
+  event carrying a lowercase letter plus Shift can never reach a
+  `Mod-Shift-f` binding — an explicit editor binding was added and
+  verified not to help for that event shape. Real browsers report
+  `key: "F"` for Shift+F, and that shape opens the workspace search
+  whether the editor has focus or not (verified in Chromium; the smoke
+  uses it). The lowercase-with-Shift shape only occurs with Caps Lock on;
+  there Ctrl+Shift+F opens the in-buffer search instead. The editor
+  binding stays: it makes the editor own the shortcut for the normal
+  shape rather than relying on the window handler.
 - **`set-state-in-effect`.** The panel's first draft called
   `setSearching(true)` synchronously in the debounce effect. State is now
   only set from the timer callback, and stale results are hidden by

@@ -74,10 +74,10 @@ keeps `react-hooks/set-state-in-effect` quiet.
 
 **Entry points.** `useUi.openSearch()` opens the explorer and the panel
 and bumps a focus tick the input listens to. Bound in the app-wide key
-handler (Ctrl/⌘+Shift+F), in the editor's own keymap (`Mod-Shift-f`,
-because CodeMirror otherwise falls back to its `Mod-f` in-buffer search
-when the key event carries a lowercase letter with Shift), on a header
-button in the explorer, and in the command palette.
+handler (Ctrl/⌘+Shift+F), in the editor's own keymap (`Mod-Shift-f`, so
+the editor owns the shortcut when it has focus; see the test log for the
+Caps Lock caveat), on a header button in the explorer, and in the
+command palette.
 
 ## G. Navbar and footer without framer-motion
 
