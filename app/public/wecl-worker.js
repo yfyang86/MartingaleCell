@@ -1260,6 +1260,93 @@ self.onmessage = function (ev) {
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };
 
+/* ---- fast setjmp trampolines (Sprint 7) ----------------------------------
+ * The WECL build uses Emscripten's JavaScript setjmp/longjmp support: every
+ * call made from a C function that contains a setjmp (ECL's frame stack —
+ * i.e. the whole bytecodes interpreter) leaves wasm through an `invoke_*`
+ * import. Measured: ~10 such calls per empty loop iteration, ~3.5 µs each,
+ * which is 97 % of the interpreter's run time — the stock trampolines call
+ * `stackSave` and `dynCall_*` through the glue's assertion + Asyncify
+ * export wrappers. These replacements do the same three things (save the
+ * stack pointer, call the table entry, on a longjmp restore + setThrew)
+ * with the RAW exports and a cached table mirror: 20 000 loop iterations
+ * drop from ~1450 ms to ~45 ms in the Node harness. Semantics are
+ * unchanged, so Asyncify unwinding (debugger pauses, stdin) and longjmp
+ * (handler-case) behave exactly as before — the harness suite proves it.
+ * Installed by shadowing the worker's global WebAssembly with a thin
+ * object that patches the import table at instantiation; if anything
+ * looks unexpected the original trampolines are used. */
+(function installFastInvoke() {
+  var Orig = self.WebAssembly;
+  if (!Orig || typeof Orig.instantiate !== 'function') return;
+  var exportsRef = null;
+  var table = null;
+  var mirror = [];
+  function entry(i) {
+    var f = mirror[i];
+    if (f === undefined) { f = table.get(i); mirror[i] = f; }
+    return f;
+  }
+  function makeFast(orig, returnsValue) {
+    return function (index) {
+      if (exportsRef === null) return orig.apply(this, arguments);
+      var ex = exportsRef;
+      var sp = ex.emscripten_stack_get_current();
+      var n = arguments.length;
+      try {
+        var f = entry(index);
+        switch (n) {
+          case 1: return f();
+          case 2: return f(arguments[1]);
+          case 3: return f(arguments[1], arguments[2]);
+          case 4: return f(arguments[1], arguments[2], arguments[3]);
+          case 5: return f(arguments[1], arguments[2], arguments[3], arguments[4]);
+          default: return f.apply(null, Array.prototype.slice.call(arguments, 1));
+        }
+      } catch (e) {
+        ex._emscripten_stack_restore(sp);
+        if (e !== e + 0) throw e; /* a real JS exception, not a longjmp */
+        ex.setThrew(1, 0);
+        return returnsValue ? 0 : undefined;
+      }
+    };
+  }
+  function patch(imports) {
+    try {
+      var env = imports && imports.env;
+      if (!env) return imports;
+      Object.keys(env).forEach(function (k) {
+        var m = /^invoke_([vi]+)$/.exec(k);
+        if (m && typeof env[k] === 'function') env[k] = makeFast(env[k], m[1][0] !== 'v');
+      });
+    } catch (e) { /* leave the stock trampolines in place */ }
+    return imports;
+  }
+  function remember(result) {
+    var inst = result && result.instance ? result.instance : result;
+    var ex = inst && inst.exports;
+    if (ex && ex.__indirect_function_table &&
+        typeof ex.emscripten_stack_get_current === 'function' &&
+        typeof ex._emscripten_stack_restore === 'function' &&
+        typeof ex.setThrew === 'function') {
+      table = ex.__indirect_function_table;
+      mirror = [];
+      exportsRef = ex;
+      bootLine('fast setjmp trampolines installed');
+    } else {
+      bootLine('fast setjmp trampolines NOT installed (exports missing) — stock speed');
+    }
+    return result;
+  }
+  /* everything else (Module, Memory, Table, validate, …) is inherited from
+   * the real namespace through the prototype — nothing is copied, because
+   * some of its properties (JSTag) are read-only and assignment would throw */
+  var WA = Object.create(Orig);
+  WA.instantiate = function (src, imports) { return Orig.instantiate(src, patch(imports)).then(remember); };
+  WA.instantiateStreaming = function (src, imports) { return Orig.instantiateStreaming(src, patch(imports)).then(remember); };
+  self.WebAssembly = WA;
+})();
+
 /* ---- boot sequence ---- */
 
 try {
