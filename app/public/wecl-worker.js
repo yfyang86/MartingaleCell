@@ -27,7 +27,10 @@
  *     (EXT:CD does NOT — reading it throws SIMPLE-READER-ERROR at bootstrap).
  *
  * Protocol
- *   in : {type:'eval', id, code, compile?}   (compile: bytecodes-compile each form)
+ *   in : {type:'eval', id, code, compile?, debug?}
+ *        (compile: bytecodes-compile each form; debug: pause on error)
+ *      | {type:'restart', id, index, value?}  answer for a paused job
+ *        (index into the ;;RESTART: list, -1 declines; value = Lisp form)
  *      | {type:'load-project', id, files:[{path, content}]}
  *   out: {type:'boot', line} | {type:'ready'} | {type:'bootfail', message}
  *        {type:'stdout', id, text} | {type:'stderr', id, text}
@@ -144,11 +147,70 @@ var CC_HELPER_SRC = [
   '  (if *eval-compile*',
   '      (funcall (compile nil (list (quote lambda) (quote ()) form)))',
   '      (eval form)))',
+  /* ---- interactive debugger (Sprint 3) ----
+   * For a job sent with debug:true, an unhandled error PAUSES the image
+   * inside the handler-bind handler: the live restarts are printed as
+   * markers and js-wait suspends the wasm on a promise that the worker
+   * resolves when the page posts {type:'restart', id, index, value?}
+   * (see __ccDebugWait below). The chosen restart is invoked from the
+   * handler (a non-local exit); a decline (index -1) returns normally and
+   * the outer handler-case reports ;;ERROR: exactly as before.
+   *   ;;DEBUG: <report>            start of a pause block
+   *   ;;RESTART: i|NAME|<report>   one line per live restart
+   *   ;;DEBUG-WAIT                 block complete, image suspended
+   *   ;;DEBUG-NOTE: <text>         a value form failed; re-pausing
+   * The image establishes no restarts of its own for top-level errors, so
+   * eval-one adds RETRY and ABORT; user restart-case restarts are listed
+   * before them (innermost first). */
+  '(defvar *debug-enabled* nil)',
+  '(defvar *debug-condition* nil)',
+  '(defun %restart-report (r)',
+  '  (%oneline (handler-case (princ-to-string r)',
+  '              (serious-condition () (string (restart-name r))))))',
+  '(defun %debug-choice ()',
+  '  (handler-case',
+  '      (eu.turtleware.wecl/implementation::js-wait "__ccDebugWait()")',
+  '    (serious-condition () "-1")))',
+  '(defun %debug-pause (e)',
+  '  (%note-error e)',
+  '  (setf *debug-condition* e)',
+  '  (when *debug-enabled*',
+  '    (let ((restarts (compute-restarts e)))',
+  '      (loop',
+  '        (format *error-output* "~&;;DEBUG: ~A~%" (%oneline (%report e)))',
+  '        (loop for r in restarts for i from 0',
+  '              do (format *error-output* "~&;;RESTART: ~D|~A|~A~%"',
+  '                         i (restart-name r) (%restart-report r)))',
+  '        (format *error-output* "~&;;DEBUG-WAIT~%")',
+  '        (finish-output)',
+  '        (let* ((choice (string-trim " " (%debug-choice)))',
+  '               (sp (position #\\Space choice))',
+  '               (idx (parse-integer choice :end sp :junk-allowed t))',
+  '               (r (and idx (>= idx 0) (< idx (length restarts)) (nth idx restarts))))',
+  '          (unless r (return nil))',
+  '          (if sp',
+  '              (let ((val (handler-case (eval (read-from-string (subseq choice (1+ sp))))',
+  '                           (serious-condition (ve)',
+  '                             (format *error-output* "~&;;DEBUG-NOTE: value form failed: ~A~%" (%report ve))',
+  '                             (finish-output)',
+  '                             (quote %cc-bad-value)))))',
+  '                (unless (eq val (quote %cc-bad-value))',
+  '                  (invoke-restart r val)))',
+  '              (invoke-restart r)))))))',
   '(defun eval-one (form)',
   '  (handler-case',
-  '      (let ((vals (handler-bind ((warning #\'%warn)',
-  '                                 (serious-condition #\'%note-error))',
-  '                    (multiple-value-list (%run form)))))',
+  '      (let ((vals (restart-case',
+  '                      (handler-bind ((warning #\'%warn)',
+  '                                     (serious-condition #\'%debug-pause))',
+  '                        (multiple-value-list (%run form)))',
+  '                    (retry ()',
+  '                      :report "Retry evaluating this form"',
+  '                      (return-from eval-one (eval-one form)))',
+  '                    (abort ()',
+  '                      :report "Abort this form and return to top level"',
+  '                      (format *error-output* "~&;;ERROR: ~A~%"',
+  '                              (if *debug-condition* (%report *debug-condition*) "aborted"))',
+  '                      (return-from eval-one nil)))))',
   '        (if vals',
   '            (format t "~&;;=>~{ ~S~}~%" vals)',
   '            (format t "~&;;=> ; no values~%")))',
@@ -160,9 +222,11 @@ var CC_HELPER_SRC = [
    * honored by every later cell, exactly like a terminal REPL. The final
    * ;;PACKAGE: marker keeps the IDE's package pill in sync (parsed
    * main-side, never shown as output). */
-  '(defun eval-string (src &key compile)',
+  '(defun eval-string (src &key compile debug)',
   '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*))',
-  '        (*eval-compile* compile))',
+  '        (*eval-compile* compile)',
+  '        (*debug-enabled* debug)',
+  '        (*debug-condition* nil))',
   '    (with-input-from-string (in src)',
   '      (loop for form = (handler-case (read in nil :eof)',
   '                         (serious-condition (e)',
@@ -740,12 +804,36 @@ var CC_BOOTSTRAP =
 
 var queue = Promise.resolve();
 
-function runEval(id, code, compile) {
+/* ---- debugger pause (Sprint 3) ----
+ * The Lisp handler calls js-wait("__ccDebugWait()"): the glue evals that
+ * expression on this global scope, awaits the promise and hands `.text()`
+ * back to Lisp. The promise is resolved by a {type:'restart'} message for
+ * the paused job. Only one pause can be pending (evals are serialized). */
+var pendingDebug = null; /* { id, resolve(text) } */
+self.__ccDebugWait = function () {
+  return new Promise(function (resolve) {
+    pendingDebug = {
+      id: currentJobId,
+      resolve: function (s) { resolve({ text: function () { return String(s); } }); },
+    };
+  });
+};
+function answerDebug(id, index, value) {
+  if (!pendingDebug || pendingDebug.id !== id) return false;
+  var p = pendingDebug;
+  pendingDebug = null;
+  p.resolve(value != null && value !== '' ? String(index) + ' ' + String(value) : String(index));
+  return true;
+}
+
+function runEval(id, code, opts) {
+  opts = opts || {};
   queue = queue.then(function () {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
-        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '"' + (compile ? ' :compile t' : '') + ')');
+        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '"' +
+          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') + ')');
       })
       .then(function () {
         self.postMessage({ type: 'done', id: id });
@@ -920,7 +1008,8 @@ function runModulesOp(id, msg) {
 
 self.onmessage = function (ev) {
   var m = ev.data || {};
-  if (m.type === 'eval') runEval(m.id, m.code, !!m.compile);
+  if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug });
+  else if (m.type === 'restart') answerDebug(m.id, m.index, m.value);
   else if (m.type === 'load-project') runLoadProject(m.id, m.files || []);
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };

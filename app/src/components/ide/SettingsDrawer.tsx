@@ -143,6 +143,9 @@ export default function SettingsDrawer() {
                 <Row label="Auto-eval on save">
                   <Toggle value={settings.autoEvalOnSave} onChange={(v) => setSettings({ autoEvalOnSave: v })} />
                 </Row>
+                <Row label="Pause in debugger on error">
+                  <Toggle value={settings.debugOnError} onChange={(v) => setSettings({ debugOnError: v })} />
+                </Row>
                 <Row label="Print length">
                   <Slider
                     value={settings.printLength} min={0} max={1000} step={10}

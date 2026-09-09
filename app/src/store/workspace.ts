@@ -3,7 +3,7 @@
 
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
-import type { EngineStatus, LogLevel, LogSource } from '@/lisp/types'
+import type { DebugPause, EngineStatus, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
@@ -18,7 +18,8 @@ export interface IdeBuffer {
   origin?: BufferOrigin
 }
 
-export type CellStatus = 'queued' | 'running' | 'done' | 'error' | 'aborted'
+/** paused = the image is suspended in the debugger, waiting for a restart choice */
+export type CellStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'aborted'
 
 export interface ProjectFileStatus {
   path: string
@@ -48,6 +49,8 @@ export interface Cell {
   errorType?: string
   /** named user frames at signal time, innermost first (ECL only) */
   frames?: string[]
+  /** live debugger state while status === 'paused' */
+  debug?: DebugPause
   durationMs: number
   startedAt: number
   restartsUsed: number
@@ -89,6 +92,8 @@ export interface IdeSettings {
   printLength: number
   /** how boot lines / engine noise land in the log */
   verbosity: 'quiet' | 'normal' | 'verbose'
+  /** pause in the interactive debugger on an unhandled error (ECL only) */
+  debugOnError: boolean
 }
 
 export const DEFAULT_SETTINGS: IdeSettings = {
@@ -102,6 +107,7 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   autoEvalOnSave: false,
   printLength: 100,
   verbosity: 'normal',
+  debugOnError: true,
 }
 
 export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled to WASM.

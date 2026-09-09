@@ -51,3 +51,6 @@ jobs:
 
       - name: settings + condition-reporting regression test
         run: node scripts/settings-test.mjs
+
+      - name: interactive debugger protocol test
+        run: node scripts/debugger-test.mjs
