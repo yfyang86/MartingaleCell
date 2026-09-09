@@ -84,7 +84,19 @@ try {
   check('USE-VALUE 21 resumes → 42 and "resumed via USE-VALUE"', /42/.test(valueText ?? ''), (valueText ?? '').slice(0, 200))
   await page.screenshot({ path: path.join(root, 'dist', 'smoke-2-resumed.png') })
 
-  /* 3. package pill follows in-package (Sprint 1) */
+  /* 3. (read-line): the cell shows an stdin prompt; typing completes the read */
+  await setCode('(progn (format t "Name? ") (list :hello (read-line)))')
+  await page.keyboard.press('Control+Enter')
+  const stdin = page.locator('input[placeholder^="the program is reading a line"]')
+  await stdin.waitFor({ timeout: 20_000 })
+  check('(read-line) blocks the cell with an stdin prompt', true)
+  await page.screenshot({ path: path.join(root, 'dist', 'smoke-3-stdin.png') })
+  await stdin.fill('Ada')
+  await page.keyboard.press('Enter')
+  await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
+  check('typed line completes the read → (:HELLO "Ada")', true)
+
+  /* 4. package pill follows in-package (Sprint 1) */
   await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
   await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
   await page.getByText('SMOKE', { exact: true }).first().waitFor({ timeout: 20_000 })

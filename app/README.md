@@ -24,7 +24,7 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # boot + package + settings + debugger tests (real wasm, Node)
+pnpm test            # boot + package + settings + debugger + stdin tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
 pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
 pnpm check           # lint + build + test
@@ -37,7 +37,7 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build and the three wasm tests on every
+`.github/workflows/ci.yml` runs lint, build and the five wasm tests on every
 pull request and on pushes to `dev`.
 
 ## How it is put together
@@ -62,8 +62,11 @@ printed by the Lisp helpers (parsed main-side, never shown as output):
 | `;;=> v1 v2` | stdout | values of a top-level form |
 | `;;WARNING: …` | stderr | a muffled warning |
 | `;;ERRTYPE: T` | stderr | `type-of` the unhandled condition (signal time) |
+| `;;DETAIL: k\|v` | stderr | one condition slot worth showing (datum, expected, name, operands …) |
 | `;;FRAME: FN` | stderr | one named user frame, innermost first (signal time) |
 | `;;ERROR: …` | stderr | the condition report (after unwinding) |
+| `;;DEBUG:`, `;;RESTART: i\|NAME\|report`, `;;DEBUG-WAIT` | stderr | the image is paused in the debugger; answer with `{type:'restart', id, index, value?}` |
+| `;;READ-WAIT` | stderr | the image is blocked on standard input; answer with `{type:'input', id, text}` (null = EOF) |
 | `;;PACKAGE: P` | stdout | reader package after the job — `in-package` persists across cells |
 | `;;PLOT64 …` | stdout | base64 gnuplot script + data captured from cl-plot |
 | `;;FILE:`, `;;PKG:`, `;;SYM:`, `;;NOTE:`, `;;HINT:` | stdout | project-load progress |
