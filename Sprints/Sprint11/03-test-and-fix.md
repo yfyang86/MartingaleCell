@@ -34,4 +34,4 @@ Sprint 9/10 jump helpers, all of which already had tests.
 
 Pull request: https://github.com/yfyang86/ConsCell/pull/11
 
-CI on the pull request: to be recorded after the run.
+CI on the pull request: green — job "lint · build · wasm tests" run 34392270514 completed successfully on `7339f46` in 64 s (https://github.com/yfyang86/ConsCell/actions/runs/34392270514). Merged into `dev` as `0049444`.
