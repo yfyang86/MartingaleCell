@@ -38,10 +38,11 @@ load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
 `.github/workflows/ci.yml` runs lint, build, the seven pure-TS tests and the six wasm tests on every
-pull request and on pushes to `dev`. A second job, `smoke`, runs the browser scenarios (Playwright +
-Chromium against `pnpm preview`) on pull requests that carry the `smoke` label — add the label to
-opt a PR in — and on every push to `dev`, as a report on the merge commit; on failure the scenario
-screenshots are attached as a workflow artifact.
+pull request and on pushes to `dev` (docs-only pushes under `Sprints/` start no run). A second job,
+`smoke`, runs the browser scenarios (Playwright + Chromium against `pnpm preview`) on pull requests
+that carry the `smoke` label — add the label to opt a PR in — and on every push to `dev`, as a report
+on the merge commit; on failure the scenario screenshots are attached as a workflow artifact.
+Superseded runs are cancelled on pull requests only, so a `dev` run always completes.
 
 ## How it is put together
 

@@ -46,7 +46,7 @@ const SPECS = [
   },
   {
     title: 'Run history',
-    body: 'Re-running a cell (the ↻ button, or evaluating its linked buffer) adds a run to its history. The cell shows run k/N; click it to see the runs side by side — input, status, values — with each value marked when it differs from the run before.',
+    body: 'Re-running a cell (the ↻ button, or evaluating its linked buffer) adds a run to its history. The cell shows run k/N; click it to see the runs side by side — input, status, values — with each value marked when it differs from the run before, and a changed input shown as a line diff against it. The Markdown export keeps the runs (run k/N of cell m in the heading) and an import re-links them.',
   },
   {
     title: 'Truncation',

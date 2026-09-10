@@ -16,13 +16,13 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { foldRangeForLine, matchingClose, lispFoldService } from './src/editor/fold'\nexport { classifyChars } from './src/search/workspace-search'\nexport { EditorState } from '@codemirror/state'\nexport { foldable, foldEffect, foldState, foldedRanges, codeFolding } from '@codemirror/language'\n",
+    contents: "export { foldRangeForLine, matchingClose, lispFoldService, topLevelFoldRanges } from './src/editor/fold'\nexport { classifyChars } from './src/search/workspace-search'\nexport { EditorState } from '@codemirror/state'\nexport { foldable, foldEffect, foldState, foldedRanges, codeFolding } from '@codemirror/language'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { foldRangeForLine, matchingClose, lispFoldService, classifyChars, EditorState, foldable, foldEffect, foldState, foldedRanges, codeFolding } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { foldRangeForLine, matchingClose, lispFoldService, topLevelFoldRanges, classifyChars, EditorState, foldable, foldEffect, foldState, foldedRanges, codeFolding } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 /* line helpers over plain text */
 const lines = (src) => { const out = []; let at = 0; for (const l of src.split('\n')) { out.push({ from: at, to: at + l.length }); at += l.length + 1 } return out }
@@ -55,6 +55,16 @@ check('matchingClose ignores those too', matchingClose(tricky, classifyChars(tri
 check('an unbalanced form (missing close) has no fold', range('(defun broken (\n  1\n', 0) === null)
 check('a form whose only hidden text would be whitespace has no fold', range('(a\n)', 0) === null && range('(a\n   \n)', 0) === null)
 check('a form hiding real text folds even when the close paren has its own line', same(range('(a\n  b\n)', 0), { from: 2, to: 7 }), JSON.stringify(range('(a\n  b\n)', 0)))
+
+/* Sprint 22: block comments and top-level folds */
+const withComment = '#| a long\n   comment |#\n(defun f ()\n  1)\n;; #| not a block\n'
+r = range(withComment, 0)
+check('a multi-line #| |# block comment folds from the end of its first line, keeping |# visible', same(r, { from: 9, to: withComment.indexOf('|#') }), JSON.stringify(r))
+check('a line inside the comment has no fold; the defun after it folds as before', range(withComment, 1) === null && range(withComment, 2)?.to === withComment.indexOf('1)') + 1)
+check('a one-line block comment or #| inside a ; comment has no fold', range('#| one line |#\n(a)', 0) === null && range(withComment, 4) === null)
+const top = topLevelFoldRanges('(defun a ()\n  (let ((x 1))\n    x))\n\n(defvar *b* 1)\n(defun c ()\n  2)\n')
+check('topLevelFoldRanges: one range per multi-line top-level form, none for the inner let or the one-liner', top.length === 2 && top[0].from === 11 && top[1].from === '(defun a ()\n  (let ((x 1))\n    x))\n\n(defvar *b* 1)\n(defun c ()'.length, JSON.stringify(top))
+check('topLevelFoldRanges: stops at an unbalanced form', topLevelFoldRanges('(defun a ()\n  1)\n(broken (\n').length === 1)
 
 /* the service through a real EditorState */
 const ext = [codeFolding(), lispFoldService]

@@ -12,11 +12,14 @@ const results = []
 const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} ${name}${ok || !detail ? '' : `\n    ${detail}`}`); return ok }
 
 const built = await esbuild.build({
-  entryPoints: [path.join(root, 'src', 'session', 'lineage.ts')],
+  stdin: {
+    contents: "export * from './src/session/lineage'\nexport * from './src/session/diff'\n",
+    resolveDir: root, loader: 'ts',
+  },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { lineageOf, runsOf, runIndex, runIndexAll, compareRuns, lineageForBuffer } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { lineageOf, runsOf, runIndex, runIndexAll, runLabels, compareRuns, lineageForBuffer, diffLines, diffSummary } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const cell = (id, n, extra = {}) => ({ id, n, input: '(f)', status: 'done', values: ['1'], ...extra })
 const a1 = cell('a', 1)
@@ -55,6 +58,20 @@ check('lineageForBuffer: a buffer opened from a re-run cell carries that cell\'s
 check('lineageForBuffer: a scratch or project buffer has none', lineageForBuffer(buffers, cells, 'buf-1') === undefined && lineageForBuffer(buffers, cells, 'buf-4') === undefined)
 check('lineageForBuffer: the cell is gone → the recorded cell id still names the lineage', lineageForBuffer(buffers, cells, 'buf-3') === 'gone')
 check('lineageForBuffer: no buffer id / unknown buffer → none', lineageForBuffer(buffers, cells, undefined) === undefined && lineageForBuffer(buffers, cells, 'nope') === undefined)
+
+const labels = runLabels(cells)
+check('runLabels: k, total and the first run\'s cell number', JSON.stringify(labels.get('e')) === '{"k":3,"total":3,"firstN":1}' && JSON.stringify(labels.get('b')) === '{"k":1,"total":1,"firstN":2}', JSON.stringify([...labels]))
+
+/* line diff (Sprint 22) */
+const d1 = diffLines('(defun f (x)\n  (* x 2))', '(defun f (x)\n  (* x 3))')
+check('diffLines: one changed line → same, del, add', d1.map((l) => l.kind).join(',') === 'same,del,add' && d1[1].text === '  (* x 2))' && d1[2].text === '  (* x 3))', JSON.stringify(d1))
+check('diffLines: identical inputs → all same', diffLines('(a)\n(b)', '(a)\n(b)\n').every((l) => l.kind === 'same'))
+const d2 = diffLines('(a)\n(b)\n(c)', '(a)\n(c)')
+check('diffLines: a removed middle line', d2.map((l) => l.kind).join(',') === 'same,del,same' && d2[1].text === '(b)', JSON.stringify(d2))
+const d3 = diffLines('(a)', '(z)\n(a)\n(q)')
+check('diffLines: lines added around', d3.map((l) => l.kind + ':' + l.text).join(' ') === 'add:(z) same:(a) add:(q)', JSON.stringify(d3))
+check('diffLines: empty vs text → all add; text vs empty → all del', diffLines('', '(a)\n(b)').filter((l) => l.kind === 'add').length === 2 && diffLines('(a)', '').map((l) => l.kind).join() === 'del,add' && diffLines('(a)', '')[1].text === '')
+check('diffSummary counts', JSON.stringify(diffSummary(d3)) === '{"added":2,"removed":0}')
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

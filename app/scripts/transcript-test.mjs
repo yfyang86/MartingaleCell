@@ -145,6 +145,21 @@ check('import: an empty or unrelated document yields no cells', parseMarkdownTra
   check('import ignores the extra heading part and still reads the duration', backB.length === 1 && backB[0].pkg === 'CL-USER' && backB[0].durationMs === 7 && backB[0].values.join() === '9', JSON.stringify(backB[0]))
 }
 
+/* run history in the transcript (Sprint 22) */
+const runs = [
+  { ...base, id: 'r1', n: 1, pkg: 'CL-USER', status: 'done', input: '(incf *n*)', values: ['1'] },
+  { ...base, id: 'r2', n: 2, pkg: 'CL-USER', status: 'done', input: '(list 1)', values: ['(1)'] },
+  { ...base, id: 'r3', n: 3, pkg: 'CL-USER', status: 'done', input: '(incf *n*)', values: ['2'], lineage: 'r1' },
+  { ...base, id: 'r4', n: 4, pkg: 'CL-USER', status: 'done', input: '(incf *n* 10)', values: ['12'], lineage: 'r1', bufferName: 'cell-1.lisp' },
+]
+const rmd = buildMarkdownTranscript(runs, { exportedAt: new Date(0) })
+const rheads = rmd.split('\n').filter((l) => l.startsWith('## Cell '))
+check('export: runs carry `run k/N of cell m` in the heading, a lone cell does not', rheads[0].endsWith(' · run 1/3 of cell 1') && !rheads[1].includes('run ') && rheads[2].endsWith(' · run 2/3 of cell 1') && rheads[3].endsWith(' · from cell-1.lisp · run 3/3 of cell 1'), rheads.join(' | '))
+const rlisp = buildLispTranscript(runs, { exportedAt: new Date(0) })
+check('export (.lisp): the cell comment carries the run label too', rlisp.includes(';;; ---- cell 3 · CL-USER · 12 ms · run 2/3 of cell 1 ----') && rlisp.includes(';;; ---- cell 2 · CL-USER · 12 ms ----'), rlisp.split('\n').filter((l) => l.startsWith(';;; ----')).join(' | '))
+const rback = parseMarkdownTranscript(rmd)
+check('import: `run k/N of cell m` parses to runOf (the first run\'s cell number); a lone cell has none', rback.map((c) => c.runOf).join() === '1,,1,1' && rback[3].durationMs === 12 && rback[3].values[0] === '12', JSON.stringify(rback.map((c) => [c.n, c.runOf])))
+
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
 console.log(failed ? `\nFAIL: ${failed} check(s) failed` : `\nPASS: ${results.length} checks passed`)

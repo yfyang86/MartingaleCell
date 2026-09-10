@@ -493,13 +493,22 @@ export function pendingImportPreview(max = 3): string[] {
 
 function appendImportedCells(name: string, cells: import('@/session/transcript').ImportedCell[]) {
   const ws = useWorkspace.getState()
+  /* run history (Sprint 22): `run k/N of cell m` re-links the runs — the cell numbered m in the transcript is the
+   * lineage root; when it is not in the transcript, the first imported run of that group stands in for it */
+  const idByN = new Map<number, string>()
+  const rootByRunOf = new Map<number, string>()
   for (const c of cells) {
-    ws.addCell({
+    let lineage: string | undefined
+    if (c.runOf !== undefined && c.runOf !== c.n) lineage = idByN.get(c.runOf) ?? rootByRunOf.get(c.runOf)
+    const added = ws.addCell({
       input: c.input, pkg: c.pkg, status: c.status, stdout: c.stdout, values: c.values, warnings: c.warnings,
       error: c.error, errorType: c.errorType, resumedVia: c.resumedVia, durationMs: c.durationMs,
       startedAt: Date.now(), restartsUsed: c.resumedVia ? 1 : 0, imported: true,
+      ...(lineage ? { lineage } : {}),
       ...(c.kind === 'project' && c.project ? { kind: 'project' as const, project: { projectName: c.project.projectName, files: c.project.files, packages: [] } } : {}),
     })
+    idByN.set(c.n, added.id)
+    if (c.runOf !== undefined && !lineage) rootByRunOf.set(c.runOf, added.id)
   }
   ws.addLog('INFO', 'UI', `Imported ${cells.length} cells from ${name}`)
   toast(`Imported ${cells.length} cell${cells.length === 1 ? '' : 's'} from ${name}`)

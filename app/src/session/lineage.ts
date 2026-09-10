@@ -29,18 +29,29 @@ export function runIndex(cells: readonly RunLike[], cell: RunLike): { k: number;
   return { k: Math.max(1, runs.findIndex((c) => c.id === cell.id) + 1), total: runs.length }
 }
 
-/** run position for every cell at once, as "k/N" strings — one pass, for the cell list */
-export function runIndexAll(cells: readonly RunLike[]): Map<string, string> {
+export interface RunLabel { k: number; total: number; /** cell number of the first run */ firstN: number }
+
+/** run position (k of N) and the first run's cell number for every cell at once — one pass over the cells */
+export function runLabels(cells: readonly RunLike[]): Map<string, RunLabel> {
   const counts = new Map<string, number>()
   for (const c of cells) { const l = lineageOf(c); counts.set(l, (counts.get(l) ?? 0) + 1) }
   const seen = new Map<string, number>()
-  const out = new Map<string, string>()
+  const firstN = new Map<string, number>()
+  const out = new Map<string, RunLabel>()
   for (const c of [...cells].sort((a, b) => a.n - b.n)) {
     const l = lineageOf(c)
     const k = (seen.get(l) ?? 0) + 1
     seen.set(l, k)
-    out.set(c.id, `${k}/${counts.get(l)}`)
+    if (k === 1) firstN.set(l, c.n)
+    out.set(c.id, { k, total: counts.get(l) ?? 1, firstN: firstN.get(l) ?? c.n })
   }
+  return out
+}
+
+/** run position for every cell at once, as "k/N" strings, for the cell list */
+export function runIndexAll(cells: readonly RunLike[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [id, r] of runLabels(cells)) out.set(id, `${r.k}/${r.total}`)
   return out
 }
 
