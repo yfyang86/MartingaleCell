@@ -308,8 +308,18 @@ function onExerciseMessage(m) {
       if (!blob.includes(';;FILE: /project/' + f)) problems.push(`cl-plot: ${f} did not load cleanly — ` + blob.slice(0, 250))
     }
     if (/;;FILE: \/project\/plot\.lisp\|error/.test(blob)) problems.push('cl-plot: plot.lisp failed (EXT package missing at read time?)')
+    if (/;;FILE: \/project\/plot-example\.lisp\|(error|warn)/.test(blob)) problems.push('cl-plot: plot-example.lisp did not load cleanly (gnuplot capture should intercept (show *fig*))')
     if (blob.includes(';;PKG: ASDF')) problems.push('cl-plot: the dummy ASDF leaked into the project package report')
-    if (!/EXT:SHELL: this SBCL runs under WebAssembly/.test(blob)) problems.push('cl-plot: (show *fig*) did not report the wasi-p1 limitation cleanly')
+    if (!/;;PLOT64 /.test(blob)) problems.push('cl-plot: no ;;PLOT64 gnuplot capture during the load')
+    /* non-gnuplot shells keep the clean, catchable subprocess error */
+    submit({ type: 'eval', id: 115, code: '(handler-case (ext:shell "echo hello") (error (e) (princ-to-string e)))' })
+    stepTimeout('non-gnuplot shell check 115 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 115) {
+    const l = out(115)
+    if (!l.some((x) => /subprocesses are not supported|EXT:SHELL/.test(x))) {
+      problems.push('job 115: (ext:shell \"echo hello\") did not surface the clean subprocess error — got: ' + l.join(' | ').slice(0, 200))
+    }
     submit({ type: 'eval', id: 114, code: "(make-instance 'figure)" })
     stepTimeout('figure acceptance 114 did not finish', 30_000)
   }
