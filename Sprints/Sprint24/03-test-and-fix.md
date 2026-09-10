@@ -16,7 +16,7 @@
 Not run: the SBCL engine against the real image (artifacts not
 available here); the `sbcl` smoke scenario's boot path.
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/24 — pending.
 
 ## Fixes made along the way
 
