@@ -751,7 +751,20 @@ class LispRuntime {
    * so its worker is respawned instead. */
   async interrupt(): Promise<void> {
     if (this.engine === 'sbcl' && this.sbclSab) {
+      /* the interrupt request reaches the port (it acknowledges it at the
+       * next safe point), but Lisp delivery is not implemented there yet —
+       * so like ECL the running image is replaced; the bit stays set for
+       * the day the port grows delivery */
       Atomics.store(new Int32Array(this.sbclSab), 5, 1)
+      for (const job of this.jobs.values()) {
+        job.resolve({
+          stdout: job.stdout.join('\n'), values: [], warnings: [],
+          error: undefined, aborted: true,
+          durationMs: performance.now() - job.t0,
+        })
+      }
+      this.jobs.clear()
+      await this.respawnSbcl()
       return
     }
     if (this.engine !== 'ecl' || !this.worker) return
@@ -783,6 +796,13 @@ class LispRuntime {
   }
 
   private respawnEcl(): Promise<void> {
+    this.killWorker()
+    this.bootPromise = null
+    return this.init()
+  }
+
+  private respawnSbcl(): Promise<void> {
+    /* same dance, honoring the engine preference (sbcl first) */
     this.killWorker()
     this.bootPromise = null
     return this.init()

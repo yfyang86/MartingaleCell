@@ -82,7 +82,22 @@ var FORM_OFF = MAILBOX_OFF + MAILBOX_MAX
 var STDIN_OFF = FORM_OFF + FORM_RING_BYTES
 var SAB_BYTES = STDIN_OFF + STDIN_RING_BYTES
 
-var sab = new SharedArrayBuffer(SAB_BYTES)
+/* The page must be crossOriginIsolated for SharedArrayBuffer (COOP:
+ * same-origin + COEP: credentialless — vite dev/preview send them; a
+ * static host must too). Without it the engine cannot run and says so
+ * clearly instead of dying on a bare ReferenceError. */
+var sab = null
+try {
+  sab = new SharedArrayBuffer(SAB_BYTES)
+} catch (e) {
+  self.postMessage({
+    type: 'bootfail',
+    message: 'SharedArrayBuffer unavailable (page not crossOriginIsolated) — ' +
+      'serve with Cross-Origin-Opener-Policy: same-origin and ' +
+      'Cross-Origin-Embedder-Policy: credentialless headers to boot SBCL',
+  })
+  throw e
+}
 var sabI32 = new Int32Array(sab)
 var sabU8 = new Uint8Array(sab)
 var encoder = new TextEncoder()
@@ -119,7 +134,9 @@ function mailboxTake() {
   var end = MAILBOX_OFF
   var cap = MAILBOX_OFF + MAILBOX_MAX
   while (end < cap && sabU8[end] !== 0) end++
-  var json = new TextDecoder('utf-8').decode(sabU8.subarray(MAILBOX_OFF, end))
+  /* copy out of the SAB: TextDecoder (and friends) reject shared views
+   * in browsers — this is the one place we decode page-written bytes */
+  var json = new TextDecoder('utf-8').decode(new Uint8Array(sabU8.subarray(MAILBOX_OFF, end)))
   Atomics.store(sabI32, 4, 0)
   Atomics.notify(sabI32, 4)
   try {
@@ -606,6 +623,7 @@ var SBCL_HELPER_SRC = [
   '                               (string-downcase (symbol-name (cdr found))))))))))',
   '(defun load-project (files &key debug)',
   '  (setf *load-aborted* nil)',
+  '  (setf *project-files* (mapcar (function parse-namestring) files))',
   '  (let* ((*debug-enabled* debug)',
   '         (*debug-condition* nil)',
   '         (asds (remove-if-not (lambda (f) (%ext= f ".asd")) files))',
@@ -628,13 +646,13 @@ var SBCL_HELPER_SRC = [
   '    (finish-output)))',
   ';;; ---- module management (/modules) ----',
   '(defvar *cc-modules* nil)',
+  /* the project's files, as load-project received them: (directory …)
+   * cannot enumerate here (this port has no sb-unix:unix-opendir), so
+   * package-install copies from the list we already have */
+  '(defvar *project-files* nil)',
   '(defun %mod-name (x) (string-downcase (string x)))',
   '(defun %mod-project-files ()',
-  '  (remove-duplicates',
-  '    (remove-if (function null)',
-  '      (append (ignore-errors (directory "/project/*.*"))',
-  '              (ignore-errors (directory "/project/**/*.*"))))',
-  '    :test (function equal)))',
+  '  (remove-duplicates *project-files* :test (function equal)))',
   '(defun %mod-asd-system-names ()',
   '  (let ((out nil))',
   '    (dolist (p (%mod-project-files))',
@@ -1294,7 +1312,8 @@ function makeWasi() {
 
   /* readdir: entries of the first level under dirPath; cookie = the
    * index of the next entry to return (d_next of entry i is i+1) */
-  w.fd_readdir = function (fd, bufPtr, bufLen, cookie, bufusedPtr) {
+  w.fd_readdir = function (fd, bufPtr, bufLen, cookieBig, bufusedPtr) {
+    var cookie = Number(cookieBig) /* u64 param: arrives as a BigInt */
     var e = fd === 3 ? { path: '/' } : fdTable.get(fd)
     if (!e) return ERR.BADF
     var dirPath = e.path
@@ -1419,7 +1438,16 @@ function makeWasi() {
     if (vfs.dirs.has(from)) { vfs.dirs.delete(from); vfs.dirs.add(to); return ERR.NONE }
     return ERR.NOENT
   }
-  w.path_readlink = function () { return ERR.NOENT }
+  /* no symlinks in the VFS — EINVAL for existing paths (that's what
+   * realpath's emulation expects for a non-link: ENOENT would make every
+   * truename/probe-file/directory fail), ENOENT for missing ones */
+  w.path_readlink = function (fd, pathPtr, pathLen, bufPtr, bufLen, usedPtr) {
+    var base = dirBase(fd)
+    if (base === null) return ERR.BADF
+    var e = vfsLookup(normPath(base + readPath(pathPtr, pathLen)))
+    if (!e) return ERR.NOENT
+    return ERR.INVAL
+  }
   w.path_symlink = function () { return ERR.NOSYS }
   w.path_link = function () { return ERR.NOSYS }
 
@@ -1648,7 +1676,9 @@ function boot() {
         sbcl_host: {
           instantiate: hostInstantiate,
           set_timer: function (usec) {
-            timerDeadline = usec > 0 ? Date.now() + usec / 1000 : 0
+            /* the import is i64: usec arrives as a BigInt */
+            var us = Number(usec)
+            timerDeadline = us > 0 ? Date.now() + us / 1000 : 0
           },
           run_process: function () { return -1 }, /* no subprocesses in a browser */
           process_id: function () { return 1 },
@@ -1690,7 +1720,7 @@ function boot() {
       } catch (e) {
         if (e && e.__ccProcExit !== undefined) exitCode = e.__ccProcExit
         else {
-          failBoot('image exited during bootstrap: ' + String(e && e.message || e))
+          failBoot('image exited during bootstrap: ' + String(e && (e.stack || e.message) || e))
           return
         }
       }
