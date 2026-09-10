@@ -12,12 +12,12 @@ const CARDS = [
   {
     Icon: Undo2,
     title: 'Undo that stays put',
-    body: 'Every buffer keeps its own editor state — document, selection, undo history, scroll position. Switching tabs is never an undo step, and an edit that reached a buffer while it was not shown (a replace, a loaded transcript) becomes one undo step of that buffer.',
+    body: 'Every buffer keeps its own editor state — document, selection, undo history, scroll position, folds. Switching tabs is never an undo step, and an edit that reached a buffer while it was not shown (a replace, a loaded transcript) becomes one undo step of that buffer.',
   },
   {
     Icon: DatabaseZap,
     title: 'Survives a reload',
-    body: 'The per-buffer editor states are saved alongside the buffers. After a reload, Ctrl+Z still undoes the last edit you made before it, and the scroll position is where you left it.',
+    body: 'The per-buffer editor states are saved alongside the buffers. After a reload, Ctrl+Z still undoes the last edit you made before it, the scroll position is where you left it, a folded defun is still folded (Ctrl+Shift+[ folds the outermost form on the line), and ↑ in the session box recalls what you evaluated there.',
   },
   {
     Icon: Link2,

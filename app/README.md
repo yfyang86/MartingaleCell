@@ -24,9 +24,9 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # transcript, search, outline and editor-state tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
+pnpm test            # transcript, search, outline, editor-state, session-history and fold tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
-pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI); refuses a dist/ older than the sources (--allow-stale to override)
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI only on PRs labelled `smoke`); refuses a dist/ older than the sources (--allow-stale to override)
 pnpm check           # lint + build + test
 ```
 
@@ -37,8 +37,10 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build, the four pure-TS tests and the six wasm tests on every
-pull request and on pushes to `dev`.
+`.github/workflows/ci.yml` runs lint, build, the six pure-TS tests and the six wasm tests on every
+pull request and on pushes to `dev`. A second job, `smoke`, runs the browser scenarios (Playwright +
+Chromium against `pnpm preview`) on pull requests that carry the `smoke` label — add the label to
+opt a PR in; on failure the scenario screenshots are attached as a workflow artifact.
 
 ## How it is put together
 

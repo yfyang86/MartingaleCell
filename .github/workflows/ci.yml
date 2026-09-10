@@ -2,10 +2,16 @@
 # Runs on every PR and on pushes to dev: lint, type-check + build, then the
 # real ECL/WASM image booted through the real worker in Node (boot harness +
 # in-package regression test). No browser needed.
+#
+# A second job, `smoke`, runs the real-browser scenarios (Playwright +
+# Chromium against `pnpm preview`) only on pull requests labelled `smoke`;
+# adding the label triggers it on its own (the `labeled` event runs only
+# that job). Sprint 20.
 name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [dev]
 
@@ -16,6 +22,7 @@ concurrency:
 jobs:
   check:
     name: lint · build · wasm tests
+    if: github.event_name != 'pull_request' || github.event.action != 'labeled'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -55,6 +62,12 @@ jobs:
       - name: editor per-buffer state rules test
         run: node scripts/editor-state-test.mjs
 
+      - name: session-box history rules test
+        run: node scripts/session-history-test.mjs
+
+      - name: Lisp fold ranges test
+        run: node scripts/fold-test.mjs
+
       - name: Boot the ECL image (real worker + wasm, Node harness)
         run: node scripts/boot-harness.mjs --timeout-ms 120000
 
@@ -72,3 +85,55 @@ jobs:
 
       - name: performance floor (fast setjmp trampolines)
         run: node scripts/perf-test.mjs
+
+  smoke:
+    name: browser smoke (label `smoke`)
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright + Chromium (global, as the smoke resolves it)
+        run: |
+          npm install -g playwright@1.56.1
+          npx --yes playwright@1.56.1 install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Serve the build
+        run: |
+          nohup pnpm preview --port 4173 > preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4173/ > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:4173/ > /dev/null
+
+      - name: Browser scenarios
+        run: node scripts/browser-smoke.mjs
+
+      - name: Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: app/dist/smoke-*.png
+          if-no-files-found: ignore

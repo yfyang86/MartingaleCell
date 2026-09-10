@@ -9,6 +9,7 @@ import { autocompletion, completionKeymap, completionStatus, closeCompletion, st
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
+import { recallStep } from '@/session/history'
 import { CellView } from './Cell'
 import { copyText, pasteIntoEditor, exportSession } from './actions'
 import { clCompletionSource } from './completion'
@@ -25,7 +26,8 @@ const replTheme = EditorView.theme({
 }, { dark: true })
 
 /** Jupyter-style REPL prompt: type a form, Enter evaluates it as a new cell.
- * Shift+Enter inserts a newline; ↑/↓ walk the input history. Completion is
+ * Shift+Enter inserts a newline; ↑/↓ walk the input history (kept in the
+ * workspace store, so it survives a reload — Sprint 20). Completion is
  * the same source as the editor (CL core + project symbols) — Ctrl+Space
  * forces it, typing activates it. */
 function ReplInput() {
@@ -35,7 +37,6 @@ function ReplInput() {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const themeComp = useRef(new Compartment())
-  const historyRef = useRef<string[]>([])
   const histIdx = useRef(-1)
 
   const submit = useCallback(() => {
@@ -43,7 +44,7 @@ function ReplInput() {
     if (!v) return
     const text = v.state.doc.toString().trim()
     if (!text) return
-    historyRef.current = [text, ...historyRef.current].slice(0, 100)
+    useWorkspace.getState().pushSessionHistory(text)
     histIdx.current = -1
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: '' } })
     void evaluateCode(text, undefined, { bufferId: '', from: 0, session: true })
@@ -55,22 +56,14 @@ function ReplInput() {
   const recall = (dir: 1 | -1): boolean => {
     const v = viewRef.current
     if (!v || completionStatus(v.state) !== null) return false
-    const text = v.state.doc.toString()
-    if (dir === 1) {
-      /* ↑: only when caret at doc start (or already walking history) and
-       * not mid-multiline-edit */
-      const atStart = v.state.selection.main.head === 0 && v.state.selection.main.anchor === 0
-      if (histIdx.current < 0 && (!atStart || text.includes('\n'))) return false
-      const next = Math.min(histIdx.current + 1, historyRef.current.length - 1)
-      if (next === histIdx.current) return false
-      histIdx.current = next
-      setText(v, historyRef.current[next])
-      return true
-    }
-    if (histIdx.current < 0) return false
-    const next = histIdx.current - 1
-    histIdx.current = next
-    setText(v, next < 0 ? '' : historyRef.current[next])
+    const step = recallStep(useWorkspace.getState().sessionHistory, {
+      idx: histIdx.current,
+      text: v.state.doc.toString(),
+      atStart: v.state.selection.main.head === 0 && v.state.selection.main.anchor === 0,
+    }, dir)
+    if (!step) return false
+    histIdx.current = step.idx
+    setText(v, step.text)
     return true
   }
 

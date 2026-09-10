@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
+import { pushHistory, sanitizeHistory } from '@/session/history'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
 export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string } | { type: 'cell'; cellId: string; n: number }
@@ -152,6 +153,8 @@ interface Persisted {
   splitH: number
   splitV: number
   visited: boolean
+  /** session-box ↑/↓ history, newest first (Sprint 20) */
+  sessionHistory?: string[]
 }
 
 interface WorkspaceState {
@@ -162,6 +165,8 @@ interface WorkspaceState {
   cells: Cell[]
   cellCounter: number
   historyTrimmed: boolean
+  /** session-box input history, newest first, capped — persisted with the workspace */
+  sessionHistory: string[]
   logs: LogEntry[]
   settings: IdeSettings
   engineStatus: EngineStatus
@@ -194,6 +199,7 @@ interface WorkspaceState {
   appendCellStdout: (id: string, chunk: string) => void
   removeCell: (id: string) => void
   clearCells: () => void
+  pushSessionHistory: (text: string) => void
   // logs
   addLog: (level: LogLevel, source: LogSource, message: string, opts?: { details?: string; cellRef?: number; trace?: { ms: number; forms: string }; location?: { path: string; line: number; col: number } }) => void
   clearLogs: () => void
@@ -231,6 +237,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       splitH: s.splitH,
       splitV: s.splitV,
       visited: true,
+      sessionHistory: s.sessionHistory,
     }
     set({ saveState: 'saving' })
     idbSet(IDB_KEY, data)
@@ -251,6 +258,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     cells: [],
     cellCounter: 0,
     historyTrimmed: false,
+    sessionHistory: [],
     logs: [],
     settings: DEFAULT_SETTINGS,
     engineStatus: 'booting',
@@ -279,6 +287,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
             settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
             splitH: data.splitH ?? 55,
             splitV: data.splitV ?? 60,
+            sessionHistory: sanitizeHistory(data.sessionHistory),
           })
         } else {
           set({ hydrated: true, freshVisit: true })
@@ -373,6 +382,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       scheduleSave()
     },
 
+    pushSessionHistory: (text) => {
+      const next = pushHistory(get().sessionHistory, text)
+      if (next.length === get().sessionHistory.length && next[0] === get().sessionHistory[0]) return
+      set({ sessionHistory: next })
+      scheduleSave()
+    },
+
     addLog: (level, source, message, opts) => {
       const entry: LogEntry = { id: nextId('log'), ts: Date.now(), level, source, message, ...opts }
       set((s) => ({ logs: [...s.logs.slice(-(MAX_LOGS - 1)), entry] }))
@@ -396,7 +412,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       idbSet(IDB_KEY, undefined).catch(() => {})
       set({
         buffers: [], activeBufferId: null, cells: [], cellCounter: 0,
-        historyTrimmed: false, settings: DEFAULT_SETTINGS, freshVisit: true,
+        historyTrimmed: false, sessionHistory: [], settings: DEFAULT_SETTINGS, freshVisit: true,
       })
       const id = get().newBuffer('scratch.lisp', WELCOME_CODE)
       set({ activeBufferId: id })

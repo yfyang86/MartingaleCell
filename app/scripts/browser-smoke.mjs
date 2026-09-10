@@ -1,6 +1,6 @@
 /* Real-browser smoke test of the IDE (Chromium via Playwright), organised
- * as named scenarios (Sprint 19). Not part of CI (needs a browser); run it
- * locally after `pnpm build`:
+ * as named scenarios (Sprint 19). In CI only on pull requests labelled
+ * `smoke` (the `smoke` job, Sprint 20); run it locally after `pnpm build`:
  *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs [--only a,b] [--list] [--allow-stale]
  * Each scenario runs in its own browser context (fresh IndexedDB), boots
  * the IDE and sets up its own state, so any one can run alone. Resolves
@@ -274,6 +274,28 @@ const scenarios = {
     await waitDoc({ startsWith: '(defun sq' })
     await setCode('(from-session)')
     await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
+
+    /* Sprint 20: a fold in buffer 2 and a form submitted from the session box, both to be found again after the reload */
+    await tab(1).click()
+    await waitDoc({ startsWith: '(sq 3)' })
+    await setCode('(defun folded (x)\n  (* x 2))\n(sq 3)\n')
+    await setCaret(0)
+    await page.keyboard.press('Control+Shift+{') /* Playwright's Ctrl+Shift+[ arrives with key "[" (a real browser sends "{"), which CodeMirror routes to its Ctrl+[ indent binding */
+    await page.locator('.cm-foldPlaceholder').first().waitFor({ timeout: 5_000 })
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defpackage :smoke' })
+    const before = await page.locator('.cm-foldPlaceholder').count()
+    await tab(1).click()
+    await waitDoc({ startsWith: '(defun folded' })
+    const after = await page.locator('.cm-foldPlaceholder').count()
+    check('Ctrl+Shift+[ folds the defun; the fold belongs to its buffer (gone on tab 1, back on tab 2)', before === 0 && after === 1, `before=${before} after=${after}`)
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defpackage :smoke' })
+    const sessionBox = page.locator('[data-testid="session-input"] .cm-content')
+    await sessionBox.click()
+    await page.keyboard.type('(list :remembered 42)')
+    await page.keyboard.press('Enter')
+    await page.getByText('(:REMEMBERED 42)', { exact: true }).first().waitFor({ state: 'attached', timeout: 20_000 })
     await page.waitForTimeout(1200) /* both the workspace store and the editor states persist on a 500 ms debounce */
 
     await page.reload({ waitUntil: 'domcontentloaded' })
@@ -287,10 +309,27 @@ const scenarios = {
     await waitDoc({ startsWith: '(defpackage :smoke' })
     check('after a reload, Ctrl+Z undoes the edit made before it and Ctrl+Y redoes — the editor state was persisted', true)
 
+    const box2 = page.locator('[data-testid="session-input"] .cm-content')
+    await box2.click()
+    await page.keyboard.press('ArrowUp')
+    const recalled = await page.evaluate(`document.querySelector('[data-testid="session-input"] .cm-content').textContent`)
+    check('after a reload, ↑ in the session box recalls the form submitted before it', recalled.trim() === '(list :remembered 42)', JSON.stringify(recalled))
+    await page.keyboard.press('Escape')
+    await tab(1).click()
+    await waitDoc({ startsWith: '(defun folded' })
+    const foldsAfterReload = await page.locator('.cm-foldPlaceholder').count()
+    check('after a reload, the fold in buffer 2 is still there', foldsAfterReload === 1, String(foldsAfterReload))
+    await setCaret(0) /* the tab click left focus on the tab bar; the caret line is the one whose fold Ctrl+Shift+] opens */
+    await page.keyboard.press('Control+Shift+}')
+    await page.waitForFunction(`document.querySelectorAll('.cm-foldPlaceholder').length === 0`, null, { timeout: 5_000 })
+    check('Ctrl+Shift+] unfolds it', true)
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defpackage :smoke' })
+
     /* index path vs text-scan path differ here: the ACTIVE buffer (2) also defines sq at line 1; the index says sq was
      * evaluated in buffer 1, where it now sits on line 3 — F12 must land in buffer 1, line 3 */
     await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
-    await jumpViaSearch('sq 3', { startsWith: '(sq 3)' })
+    await jumpViaSearch('sq 3', { includes: '(sq 3)' }) /* buffer 2 now starts with the folded defun */
     await setCode('(defun sq (z) z)\n(sq 3)\n')
     await setCaret({ after: '(sq 3)', plus: 2 })
     await page.keyboard.press('F12')

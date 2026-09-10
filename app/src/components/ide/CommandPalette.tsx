@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
+import { foldCode, unfoldCode, foldAll, unfoldAll } from '@codemirror/language'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession, findReferences, importTranscriptFile } from './actions'
+  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession, findReferences, importTranscriptFile, getEditor } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
 
@@ -94,6 +95,10 @@ function PaletteBody({ close }: { close: () => void }) {
       { id: 'outline', group: 'View', name: 'Toggle definition outline', desc: 'buffer, project and session definitions', kbd: 'Ctrl⇧O', run: () => ui().toggleOutline() },
       { id: 'find-refs', group: 'View', name: 'Find references of symbol at point', desc: 'whole symbol, code only', kbd: '⇧F12', run: () => findReferences() },
       { id: 'focus-editor', group: 'View', name: 'Focus editor', run: focusEditor },
+      { id: 'fold-form', group: 'Buffer', name: 'Fold form at line', desc: 'the outermost form opening on the caret line', kbd: 'Ctrl⇧[', run: () => { const v = getEditor(); if (v) { foldCode(v); v.focus() } } },
+      { id: 'unfold-form', group: 'Buffer', name: 'Unfold form at line', kbd: 'Ctrl⇧]', run: () => { const v = getEditor(); if (v) { unfoldCode(v); v.focus() } } },
+      { id: 'fold-all', group: 'Buffer', name: 'Fold all forms', kbd: 'Ctrl Alt [', run: () => { const v = getEditor(); if (v) { foldAll(v); v.focus() } } },
+      { id: 'unfold-all', group: 'Buffer', name: 'Unfold all forms', kbd: 'Ctrl Alt ]', run: () => { const v = getEditor(); if (v) { unfoldAll(v); v.focus() } } },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },
       { id: 'docs', group: 'Help', name: 'Open docs', run: () => { window.location.href = '/docs' } },
