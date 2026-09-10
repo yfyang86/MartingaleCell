@@ -24,7 +24,7 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # transcript, search and outline tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
+pnpm test            # transcript, search, outline and editor-state tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
 pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
 pnpm check           # lint + build + test
@@ -37,7 +37,7 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build, the three pure-TS tests and the six wasm tests on every
+`.github/workflows/ci.yml` runs lint, build, the four pure-TS tests and the six wasm tests on every
 pull request and on pushes to `dev`.
 
 ## How it is put together
