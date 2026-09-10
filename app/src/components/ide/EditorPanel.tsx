@@ -19,7 +19,7 @@ import { indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { BufferStates } from '@/editor/buffer-states'
+import { BufferStates, scheduleScrollRestore } from '@/editor/buffer-states'
 import { useEditorMeta } from '@/store/editor-meta'
 import { clSyntaxExtension, clEditorTheme } from './cl-language'
 import { rainbowParens } from './rainbow-parens'
@@ -180,7 +180,10 @@ function TabBar() {
                 }}
               />
             ) : (
-              <span className="truncate">{b.name}</span>
+              <>
+                <span className="truncate" title={b.origin?.type === 'cell' ? `Opened from cell [${b.origin.n}] — re-running that cell evaluates this buffer` : undefined}>{b.name}</span>
+                {b.origin?.type === 'cell' && <span className="rounded-sm bg-steel-dim px-1 text-[9.5px] text-steel-bright" aria-label={`from cell ${b.origin.n}`}>[{b.origin.n}]</span>}
+              </>
             )}
             {b.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-steel" title="unsaved changes" />}
             <button
@@ -457,8 +460,7 @@ function EditorSurface() {
     const r = statesRef.current.resolve(activeBufferId, content, (doc) => EditorState.create({ doc, extensions: extensionsRef.current }))
     v.setState(r.state)
     if (r.scrollTop !== null) {
-      const top = r.scrollTop
-      requestAnimationFrame(() => { if (viewRef.current === v && shownBufferRef.current === activeBufferId) v.scrollDOM.scrollTop = top })
+      scheduleScrollRestore(r.scrollTop, () => viewRef.current === v && shownBufferRef.current === activeBufferId, (top) => { v.scrollDOM.scrollTop = top }, requestAnimationFrame)
     }
     shownBufferRef.current = activeBufferId
     updateMeta(v)

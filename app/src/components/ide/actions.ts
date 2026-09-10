@@ -485,6 +485,10 @@ export function findReferences(name?: string) {
 /** cells parsed for a "replace session" import, waiting for the confirm modal (Sprint 16) */
 let pendingImport: { name: string; cells: import('@/session/transcript').ImportedCell[] } | null = null
 export function pendingImportCount(): number { return pendingImport?.cells.length ?? 0 }
+/** first lines of the first few inputs of a pending import, for the confirm modal */
+export function pendingImportPreview(max = 3): string[] {
+  return (pendingImport?.cells ?? []).filter((c) => c.input.trim()).slice(0, max).map((c) => c.input.split('\n')[0].slice(0, 60))
+}
 
 function appendImportedCells(name: string, cells: import('@/session/transcript').ImportedCell[]) {
   const ws = useWorkspace.getState()
@@ -550,12 +554,21 @@ export function importTranscriptFile(mode: 'append' | 'replace' = 'append') {
 
 /* ---- session cell → buffer (Sprint 16) ---- */
 
-/** Open a cell's input as a new buffer named after the cell and activate it. */
-export function openCellAsBuffer(cellN: number, input: string) {
+/** Open a cell's input as a buffer named after the cell (linked both ways) and activate it; a linked buffer that still exists is just activated. */
+export function openCellAsBuffer(cell: { id: string; n: number; input: string; bufferId?: string }) {
   const ws = useWorkspace.getState()
-  const name = `cell-${cellN}.lisp`
-  const existing = ws.buffers.find((b) => b.name === name && b.content === input)
-  if (existing) { ws.setActiveBuffer(existing.id); return }
-  ws.newBuffer(name, input.endsWith('\n') ? input : input + '\n')
-  ws.addLog('DEBUG', 'UI', `opened cell [${cellN}] as buffer ${name}`)
+  const linked = cell.bufferId ? ws.buffers.find((b) => b.id === cell.bufferId) : undefined
+  if (linked) { ws.setActiveBuffer(linked.id); return }
+  const name = `cell-${cell.n}.lisp`
+  const id = ws.newBuffer(name, cell.input.endsWith('\n') ? cell.input : cell.input + '\n', { type: 'cell', cellId: cell.id, n: cell.n })
+  ws.updateCell(cell.id, { bufferId: id })
+  ws.addLog('DEBUG', 'UI', `opened cell [${cell.n}] as buffer ${name}`)
+}
+
+/** Re-run a cell: a linked buffer's current text (as an evaluation from that buffer), else the recorded input. */
+export function rerunCell(cell: { id: string; n: number; input: string; bufferName?: string; bufferId?: string }) {
+  const ws = useWorkspace.getState()
+  const linked = cell.bufferId ? ws.buffers.find((b) => b.id === cell.bufferId) : undefined
+  if (linked) { void evaluateCode(linked.content, linked.name, { bufferId: linked.id, from: 0 }); return }
+  void evaluateCode(cell.input, cell.bufferName)
 }

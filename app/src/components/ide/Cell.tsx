@@ -9,8 +9,7 @@ import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
 import { LispCode } from './LispCode'
-import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput, openCellAsBuffer } from './actions'
-import { evaluateCode } from '@/store/evaluate'
+import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput, openCellAsBuffer, rerunCell } from './actions'
 import type { ConditionDetail, DebugRestart } from '@/lisp/types'
 import { findSymbolPosition } from './lisp-utils'
 import { firstSymbol, stripOutMarkers } from '@/store/evaluate'
@@ -94,6 +93,18 @@ function WarningRow({ msg, bufferName, input, onDismiss }: { msg: string; buffer
 }
 
 /** Frames captured at signal time (innermost first) — ECL only. */
+/** "↗ cell-7.lisp" when the cell was opened as a buffer that still exists (Sprint 17) */
+function LinkedBufferChip({ bufferId }: { bufferId: string }) {
+  const name = useWorkspace((s) => s.buffers.find((b) => b.id === bufferId)?.name)
+  const setActiveBuffer = useWorkspace((s) => s.setActiveBuffer)
+  if (!name) return null
+  return (
+    <button type="button" className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-primary" title={`Linked buffer — re-run evaluates its current text (${name})`} onClick={() => setActiveBuffer(bufferId)}>
+      ↗ {name}
+    </button>
+  )
+}
+
 function FramesDetails({ frames, tone }: { frames: string[]; tone: 'error' | 'warning' }) {
   if (frames.length === 0) return null
   return (
@@ -344,6 +355,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
         <span className="flex items-center gap-1.5">
           <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
           {cell.imported && <span className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted" title="Appended from a transcript — not evaluated in this session">imported</span>}
+          {cell.bufferId && <LinkedBufferChip bufferId={cell.bufferId} />}
         </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:opacity-100">
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Copy cell" onClick={() => void copyText(cellText, 'Cell copied')}>
@@ -352,7 +364,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
           <button
             className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary"
             title={isProject ? 'Reload project' : 'Re-run'}
-            onClick={() => (isProject ? void loadProjectIntoRuntime() : void evaluateCode(cell.input, cell.bufferName))}
+            onClick={() => (isProject ? void loadProjectIntoRuntime() : rerunCell(cell))}
           >
             <RotateCw size={12} />
           </button>
@@ -360,7 +372,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
             <CornerDownLeft size={12} />
           </button>
           {!isProject && (
-            <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Open as buffer" onClick={() => openCellAsBuffer(cell.n, cell.input)}>
+            <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Open as buffer" onClick={() => openCellAsBuffer(cell)}>
               <FilePlus2 size={12} />
             </button>
           )}
@@ -458,7 +470,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
                 {cell.resumedVia
                   ? <span>;; resolved via {cell.resumedVia}</span>
                   : <span>;; reported without pausing{cell.errorType === 'READER-ERROR' ? ' (reader error)' : ''}</span>}
-                <button className="ml-auto hover:text-primary" onClick={() => void evaluateCode(cell.input, cell.bufferName)}>re-run</button>
+                <button className="ml-auto hover:text-primary" onClick={() => rerunCell(cell)}>re-run</button>
               </div>
             </div>
           )}
@@ -499,7 +511,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
                 <button className="hover:text-primary" onClick={() => void copyText(cellText, 'Cell copied')}>copy</button>
                 <button
                   className="hover:text-primary"
-                  onClick={() => (isProject ? void loadProjectIntoRuntime() : void evaluateCode(cell.input, cell.bufferName))}
+                  onClick={() => (isProject ? void loadProjectIntoRuntime() : rerunCell(cell))}
                 >
                   re-run
                 </button>

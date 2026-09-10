@@ -7,7 +7,7 @@ import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel,
 import type { PlotAttachment } from '@/plot/gnuplot'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
-export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string }
+export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string } | { type: 'cell'; cellId: string; n: number }
 
 export interface IdeBuffer {
   id: string
@@ -67,6 +67,8 @@ export interface Cell {
   plots?: PlotAttachment[]
   /** appended from a Markdown transcript, not evaluated in this session */
   imported?: boolean
+  /** the buffer this cell was opened into ("Open as buffer"); re-run evaluates that buffer's current text */
+  bufferId?: string
 }
 
 export interface LogEntry {

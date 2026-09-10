@@ -157,13 +157,13 @@ export function searchSources(sources: SearchSource[], query: string, opts: Sear
  * may be unsaved), everything else from disk / the virtual project.
  */
 export function mergeSources(
-  buffers: { id: string; name: string; content: string; origin?: { type: 'scratch' } | { type: 'project'; path: string } }[],
+  buffers: { id: string; name: string; content: string; origin?: { type: string; path?: string } }[],
   projectFiles: { path: string; content: string }[],
 ): SearchSource[] {
   const out: SearchSource[] = []
   const openPaths = new Set<string>()
   for (const b of buffers) {
-    if (b.origin?.type === 'project') {
+    if (b.origin?.type === 'project' && b.origin.path) {
       openPaths.add(b.origin.path)
       out.push({ path: b.origin.path, content: b.content, kind: 'project', bufferId: b.id })
     } else {
