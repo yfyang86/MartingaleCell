@@ -291,6 +291,16 @@ async function run() {
     await untilDone(28)
     check('P: no path → no ;;DEF:, values as usual', !linesOf(28).some((l) => l.startsWith(';;DEF:')) && linesOf(28).includes(';;=> P-THREE'), linesOf(28).join(' | '))
 
+    /* Q (Sprint 12): one ;;=> line per value, so a value that prints with spaces stays whole */
+    console.log('\n--- jobs 29/30: (values 1 2) and (find-package :cl-user)')
+    await evalJob(29, '(values 1 2)')
+    await untilDone(29)
+    check('Q: (values 1 2) → two ;;=> lines', linesOf(29).includes(';;=> 1') && linesOf(29).includes(';;=> 2') && !linesOf(29).includes(';;=> 1 2'), linesOf(29).join(' | '))
+    await evalJob(30, '(find-package :cl-user)')
+    await untilDone(30)
+    const v30 = linesOf(30).filter((l) => l.startsWith(';;=> '))
+    check('Q: #<"COMMON-LISP-USER" package> is one value on one line', v30.length === 1 && /^;;=> #<.*package>$/i.test(v30[0]), linesOf(30).join(' | '))
+
     /* I: still healthy; in-package still persists */
     await evalJob(24, '(+ 40 2)')
     await untilDone(24)
