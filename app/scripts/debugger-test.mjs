@@ -301,6 +301,16 @@ async function run() {
     const v30 = linesOf(30).filter((l) => l.startsWith(';;=> '))
     check('Q: #<"COMMON-LISP-USER" package> is one value on one line', v30.length === 1 && /^;;=> #<.*package>$/i.test(v30[0]), linesOf(30).join(' | '))
 
+    console.log('\n--- job 31: a long list value is one ;;=> line (pretty printer off for values)')
+    await evalJob(31, '(make-list 60 :initial-element (quote abcdefghij))')
+    await untilDone(31)
+    const v31 = linesOf(31).filter((l) => l.startsWith(';;=> '))
+    const stray31 = linesOf(31).filter((l) => !l.startsWith(';;') && l.trim())
+    check('Q: 60-element list → exactly one ;;=> line, no wrapped continuation lines in the output', v31.length === 1 && v31[0].split('ABCDEFGHIJ').length === 61 && stray31.length === 0, `values=${v31.length} stray=${JSON.stringify(stray31.slice(0, 2))}`)
+    await evalJob(32, '(format t "~S" (make-list 30 :initial-element (quote abcdefghij)))')
+    await untilDone(32)
+    check('Q: user output keeps the pretty printer (format ~S still wraps)', linesOf(32).filter((l) => !l.startsWith(';;')).length > 1, linesOf(32).join(' | ').slice(0, 200))
+
     /* I: still healthy; in-package still persists */
     await evalJob(24, '(+ 40 2)')
     await untilDone(24)

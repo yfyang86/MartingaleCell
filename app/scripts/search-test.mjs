@@ -17,7 +17,7 @@ const built = await esbuild.build({
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { searchSources, mergeSources, classifyChars, compileQuery } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { searchSources, mergeSources, classifyChars, compileQuery, replaceInText, replaceInSources } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const a = `;;; plot.lisp — defun in a comment
 (defpackage :demo (:use :cl))
@@ -75,6 +75,25 @@ const merged = mergeSources(
   [{ path: 'src/a.lisp', content: 'ON DISK' }, { path: 'src/b.lisp', content: 'B' }],
 )
 check('mergeSources: buffer content wins for open project files; other files from disk; scratch by name', merged.length === 3 && merged.find((s) => s.path === 'src/a.lisp').content === 'UNSAVED' && merged.find((s) => s.path === 'src/a.lisp').bufferId === 'b2' && merged.find((s) => s.path === 'src/b.lisp').kind === 'project' && merged.find((s) => s.path === 'scratch.lisp').kind === 'buffer', JSON.stringify(merged))
+
+/* replace (Sprint 13) */
+const rl = replaceInText('plot (plot-many) "plot" ; plot', compileQuery('plot', {}), 'draw', {})
+check('replace literal: every hit, count', rl.text === 'draw (draw-many) "draw" ; draw' && rl.count === 4, JSON.stringify(rl))
+const rw = replaceInText('plot (plot-many) "plot" ; plot', compileQuery('plot', { wholeWord: true }), 'draw', { wholeWord: true })
+check('replace whole-symbol: plot-many untouched', rw.text === 'draw (plot-many) "draw" ; draw' && rw.count === 3, JSON.stringify(rw))
+const rs = replaceInText('plot (plot-many) "plot" ; plot', compileQuery('plot', { symbolsOnly: true }), 'draw', { symbolsOnly: true })
+check('replace code-only: the string and the comment are untouched', rs.text === 'draw (draw-many) "plot" ; plot' && rs.count === 2, JSON.stringify(rs))
+const rr = replaceInText('(defun f1 () 1)\n(defun f2 () 2)', compileQuery('\\(defun (f\\d)', { regex: true }), '(defun new-$1', { regex: true })
+check('replace regex: $1 expands per match', rr.text === '(defun new-f1 () 1)\n(defun new-f2 () 2)' && rr.count === 2, JSON.stringify(rr))
+const rd = replaceInText('price', compileQuery('price', {}), 'cost $1', {})
+check('replace literal: a $ in the replacement stays literal', rd.text === 'cost $1', JSON.stringify(rd))
+const rn = replaceInText('nothing here', compileQuery('zzz', {}), 'x', {})
+check('replace with no match: text unchanged, count 0', rn.text === 'nothing here' && rn.count === 0)
+const rc = replaceInText('Plot plot PLOT', compileQuery('plot', { caseSensitive: true }), 'p', { caseSensitive: true })
+check('replace case-sensitive: only the exact case', rc.text === 'Plot p PLOT' && rc.count === 1, JSON.stringify(rc))
+const rsrc = replaceInSources(sources, 'plot', { wholeWord: true, symbolsOnly: true }, 'draw')
+check('replaceInSources: only sources with hits, totals add up', rsrc.files.length === 2 && rsrc.total === rsrc.files.reduce((n, f) => n + f.count, 0) && rsrc.files[1].bufferId === 'b1' && /\(draw nil\)/.test(rsrc.files[1].text), JSON.stringify(rsrc.files.map((f) => [f.path, f.count])))
+check('replaceInSources: invalid regex reports an error', replaceInSources(sources, '[', { regex: true }, 'x').error !== undefined)
 
 console.log(results.join('\n'))
 const failed = results.filter((x) => x.startsWith('✗')).length

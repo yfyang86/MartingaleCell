@@ -173,3 +173,58 @@ export function mergeSources(
   for (const f of projectFiles) if (!openPaths.has(f.path)) out.push({ path: f.path, content: f.content, kind: 'project' })
   return out
 }
+
+/* ---- replace (Sprint 13) ---- */
+
+export interface ReplaceResult {
+  text: string
+  count: number
+}
+
+/**
+ * Rewrite the matches `searchText` would report — same option rules — with
+ * `replacement`. In regex mode `$1`, `$&` etc. are expanded per match; in
+ * literal mode the replacement is inserted verbatim (a `$` stays a `$`).
+ */
+export function replaceInText(content: string, re: RegExp, replacement: string, opts: SearchOptions = {}): ReplaceResult {
+  const classes = opts.symbolsOnly ? classifyChars(content) : null
+  const single = opts.regex ? new RegExp(`^(?:${re.source})$`, re.flags.replace('g', '')) : null
+  const parts: string[] = []
+  let last = 0, count = 0
+  re.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content))) {
+    if (m[0].length === 0) { re.lastIndex++; continue }
+    if (classes && classes[m.index] !== 0) continue
+    parts.push(content.slice(last, m.index))
+    parts.push(single ? m[0].replace(single, replacement) : replacement)
+    last = m.index + m[0].length
+    count++
+  }
+  if (count === 0) return { text: content, count: 0 }
+  parts.push(content.slice(last))
+  return { text: parts.join(''), count }
+}
+
+export interface SourceReplacement {
+  path: string
+  kind: 'buffer' | 'project'
+  bufferId?: string
+  text: string
+  count: number
+}
+
+/** Replacements for every source that has a match (untouched sources are omitted). */
+export function replaceInSources(sources: SearchSource[], query: string, opts: SearchOptions, replacement: string): { files: SourceReplacement[]; total: number; error?: string } {
+  const re = compileQuery(query, opts)
+  if (typeof re === 'string') return { files: [], total: 0, error: re }
+  const files: SourceReplacement[] = []
+  let total = 0
+  for (const s of sources) {
+    const r = replaceInText(s.content, re, replacement, opts)
+    if (r.count === 0) continue
+    total += r.count
+    files.push({ path: s.path, kind: s.kind, bufferId: s.bufferId, text: r.text, count: r.count })
+  }
+  return { files, total }
+}
