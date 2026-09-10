@@ -1,6 +1,6 @@
 /* Real-browser smoke test of the IDE (Chromium via Playwright), organised
- * as named scenarios (Sprint 19). In CI only on pull requests labelled
- * `smoke` (the `smoke` job, Sprint 20); run it locally after `pnpm build`:
+ * as named scenarios (Sprint 19). In CI on pull requests labelled `smoke`
+ * and on pushes to dev (the `smoke` job, Sprints 20–21); run it locally after `pnpm build`:
  *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs [--only a,b] [--list] [--allow-stale]
  * Each scenario runs in its own browser context (fresh IndexedDB), boots
  * the IDE and sets up its own state, so any one can run alone. Resolves
@@ -403,7 +403,59 @@ const scenarios = {
     await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /lenis-.*\.js/.test(r.name)), null, { timeout: 20_000 })
     check('landing page renders after code-splitting and loads its lenis chunk on demand', true)
   },
+
+  /* re-run history side by side (Sprint 21) and Ctrl+R history search in the session box */
+  async history({ page, check, setCode }) {
+    /* the value spans are separate from the ;;=> marker: read the last matching cell's text, whitespace stripped */
+    const waitValue = (input, value) => page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].filter((c) => c.textContent.replace(/\\s+/g, '').includes(${JSON.stringify(input.replace(/\s+/g, ''))})).pop()?.textContent.replace(/\\s+/g, '').includes(${JSON.stringify(';;=>' + value)})`, null, { timeout: 20_000 })
+    await setCode('(defvar *runs* 0)\n(incf *runs*)\n')
+    await page.keyboard.press('Control+Shift+Enter')
+    await waitValue('(incf *runs*)', '1')
+    /* re-run the (incf *runs*) cell twice through its ↻ button: 2, then 3 */
+    const incf = () => page.locator('.cc-cell').filter({ hasText: '*runs*' }).filter({ hasNotText: 'defvar' }).last()
+    await incf().locator('button[title="Re-run"]').click()
+    await waitValue('(incf *runs*)', '2')
+    await incf().locator('button[title="Re-run"]').click()
+    await waitValue('(incf *runs*)', '3')
+    const chips = await page.locator('[data-testid="run-chip"]').allTextContents()
+    check('three runs of the cell carry run chips 1/3, 2/3, 3/3 (the defvar cell has none)', chips.join(' ') === 'run 1/3 run 2/3 run 3/3', chips.join(' '))
+    await page.locator('[data-testid="run-chip"]').last().click()
+    const modal = page.locator('[data-testid="cell-history"]')
+    await modal.waitFor({ timeout: 5_000 })
+    const cols = await modal.locator('thead th').count() - 1
+    const values = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').allTextContents()
+    const changed = await modal.locator('[data-testid="run-value-changed"]').count()
+    const inputsChanged = await modal.locator('[data-testid="run-input-changed"]').count()
+    check('the history view shows the three runs with values 1, 2, 3; the two later values marked changed, the input never', cols === 3 && values.join(',') === '1,2,3' && changed === 2 && inputsChanged === 0, `cols=${cols} values=${values} changed=${changed} input=${inputsChanged}`)
+    await modal.locator('thead button').first().click()
+    await modal.waitFor({ state: 'detached', timeout: 5_000 }) /* the exit animation */
+    await page.locator('.cc-cell.ring-2').first().waitFor({ timeout: 5_000 })
+    const flashed = await page.locator('.cc-cell.ring-2').first().textContent()
+    check('In [n] in the view closes it and flashes that cell', (await modal.count()) === 0 && /In \[2\]/.test(flashed ?? ''), (flashed ?? '').slice(0, 60))
+
+    /* Ctrl+R history search */
+    const sessionBox = page.locator('[data-testid="session-input"] .cm-content')
+    await sessionBox.click()
+    await page.keyboard.type('(list :remembered 42)')
+    await page.keyboard.press('Enter')
+    await page.getByText('(:REMEMBERED 42)', { exact: true }).first().waitFor({ state: 'attached', timeout: 20_000 })
+    await sessionBox.click()
+    await page.keyboard.type('(+ 40 2)')
+    await page.keyboard.press('Enter')
+    await waitValue('(+ 40 2)', '42')
+    await sessionBox.click()
+    await page.keyboard.press('Control+r')
+    const searchBox = page.locator('[data-testid="session-history-search"] input')
+    await searchBox.waitFor({ timeout: 5_000 })
+    const listed = await page.locator('[data-testid="session-history-search"] li').count()
+    await searchBox.type('remem')
+    const filtered = await page.locator('[data-testid="session-history-search"] li').allTextContents()
+    await searchBox.press('Enter')
+    await page.waitForFunction(`document.querySelector('[data-testid="session-input"] .cm-content').textContent.trim() === '(list :remembered 42)'`, null, { timeout: 5_000 })
+    check('Ctrl+R lists the history newest first, a substring filters it, Enter recalls the entry into the box', listed === 2 && filtered.join('|') === '(list :remembered 42)' && (await searchBox.count()) === 0, `listed=${listed} filtered=${filtered.join('|')}`)
+  },
 }
+
 /* scenarios that do not need the IDE booted first */
 const NO_BOOT = new Set(['landing'])
 
