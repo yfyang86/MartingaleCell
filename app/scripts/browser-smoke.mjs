@@ -264,7 +264,7 @@ const scenarios = {
   },
 
   /* the definition index and the editor state survive a reload; an index entry follows the defun */
-  async persistence({ page, check, setCode, setCaret, waitDoc, evalAll, newBuffer, tab, jumpViaSearch, bootIde }) {
+  async persistence({ page, check, setCode, setCaret, waitDoc, evalAll, newBuffer, tab, jumpViaSearch, bootIde, paletteCommand }) {
     await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
     await evalAll()
     await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
@@ -323,6 +323,9 @@ const scenarios = {
     await page.keyboard.press('Control+Shift+}')
     await page.waitForFunction(`document.querySelectorAll('.cm-foldPlaceholder').length === 0`, null, { timeout: 5_000 })
     check('Ctrl+Shift+] unfolds it', true)
+    await paletteCommand('Fold all top-level forms')
+    await page.waitForFunction(`document.querySelectorAll('.cm-foldPlaceholder').length === 1`, null, { timeout: 5_000 })
+    check('"Fold all top-level forms" (palette) folds the defun again — the one-line (sq 3) has nothing to fold', true)
     await tab(0).click()
     await waitDoc({ startsWith: '(defpackage :smoke' })
 
@@ -405,7 +408,7 @@ const scenarios = {
   },
 
   /* re-run history side by side (Sprint 21) and Ctrl+R history search in the session box */
-  async history({ page, check, setCode }) {
+  async history({ page, check, setCode, cells, paletteCommand }) {
     /* the value spans are separate from the ;;=> marker: read the last matching cell's text, whitespace stripped */
     const waitValue = (input, value) => page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].filter((c) => c.textContent.replace(/\\s+/g, '').includes(${JSON.stringify(input.replace(/\s+/g, ''))})).pop()?.textContent.replace(/\\s+/g, '').includes(${JSON.stringify(';;=>' + value)})`, null, { timeout: 20_000 })
     await setCode('(defvar *runs* 0)\n(incf *runs*)\n')
@@ -432,6 +435,43 @@ const scenarios = {
     await page.locator('.cc-cell.ring-2').first().waitFor({ timeout: 5_000 })
     const flashed = await page.locator('.cc-cell.ring-2').first().textContent()
     check('In [n] in the view closes it and flashes that cell', (await modal.count()) === 0 && /In \[2\]/.test(flashed ?? ''), (flashed ?? '').slice(0, 60))
+
+    /* Sprint 22: a run with a changed input shows a line diff; export keeps the runs; import re-links them */
+    await incf().hover()
+    await incf().locator('button[title="Open as buffer"]').click()
+    await page.locator('[data-testid="buffer-tab"][data-active="true"]').filter({ hasText: 'cell-' }).waitFor({ timeout: 5_000 })
+    await setCode('(incf *runs* 10)\n')
+    await incf().locator('button[title="Re-run"]').click()
+    await waitValue('(incf *runs* 10)', '13')
+    await page.locator('[data-testid="run-chip"]').last().click()
+    await modal.waitFor({ timeout: 5_000 })
+    const diffs = await modal.locator('[data-testid="run-input-diff"]').count()
+    const dels = await modal.locator('[data-testid="run-input-diff"] [data-diff="del"]').allTextContents()
+    const adds = await modal.locator('[data-testid="run-input-diff"] [data-diff="add"]').allTextContents()
+    check('a run whose input changed shows a line diff against the run before: - (incf *runs*) / + (incf *runs* 10)', diffs === 1 && dels.length === 1 && adds.length === 1 && dels[0].includes('(incf *runs*)') && adds[0].includes('(incf *runs* 10)'), `diffs=${diffs} dels=${dels} adds=${adds}`)
+    await page.keyboard.press('Escape')
+    await modal.waitFor({ state: 'detached', timeout: 5_000 })
+
+    const cellsBefore = await cells().count()
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 10_000 }),
+      page.locator('button[title^="Export session as Markdown"]').click(),
+    ])
+    const mdPath = await download.path()
+    const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
+    const runHeads = md.split('\n').filter((l) => / · run \d\/4 of cell 2$/.test(l)).length
+    check('the Markdown export labels the four runs `run k/4 of cell 2`', runHeads === 4, String(runHeads))
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10_000 }), paletteCommand('Import session transcript')])
+    await chooser.setFiles(mdPath)
+    await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, cellsBefore * 2, { timeout: 15_000 })
+    const chipsAfter = await page.locator('[data-testid="run-chip"]').allTextContents()
+    await page.locator('[data-testid="run-chip"]').last().click()
+    await modal.waitFor({ timeout: 5_000 })
+    const importedCols = await modal.locator('thead th').count() - 1
+    const importedValues = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').allTextContents()
+    await page.keyboard.press('Escape')
+    await modal.waitFor({ state: 'detached', timeout: 5_000 })
+    check('importing it re-links the runs: the imported cells carry run 1/4 … 4/4 of their own and the view shows their four values', chipsAfter.slice(4).join(' ') === 'run 1/4 run 2/4 run 3/4 run 4/4' && importedCols === 4 && importedValues.join(',') === '1,2,3,13', `chips=${chipsAfter.join(' ')} cols=${importedCols} values=${importedValues}`)
 
     /* Ctrl+R history search */
     const sessionBox = page.locator('[data-testid="session-input"] .cm-content')

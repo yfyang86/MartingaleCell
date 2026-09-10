@@ -10,6 +10,7 @@ import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
 import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, pendingImportPreview, applyPendingImport, rerunCell, gotoCell } from './actions'
 import { runsOf, compareRuns } from '@/session/lineage'
+import { diffLines } from '@/session/diff'
 
 function ModalShell({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -310,10 +311,19 @@ function CellHistoryModal() {
                       <td key={r.id} className={`${td} text-secondary`}>
                         {i > 0 && !cmp[i].inputChanged ? (
                           <span className="text-muted">same as [{runs[i - 1].n}]</span>
+                        ) : cmp[i].inputChanged ? (
+                          /* Sprint 22: what changed since the run before, line by line */
+                          <pre data-testid="run-input-diff" className="max-h-40 max-w-[260px] overflow-auto whitespace-pre-wrap break-words">
+                            {diffLines(runs[i - 1].input, r.input).map((l, li) => (
+                              <span key={li} data-diff={l.kind} className={`block ${l.kind === 'add' ? 'bg-success/10 text-success' : l.kind === 'del' ? 'bg-error/10 text-error line-through decoration-error/50' : 'text-muted'}`}>
+                                {l.kind === 'add' ? '+ ' : l.kind === 'del' ? '- ' : '  '}{l.text}
+                              </span>
+                            ))}
+                          </pre>
                         ) : (
                           <pre className="max-h-32 max-w-[260px] overflow-auto whitespace-pre-wrap break-words">{r.input}</pre>
                         )}
-                        {cmp[i].inputChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-input-changed">changed</span>}
+                        {cmp[i].inputChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-input-changed">changed vs [{runs[i - 1].n}]</span>}
                       </td>
                     ))}
                   </tr>

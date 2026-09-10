@@ -5,6 +5,7 @@
 
 import type { Cell, ProjectFileStatus } from '@/store/workspace'
 import { buildSvg } from '@/plot/build-svg'
+import { runLabels, type RunLabel } from '@/session/lineage'
 
 export interface TranscriptMeta {
   /** engine label, e.g. "ECL 24.5 (WECL)" — omitted when unknown */
@@ -86,14 +87,20 @@ function projectTable(files: ProjectFileStatus[]): string {
   return ['| File | Status | Message |', '|---|---|---|', ...rows].join('\n')
 }
 
-function markdownCell(cell: Cell, limit?: number): string {
+/** ` · run k/N of cell m` for a cell with two or more runs (Sprint 22), else '' */
+function runLabel(cell: Cell, labels?: Map<string, RunLabel>): string {
+  const r = labels?.get(cell.id)
+  return r && r.total > 1 ? ` · run ${r.k}/${r.total} of cell ${r.firstN}` : ''
+}
+
+function markdownCell(cell: Cell, limit?: number, labels?: Map<string, RunLabel>): string {
   const out: string[] = []
   const dur = durationLabel(cell)
   const head = cell.kind === 'project'
     ? `## Cell ${cell.n} · project load${cell.project ? ` \`${cell.project.projectName}\`` : ''}`
     : `## Cell ${cell.n} · \`${cell.pkg}\``
   const from = cell.kind !== 'project' && cell.bufferName ? ` · from ${cell.bufferName}` : ''
-  out.push(head + (dur ? ` · ${dur}` : '') + from)
+  out.push(head + (dur ? ` · ${dur}` : '') + from + runLabel(cell, labels))
 
   if (cell.kind === 'project' && cell.project) {
     const p = cell.project
@@ -127,10 +134,11 @@ function markdownCell(cell: Cell, limit?: number): string {
 
 export function buildMarkdownTranscript(cells: Cell[], meta: TranscriptMeta = {}): string {
   const when = meta.exportedAt ?? new Date()
+  const labels = runLabels(cells)
   const parts = [
     '# ConsCell session',
     `Exported ${formatStamp(when)}${meta.engine ? ` · ${meta.engine}` : ''} · ${cells.length} cell${cells.length === 1 ? '' : 's'}`,
-    ...cells.map((c) => markdownCell(c, meta.valueLimit)),
+    ...cells.map((c) => markdownCell(c, meta.valueLimit, labels)),
   ]
   return parts.join('\n\n') + '\n'
 }
@@ -139,7 +147,7 @@ export function buildMarkdownTranscript(cells: Cell[], meta: TranscriptMeta = {}
 
 const comment = (prefix: string, text: string) => text.replace(/\n$/, '').split('\n').map((l) => `${prefix}${l}`).join('\n')
 
-function lispCell(cell: Cell, prevPkg: string | null, limit?: number): { text: string; pkg: string | null } {
+function lispCell(cell: Cell, prevPkg: string | null, limit?: number, labels?: Map<string, RunLabel>): { text: string; pkg: string | null } {
   const out: string[] = []
   const dur = durationLabel(cell)
   if (cell.kind === 'project') {
@@ -149,7 +157,7 @@ function lispCell(cell: Cell, prevPkg: string | null, limit?: number): { text: s
     if (cell.error) out.push(comment(';; ERROR: ', cell.error))
     return { text: out.join('\n'), pkg: prevPkg }
   }
-  out.push(`;;; ---- cell ${cell.n} · ${cell.pkg}${dur ? ` · ${dur}` : ''}${cell.bufferName ? ` · from ${cell.bufferName}` : ''} ----`)
+  out.push(`;;; ---- cell ${cell.n} · ${cell.pkg}${dur ? ` · ${dur}` : ''}${cell.bufferName ? ` · from ${cell.bufferName}` : ''}${runLabel(cell, labels)} ----`)
   if (cell.pkg !== prevPkg && !(prevPkg === null && cell.pkg === 'CL-USER')) out.push(`(in-package :${cell.pkg.toLowerCase()})`)
   out.push(cell.input.replace(/\n$/, ''))
   if (cell.stdout) out.push(comment(';; OUT ', cell.stdout))
@@ -170,9 +178,10 @@ export function buildLispTranscript(cells: Cell[], meta: TranscriptMeta = {}): s
     `;;;; ${cells.length} cell${cells.length === 1 ? '' : 's'}. Results are comments; the forms evaluate as they are.`,
   ].join('\n')
   const body: string[] = []
+  const labels = runLabels(cells)
   let pkg: string | null = null
   for (const c of cells) {
-    const r = lispCell(c, pkg, meta.valueLimit)
+    const r = lispCell(c, pkg, meta.valueLimit, labels)
     body.push(r.text)
     pkg = r.pkg
   }
@@ -196,6 +205,8 @@ export interface ImportedCell {
   durationMs: number
   kind?: 'project'
   project?: { projectName: string; files: { path: string; status: 'ok' | 'warn' | 'error' | 'skipped' | 'pending'; message?: string }[] }
+  /** cell number of the first run of this cell's run history (Sprint 22); the cell's own number on the first run */
+  runOf?: number
 }
 
 interface Fence { lang: string; text: string }
@@ -255,6 +266,8 @@ export function parseMarkdownTranscript(md: string): ImportedCell[] {
       const pm = tail[0].match(/^`(.*)`$/)
       cell.pkg = pm ? pm[1] : tail[0]
       cell.durationMs = parseDuration(tail.slice(1).find((t) => /^[\d.]+\s*(ms|s)$/.test(t)))
+      const run = tail.slice(1).map((t) => t.match(/^run (\d+)\/(\d+) of cell (\d+)$/)).find(Boolean)
+      if (run) cell.runOf = parseInt(run[3], 10)
     }
     let expectOutput = false, expectError = false, haveInput = cell.kind === 'project'
     for (const tok of tokenize(body)) {

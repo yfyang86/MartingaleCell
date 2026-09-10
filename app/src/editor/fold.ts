@@ -7,7 +7,8 @@
  * module's character classifier, so a paren inside "…" or after ; does not
  * count. The fold state itself is a CodeMirror field, stashed and persisted
  * per buffer with the rest of the editor state. */
-import { foldService } from '@codemirror/language'
+import { foldService, foldEffect, foldedRanges } from '@codemirror/language'
+import type { EditorView } from '@codemirror/view'
 import { classifyChars } from '@/search/workspace-search'
 
 export interface FoldRange { from: number; to: number }
@@ -34,6 +35,17 @@ export function foldRangeForLine(src: string, lineFrom: number, lineTo: number, 
    * close lies beyond the line end counts, scanning left to right at the line's own depth */
   let i = lineFrom
   while (i < lineTo) {
+    /* Sprint 22: a `#| … |#` block comment opening on this line and closing on a later one folds too, keeping `|#` visible */
+    if (cls[i] === 3 && src[i] === '#' && src[i + 1] === '|' && (i === 0 || cls[i - 1] !== 3)) {
+      let j = i
+      while (j < src.length && cls[j] === 3) j++
+      if (j - 1 >= lineTo && src[j - 2] === '|' && src[j - 1] === '#') {
+        const from = lineTo, to = j - 2
+        return /\S/.test(src.slice(from, to)) ? { from, to } : null
+      }
+      i = j
+      continue
+    }
     if (src[i] === '(' && isCodeParen(src, cls, i)) {
       const close = matchingClose(src, cls, i)
       if (close < 0) return null /* unbalanced: no fold */
@@ -49,6 +61,37 @@ export function foldRangeForLine(src: string, lineFrom: number, lineTo: number, 
     i++
   }
   return null
+}
+
+/** fold ranges of every top-level form (depth 0 in code) that spans more than one line — bodies stay foldable on their own (Sprint 22) */
+export function topLevelFoldRanges(src: string, cls: Uint8Array = classifyChars(src)): FoldRange[] {
+  const out: FoldRange[] = []
+  let i = 0
+  while (i < src.length) {
+    if (src[i] === '(' && isCodeParen(src, cls, i)) {
+      const close = matchingClose(src, cls, i)
+      if (close < 0) break
+      let lineEnd = src.indexOf('\n', i)
+      if (lineEnd < 0) lineEnd = src.length
+      if (close > lineEnd && /\S/.test(src.slice(lineEnd, close))) out.push({ from: lineEnd, to: close })
+      i = close + 1
+      continue
+    }
+    i++
+  }
+  return out
+}
+
+/** CodeMirror command: fold every top-level form (skipping ones already folded) */
+export function foldTopLevelForms(view: EditorView): boolean {
+  const { src, cls } = classify(view.state.doc)
+  const already = foldedRanges(view.state)
+  const effects = topLevelFoldRanges(src, cls)
+    .filter((r) => { let hit = false; already.between(r.from, r.to, () => { hit = true }); return !hit })
+    .map((r) => foldEffect.of(r))
+  if (!effects.length) return false
+  view.dispatch({ effects })
+  return true
 }
 
 /* the classifier runs once per document version (the gutter asks for every visible line on each update) */

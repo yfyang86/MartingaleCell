@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { foldCode, unfoldCode, foldAll, unfoldAll } from '@codemirror/language'
+import { foldTopLevelForms } from '@/editor/fold'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
@@ -98,6 +99,7 @@ function PaletteBody({ close }: { close: () => void }) {
       { id: 'fold-form', group: 'Buffer', name: 'Fold form at line', desc: 'the outermost form opening on the caret line', kbd: 'Ctrl⇧[', run: () => { const v = getEditor(); if (v) { foldCode(v); v.focus() } } },
       { id: 'unfold-form', group: 'Buffer', name: 'Unfold form at line', kbd: 'Ctrl⇧]', run: () => { const v = getEditor(); if (v) { unfoldCode(v); v.focus() } } },
       { id: 'fold-all', group: 'Buffer', name: 'Fold all forms', kbd: 'Ctrl Alt [', run: () => { const v = getEditor(); if (v) { foldAll(v); v.focus() } } },
+      { id: 'fold-top', group: 'Buffer', name: 'Fold all top-level forms', desc: 'one line per defun; bodies keep their own folds', run: () => { const v = getEditor(); if (v) { foldTopLevelForms(v); v.focus() } } },
       { id: 'unfold-all', group: 'Buffer', name: 'Unfold all forms', kbd: 'Ctrl Alt ]', run: () => { const v = getEditor(); if (v) { unfoldAll(v); v.focus() } } },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },

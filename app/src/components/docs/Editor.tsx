@@ -17,7 +17,7 @@ const CARDS = [
   {
     Icon: DatabaseZap,
     title: 'Survives a reload',
-    body: 'The per-buffer editor states are saved alongside the buffers. After a reload, Ctrl+Z still undoes the last edit you made before it, the scroll position is where you left it, a folded defun is still folded (Ctrl+Shift+[ folds the outermost form on the line), and ↑ in the session box recalls what you evaluated there.',
+    body: 'The per-buffer editor states are saved alongside the buffers. After a reload, Ctrl+Z still undoes the last edit you made before it, the scroll position is where you left it, a folded defun is still folded (Ctrl+Shift+[ folds the outermost form on the line; the palette folds every top-level form or a #| |# comment), and ↑ in the session box recalls what you evaluated there.',
   },
   {
     Icon: Link2,
