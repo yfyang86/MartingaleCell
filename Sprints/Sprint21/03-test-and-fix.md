@@ -20,8 +20,8 @@
 | Real browser, all scenarios | `pnpm preview` + `pnpm smoke:browser` | 48 / 48 in 8 scenarios (new `history`: 5) |
 | One scenario alone | `node scripts/browser-smoke.mjs --only history` | 5 / 5 in 17 s |
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/21 — pending.
-The `smoke` job on the merge commit on `dev`: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/21 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34465043988: `check` in 1 min 4 s, the labelled `smoke` job in 1 min 52 s), merged as `ef91679`.
+The `smoke` job on the merge commit on `dev`: triggered by the merge push (see the run on `dev` for `ef91679` in the Actions tab); recorded here as the first run of the AW path.
 
 ## Fixes made along the way
 
