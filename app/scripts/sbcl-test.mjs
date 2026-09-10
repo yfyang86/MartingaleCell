@@ -102,6 +102,18 @@ worker = new Worker(prelude + workerSrc, {
   eval: true, stdout: true, stderr: true,
   resourceLimits: { maxOldGenerationSizeMb: 8192, stackSizeMb: 512 },
 })
+/* the bundled cl-plot sample, extracted on demand (like the ECL harness) */
+function extractSample() {
+  const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master'
+  try {
+    const names = fs.readdirSync(base).filter((n) => /\.(lisp|asd)$/i.test(n))
+    if (!names.length) return null
+    return names.map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
+  } catch {
+    return null
+  }
+}
+
 worker.on('message', (m) => {
   log(m)
   if (m.type === 'sbcl-sab') {
@@ -276,6 +288,34 @@ function onExerciseMessage(m) {
   if (m.type === 'done' && m.id === 112) {
     const l = out(112)
     if (!l.some((x) => /cc-demo/.test(x))) problems.push('job 112: restored registry lost cc-demo — got: ' + l.join(' | ').slice(0, 250))
+    /* the bundled cl-plot sample (ECL-targeted, with ext-compat.lisp):
+     * loads on SBCL too — compat shim first, asd-ordered components, and
+     * (show …) reports the wasi-p1 subprocess limitation cleanly */
+    const sample = extractSample()
+    if (!sample) {
+      console.log('(cl-plot sample not present — skipping the sample exercise)')
+      submit({ type: 'quit' })
+      stepTimeout('image did not exit after quit', 30_000)
+      return
+    }
+    submit({ type: 'load-project', id: 113, files: sample })
+    stepTimeout('cl-plot load 113 did not finish', 60_000)
+  }
+  if (m.type === 'done' && m.id === 113) {
+    const l = out(113)
+    const blob = l.join('\n')
+    for (const f of ['ext-compat.lisp|ok', 'cl-plot.asd|ok|parsed', 'utils.lisp|ok|loaded', 'plot.lisp|ok|loaded', 'init.lisp|ok', 'load-on-sbcl.lisp|ok']) {
+      if (!blob.includes(';;FILE: /project/' + f)) problems.push(`cl-plot: ${f} did not load cleanly — ` + blob.slice(0, 250))
+    }
+    if (/;;FILE: \/project\/plot\.lisp\|error/.test(blob)) problems.push('cl-plot: plot.lisp failed (EXT package missing at read time?)')
+    if (blob.includes(';;PKG: ASDF')) problems.push('cl-plot: the dummy ASDF leaked into the project package report')
+    if (!/EXT:SHELL: this SBCL runs under WebAssembly/.test(blob)) problems.push('cl-plot: (show *fig*) did not report the wasi-p1 limitation cleanly')
+    submit({ type: 'eval', id: 114, code: "(make-instance 'figure)" })
+    stepTimeout('figure acceptance 114 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 114) {
+    const l = out(114)
+    if (!l.some((x) => /;;=> #<FIGURE/i.test(x))) problems.push('cl-plot: (make-instance \'figure) did not return a FIGURE — got: ' + l.join(' | ').slice(0, 200))
     /* clean shutdown */
     submit({ type: 'quit' })
     stepTimeout('image did not exit after quit', 30_000)
