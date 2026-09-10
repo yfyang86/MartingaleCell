@@ -39,4 +39,4 @@ loop passed the harnesses and the smoke on the first run.
 
 Pull request: https://github.com/yfyang86/ConsCell/pull/14
 
-CI on the pull request: to be recorded after the run.
+CI on the pull request: green — job "lint · build · wasm tests" run 34426667053 completed successfully on `f624baa` in 62 s (https://github.com/yfyang86/ConsCell/actions/runs/34426667053). Merged into `dev` as `ea2c449`.
