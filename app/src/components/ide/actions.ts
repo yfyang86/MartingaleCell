@@ -9,6 +9,7 @@ import { useProject } from '@/store/project'
 import { evaluateCode, evaluateAll, splitTopLevelForms, firstSymbol } from '@/store/evaluate'
 import { runtime } from '@/lisp/runtime'
 import { topLevelFormAt, innermostFormAt, findSymbolPosition } from './lisp-utils'
+import { scanDefinitions } from '@/outline/outline'
 
 /* ---- editor registry (set by EditorPanel) ---- */
 
@@ -388,9 +389,18 @@ export function gotoDefinition(name?: string) {
       window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: bdef.cellN }))
       return
     }
-    ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${bdef.bufferName}:${bdef.line} (${bdef.kind}, evaluated)`)
-    gotoBuffer(bdef.bufferId, bdef.line, bdef.col)
-    return
+    /* freshness (Sprint 12): the entry says where the name was evaluated; the buffer may have moved on */
+    const home = ws.buffers.find((b) => b.id === bdef.bufferId)
+    const fresh = home ? scanDefinitions(home.content).find((e) => e.name === key) : undefined
+    if (fresh) {
+      const moved = fresh.line !== bdef.line || fresh.col !== bdef.col
+      if (moved) useProject.getState().recordBufferDefinition({ ...bdef, line: fresh.line, col: fresh.col })
+      ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → ${bdef.bufferName}:${fresh.line} (${bdef.kind}, evaluated${moved ? `, was line ${bdef.line}` : ''})`)
+      gotoBuffer(bdef.bufferId, fresh.line, fresh.col)
+      return
+    }
+    /* gone from that buffer: forget the entry and fall through to the project index and the text scan */
+    useProject.getState().forgetBufferDefinition(bdef.name)
   }
   const def = useProject.getState().definitions.find((d) => d.name === key)
   if (def) {
