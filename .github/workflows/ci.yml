@@ -15,10 +15,15 @@ on:
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [dev]
+    # a docs-only push (the sprint record after a merge) starts no run, so
+    # the merge commit keeps its completed run (Sprint 22)
+    paths-ignore:
+      - 'Sprints/**'
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # cancel superseded runs on a pull request; never on dev, where every push is a merge worth a full record
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
