@@ -21,7 +21,7 @@
 | One scenario alone | `node scripts/browser-smoke.mjs --only history` | 5 / 5 in 17 s |
 
 CI on the pull request: https://github.com/yfyang86/ConsCell/pull/21 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34465043988: `check` in 1 min 4 s, the labelled `smoke` job in 1 min 52 s), merged as `ef91679`.
-The `smoke` job on the merge commit on `dev`: triggered by the merge push (see the run on `dev` for `ef91679` in the Actions tab); recorded here as the first run of the AW path.
+The `smoke` job on `dev` (AW): the run on the merge commit `ef91679` (https://github.com/yfyang86/ConsCell/actions/runs/34465255806) was cancelled 25 s into the scenarios by the concurrency group when the record-CI docs commit landed; the run on that docs commit `91ad766` (https://github.com/yfyang86/ConsCell/actions/runs/34465276088) is green — `check` in 1 min 7 s, `smoke` in 1 min 52 s (scenarios 37 s), the same code as the merge commit.
 
 ## Fixes made along the way
 
@@ -38,6 +38,15 @@ The `smoke` job on the merge commit on `dev`: triggered by the merge push (see t
   the scenario waits for the modal to detach first.
 
 ## Noticed, not changed
+
+- **The record-CI push cancels the merge-commit run.** The workflow's
+  concurrency group is per ref with cancel-in-progress, so the docs
+  commit this loop pushes right after a merge cancels the run on the
+  merge commit itself; both jobs then run on the docs commit, which
+  carries identical code. Correct in effect, but the merge commit shows
+  a cancelled run. Options for Sprint 22: no cancel-in-progress on
+  `dev` pushes, or skip CI for docs-only pushes (`paths-ignore` for
+  `Sprints/**`).
 
 - A plain re-run of a cell evaluated from `scratch.lisp` records the
   cell's `bufferName`, so the `;;DEF:` markers are still emitted; the
