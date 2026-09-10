@@ -76,10 +76,21 @@ export interface SerializedStates {
 /** Serialisable state fields (e.g. `{ history: historyField }`), supplied by the caller so this file stays state-only. */
 export type StateFields = Record<string, import('@codemirror/state').StateField<unknown>>
 
-export function statesToJSON(bs: BufferStates, fields: StateFields, live?: { id: string; state: EditorState; scrollTop: number } | null): SerializedStates {
+/** Per-buffer memo of the last serialisation: a state that is the same object serialises to the same JSON. */
+export type SerializeCache = Map<string, { state: EditorState; json: unknown }>
+
+export function statesToJSON(bs: BufferStates, fields: StateFields, live?: { id: string; state: EditorState; scrollTop: number } | null, cache?: SerializeCache): SerializedStates {
   const buffers: SerializedStates['buffers'] = {}
-  for (const [id, s] of bs.entries()) buffers[id] = { state: s.state.toJSON(fields), scrollTop: s.scrollTop }
-  if (live) buffers[live.id] = { state: live.state.toJSON(fields), scrollTop: live.scrollTop }
+  const ser = (id: string, state: EditorState) => {
+    const hit = cache?.get(id)
+    if (hit && hit.state === state) return hit.json
+    const json = state.toJSON(fields)
+    cache?.set(id, { state, json })
+    return json
+  }
+  for (const [id, s] of bs.entries()) buffers[id] = { state: ser(id, s.state), scrollTop: s.scrollTop }
+  if (live) buffers[live.id] = { state: ser(live.id, live.state), scrollTop: live.scrollTop }
+  if (cache) for (const id of [...cache.keys()]) if (!(id in buffers)) cache.delete(id)
   return { version: 1, buffers }
 }
 
