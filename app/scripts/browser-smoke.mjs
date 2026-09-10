@@ -531,7 +531,8 @@ if (unknown.length) { console.error(`unknown scenario(s): ${unknown.join(', ')} 
 
 const results = []
 const report = { startedAt: new Date().toISOString(), base, scenarios: [] }
-const browser = await chromium.launch({ headless: true })
+/* SMOKE_CHROMIUM: use an installed Chromium instead of the one this playwright version expects (a container with a different build) */
+const browser = await chromium.launch({ headless: true, ...(process.env.SMOKE_CHROMIUM ? { executablePath: process.env.SMOKE_CHROMIUM } : {}) })
 for (const name of selected) {
   const entry = { name, seconds: 0, checks: [], skipped: null }
   report.scenarios.push(entry)
