@@ -295,8 +295,46 @@ try {
     return view.state.doc.toString().includes('(defun sq (y) y)')
   }, null, { timeout: 10_000 })
   check('Ctrl+Z in the editor undoes the replacement in the active buffer', true)
+
+  /* Sprint 14: undo history stays inside a buffer — switching is not an undo step */
   await page.keyboard.press('Control+Shift+F')
+  await box3.fill('sq2 3')
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-testid="search-panel"] mark').first().click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
+  }, null, { timeout: 10_000 })
   await box3.press('Escape')
+  await page.locator('.cm-content').first().click()
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(300)
+  const docAfterUndo = await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString()
+  })
+  check('Ctrl+Z in the other buffer changes nothing (no history of its own, and no "switch" step)', docAfterUndo.startsWith('(defun sq2 (z) z)'), JSON.stringify(docAfterUndo.slice(0, 40)))
+  await page.keyboard.press('Control+Shift+F')
+  await box3.fill('defpackage :x')
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-testid="search-panel"] mark').first().click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().includes('(defun sq (y) y)')
+  }, null, { timeout: 10_000 })
+  await box3.press('Escape')
+  await page.locator('.cm-content').first().click()
+  await page.keyboard.press('Control+y') /* redo; Control+Shift+z would reach CodeMirror as a lowercase z and undo instead */
+  await page.waitForTimeout(300)
+  const docAfterRedo = await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString()
+  })
+  check('back in the first buffer, redo restores the replacement — its history survived the switch', docAfterRedo.includes('(defun sq2 (y) y)'), JSON.stringify(docAfterRedo))
 
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useProject, collectLispFiles } from '@/store/project'
 import { useUi } from '@/store/ui'
+import { applyReplacements } from '@/search/apply-replace'
 import { searchSources, mergeSources, replaceInSources, compileQuery, type SearchOptions, type SearchResults, type SearchFileResult, type SearchMatch } from '@/search/workspace-search'
 import { gotoBuffer, gotoLocation, getEditor } from './actions'
 import { toast } from 'sonner'
@@ -108,31 +109,32 @@ export default function SearchPanel() {
     return (hit: string) => (single ? hit.replace(single, replacement) : replacement)
   }, [replaceOpen, query, opts, replacement])
 
-  /* Apply: the active buffer through the editor (one undoable transaction), other open
-   * buffers through the store, unopened project files opened as buffers first — nothing
-   * touches disk until the user saves. */
+  /* Apply (src/search/apply-replace.ts): the active buffer through the editor (one undoable
+   * transaction), other open buffers through the store, unopened project files opened as
+   * buffers first — nothing touches disk until the user saves. */
   const applyReplace = useCallback(async (only?: SearchFileResult) => {
     const ws = useWorkspace.getState()
     const pf = await projectFiles()
     const sources = mergeSources(ws.buffers, pf).filter((src) => !only || (src.path === only.path && src.bufferId === only.bufferId))
     const r = replaceInSources(sources, query, opts, replacement)
     if (r.error || r.files.length === 0) { setConfirming(false); return }
-    const activeId = ws.activeBufferId
     const view = getEditor()
-    let opened = 0
-    for (const f of r.files) {
-      if (f.bufferId) {
-        if (f.bufferId === activeId && view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: f.text }, userEvent: 'input.replace' })
-        else useWorkspace.getState().updateBufferContent(f.bufferId, f.text)
-      } else {
-        await useProject.getState().openFile(f.path)
-        const b = useWorkspace.getState().buffers.find((x) => x.origin?.type === 'project' && x.origin.path === f.path)
-        if (b) { useWorkspace.getState().updateBufferContent(b.id, f.text); opened++ }
-      }
-    }
-    const msg = `Replaced ${r.total} occurrence${r.total === 1 ? '' : 's'} of "${query}" in ${r.files.length} file${r.files.length === 1 ? '' : 's'}${opened ? ` (${opened} opened as dirty buffer${opened === 1 ? '' : 's'} — save with Ctrl+S)` : ''}`
+    const o = await applyReplacements(r.files, {
+      activeBufferId: ws.activeBufferId,
+      dispatchActive: view ? (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, userEvent: 'input.replace' }) : null,
+      updateBuffer: (id, text) => useWorkspace.getState().updateBufferContent(id, text),
+      openFile: (path) => useProject.getState().openFile(path),
+      findBufferByPath: (path) => { const b = useWorkspace.getState().buffers.find((x) => x.origin?.type === 'project' && x.origin.path === path); return b ? { id: b.id, isProject: true } : undefined },
+      isProjectBuffer: (id) => useWorkspace.getState().buffers.find((x) => x.id === id)?.origin?.type === 'project',
+    })
+    const msg = `Replaced ${o.total} occurrence${o.total === 1 ? '' : 's'} of "${query}" in ${o.files} file${o.files === 1 ? '' : 's'}${o.opened ? ` (${o.opened} opened as dirty buffer${o.opened === 1 ? '' : 's'})` : ''}`
     useWorkspace.getState().addLog('INFO', 'UI', msg)
-    toast(msg)
+    if (o.dirtyProjectBuffers > 0) {
+      /* Sprint 14: project files were dirtied — one click to write them */
+      toast(msg, { duration: 10000, action: { label: `Save ${o.dirtyProjectBuffers} file${o.dirtyProjectBuffers === 1 ? '' : 's'}`, onClick: () => void useProject.getState().saveAllDirty() } })
+    } else {
+      toast(msg)
+    }
     setConfirming(false)
     projectCache.current = null
     setRunTick((t) => t + 1)

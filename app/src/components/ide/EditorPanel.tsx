@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X } from 'lucide-react'
-import { EditorState, Compartment, Annotation } from '@codemirror/state'
+import { EditorState, Compartment, Annotation, type Extension } from '@codemirror/state'
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, rectangularSelection,
@@ -243,6 +243,10 @@ function EditorSurface() {
   const lineWrap = useWorkspace((s) => s.settings.lineWrap)
   const hydrated = useWorkspace((s) => s.hydrated)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  /* Sprint 14: one EditorState per buffer so undo history never crosses a buffer switch */
+  const extensionsRef = useRef<Extension[]>([])
+  const statesRef = useRef(new Map<string, EditorState>())
+  const shownBufferRef = useRef<string | null>(null)
   const themeComp = useRef(new Compartment())
   const rainbowComp = useRef(new Compartment())
   const tabComp = useRef(new Compartment())
@@ -284,111 +288,115 @@ function EditorSurface() {
       typingWelcomeRef.current = false
     }
 
+    const extensions: Extension[] = [
+      lineNumbers(),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      history(),
+      drawSelection(),
+      rectangularSelection(),
+      highlightSelectionMatches(),
+      EditorState.allowMultipleSelections.of(true),
+      indentUnit.of('  '),
+      lispIndent,
+      closeBrackets(),
+      autocompletion({ override: [clCompletionSource], maxRenderedOptions: 8, icons: true }),
+      clSyntaxExtension,
+      themeComp.current.of(clEditorTheme(useWorkspace.getState().settings.fontSize, useWorkspace.getState().settings.ligatures)),
+      tabComp.current.of(EditorState.tabSize.of(useWorkspace.getState().settings.tabWidth)),
+      rainbowComp.current.of(useWorkspace.getState().settings.rainbowParens ? rainbowParens() : []),
+      wrapComp.current.of(useWorkspace.getState().settings.lineWrap ? EditorView.lineWrapping : []),
+      keymap.of([
+        { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
+        { key: 'F12', run: () => { gotoDefinition(); return true } },
+        { key: 'Shift-F12', run: () => { findReferences(); return true } },
+        /* Ctrl/⌘+Shift+F: workspace search — bound here too so CodeMirror's Mod-f (in-buffer search) fallback never eats it */
+        { key: 'Mod-Shift-f', run: () => { useUi.getState().openSearch(); return true } },
+        { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
+        { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
+        { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },
+        { key: 'Mod-s', run: () => { saveBuffers(); return true } },
+        { key: 'Mod-Shift-L', run: () => { useUi.getState().setConfirm('clear-session'); return true } },
+        {
+          key: 'Ctrl-Space',
+          run: (v) => {
+            if (completionStatus(v.state) !== null) return false
+            const word = v.state.wordAt(v.state.selection.main.head)
+            const text = word ? v.state.sliceDoc(word.from, word.to) : ''
+            if (text && lookupSymbol(text) && completionStatus(v.state) === null) {
+              // completed symbol → startCompletion still shows docs on hover of the option;
+              // fall through to completion for consistency
+            }
+            return startCompletion(v)
+          },
+        },
+        { key: 'Mod-Shift-ArrowUp', run: () => { selectEnclosingForm(); return true } },
+        {
+          key: 'Alt-ArrowUp',
+          run: (v) => {
+            const forms = topLevelForms(v.state.doc.toString())
+            const head = v.state.selection.main.head
+            const prev = [...forms].reverse().find((f) => f.from < head - 1)
+            if (prev) v.dispatch({ selection: { anchor: prev.from }, scrollIntoView: true })
+            return true
+          },
+        },
+        {
+          key: 'Alt-ArrowDown',
+          run: (v) => {
+            const forms = topLevelForms(v.state.doc.toString())
+            const head = v.state.selection.main.head
+            const next = forms.find((f) => f.from > head)
+            if (next) v.dispatch({ selection: { anchor: next.from }, scrollIntoView: true })
+            return true
+          },
+        },
+        indentWithTab,
+        ...closeBracketsKeymap,
+        ...completionKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        ...defaultKeymap,
+      ]),
+      /* Ctrl/⌘+click on a symbol → go to definition */
+      EditorView.domEventHandlers({
+        mousedown: (e, v) => {
+          if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY })
+          if (pos == null) return false
+          const sym = symbolAtOffset(v.state.doc.toString(), pos)
+          if (!sym) return false
+          e.preventDefault()
+          gotoDefinition(sym)
+          return true
+        },
+      }),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) {
+          const isAnimationTick = u.transactions.length > 0 && u.transactions.every((tr) => tr.annotation(welcomeTick))
+          if (!isAnimationTick) {
+            /* a real edit during the welcome animation: the user wins —
+             * stop typing the welcome text and keep what they wrote */
+            if (typingWelcomeRef.current) stopWelcome()
+            const st = useWorkspace.getState()
+            const id = st.activeBufferId
+            if (id) st.updateBufferContent(id, u.state.doc.toString())
+          }
+        }
+        if (u.selectionSet || u.docChanged) updateMeta(u.view)
+      }),
+    ]
+    extensionsRef.current = extensions
+
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
         doc: doTypingWelcome ? '' : initialDoc,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLine(),
-          highlightActiveLineGutter(),
-          history(),
-          drawSelection(),
-          rectangularSelection(),
-          highlightSelectionMatches(),
-          EditorState.allowMultipleSelections.of(true),
-          indentUnit.of('  '),
-          lispIndent,
-          closeBrackets(),
-          autocompletion({ override: [clCompletionSource], maxRenderedOptions: 8, icons: true }),
-          clSyntaxExtension,
-          themeComp.current.of(clEditorTheme(useWorkspace.getState().settings.fontSize, useWorkspace.getState().settings.ligatures)),
-          tabComp.current.of(EditorState.tabSize.of(useWorkspace.getState().settings.tabWidth)),
-          rainbowComp.current.of(useWorkspace.getState().settings.rainbowParens ? rainbowParens() : []),
-          wrapComp.current.of(useWorkspace.getState().settings.lineWrap ? EditorView.lineWrapping : []),
-          keymap.of([
-            { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
-            { key: 'F12', run: () => { gotoDefinition(); return true } },
-            { key: 'Shift-F12', run: () => { findReferences(); return true } },
-            /* Ctrl/⌘+Shift+F: workspace search — bound here too so CodeMirror's Mod-f (in-buffer search) fallback never eats it */
-            { key: 'Mod-Shift-f', run: () => { useUi.getState().openSearch(); return true } },
-            { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
-            { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
-            { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },
-            { key: 'Mod-s', run: () => { saveBuffers(); return true } },
-            { key: 'Mod-Shift-L', run: () => { useUi.getState().setConfirm('clear-session'); return true } },
-            {
-              key: 'Ctrl-Space',
-              run: (v) => {
-                if (completionStatus(v.state) !== null) return false
-                const word = v.state.wordAt(v.state.selection.main.head)
-                const text = word ? v.state.sliceDoc(word.from, word.to) : ''
-                if (text && lookupSymbol(text) && completionStatus(v.state) === null) {
-                  // completed symbol → startCompletion still shows docs on hover of the option;
-                  // fall through to completion for consistency
-                }
-                return startCompletion(v)
-              },
-            },
-            { key: 'Mod-Shift-ArrowUp', run: () => { selectEnclosingForm(); return true } },
-            {
-              key: 'Alt-ArrowUp',
-              run: (v) => {
-                const forms = topLevelForms(v.state.doc.toString())
-                const head = v.state.selection.main.head
-                const prev = [...forms].reverse().find((f) => f.from < head - 1)
-                if (prev) v.dispatch({ selection: { anchor: prev.from }, scrollIntoView: true })
-                return true
-              },
-            },
-            {
-              key: 'Alt-ArrowDown',
-              run: (v) => {
-                const forms = topLevelForms(v.state.doc.toString())
-                const head = v.state.selection.main.head
-                const next = forms.find((f) => f.from > head)
-                if (next) v.dispatch({ selection: { anchor: next.from }, scrollIntoView: true })
-                return true
-              },
-            },
-            indentWithTab,
-            ...closeBracketsKeymap,
-            ...completionKeymap,
-            ...searchKeymap,
-            ...historyKeymap,
-            ...defaultKeymap,
-          ]),
-          /* Ctrl/⌘+click on a symbol → go to definition */
-          EditorView.domEventHandlers({
-            mousedown: (e, v) => {
-              if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false
-              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY })
-              if (pos == null) return false
-              const sym = symbolAtOffset(v.state.doc.toString(), pos)
-              if (!sym) return false
-              e.preventDefault()
-              gotoDefinition(sym)
-              return true
-            },
-          }),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) {
-              const isAnimationTick = u.transactions.length > 0 && u.transactions.every((tr) => tr.annotation(welcomeTick))
-              if (!isAnimationTick) {
-                /* a real edit during the welcome animation: the user wins —
-                 * stop typing the welcome text and keep what they wrote */
-                if (typingWelcomeRef.current) stopWelcome()
-                const st = useWorkspace.getState()
-                const id = st.activeBufferId
-                if (id) st.updateBufferContent(id, u.state.doc.toString())
-              }
-            }
-            if (u.selectionSet || u.docChanged) updateMeta(u.view)
-          }),
-        ],
+        extensions,
       }),
     })
     viewRef.current = view
+    shownBufferRef.current = useWorkspace.getState().activeBufferId
     registerEditor(view)
     updateMeta(view)
 
@@ -422,17 +430,31 @@ function EditorSurface() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated])
 
-  // swap document when the active buffer changes
+  // switch editor state when the active buffer changes: the outgoing buffer's
+  // state (document, selection, undo history) is stashed; the incoming buffer
+  // gets its stashed state back when its document still matches the store,
+  // otherwise a fresh state from the store content. No transaction is
+  // dispatched, so a switch is never an undo step.
   useEffect(() => {
     const v = viewRef.current
     if (!v) return
     if (typingWelcomeRef.current) return // typing welcome owns the doc until done
-    const buf = useWorkspace.getState().buffers.find((b) => b.id === activeBufferId)
+    const ws = useWorkspace.getState()
+    const buf = ws.buffers.find((b) => b.id === activeBufferId)
     const content = buf?.content ?? ''
-    if (v.state.doc.toString() !== content) {
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: content } })
-      updateMeta(v)
+    const prev = shownBufferRef.current
+    if (prev === activeBufferId) {
+      /* same buffer, content changed outside the editor (e.g. a replace through the store) */
+      if (v.state.doc.toString() !== content) { v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: content } }); updateMeta(v) }
+      return
     }
+    if (prev) statesRef.current.set(prev, v.state)
+    for (const id of [...statesRef.current.keys()]) if (!ws.buffers.some((b) => b.id === id)) statesRef.current.delete(id)
+    const saved = activeBufferId ? statesRef.current.get(activeBufferId) : undefined
+    if (saved && saved.doc.toString() === content) v.setState(saved)
+    else v.setState(EditorState.create({ doc: content, extensions: extensionsRef.current }))
+    shownBufferRef.current = activeBufferId
+    updateMeta(v)
   }, [activeBufferId, updateMeta])
 
   // live settings reconfiguration
