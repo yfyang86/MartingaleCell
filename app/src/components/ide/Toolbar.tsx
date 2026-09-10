@@ -76,7 +76,9 @@ export function EnginePill() {
       ? { dot: <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />, text: 'starting runtime…', cls: 'text-warning' }
       : status === 'ready-ecl'
         ? { dot: <span className="h-2 w-2 rounded-full bg-success" />, text: `ECL · WASM`, cls: 'text-secondary' }
-        : status === 'ready-jscl'
+        : status === 'ready-sbcl'
+          ? { dot: <span className="h-2 w-2 rounded-full bg-success" />, text: `SBCL · WASM`, cls: 'text-secondary' }
+          : status === 'ready-jscl'
           ? { dot: <span className="h-2 w-2 rounded-full bg-warning" />, text: 'JSCL · JS', cls: 'text-secondary' }
           : status === 'ready-mock'
             ? { dot: <span className="h-2 w-2 rounded-full bg-muted" />, text: 'Mock', cls: 'text-secondary' }
@@ -100,7 +102,7 @@ export function EnginePill() {
           {content.text}
         </motion.span>
       </AnimatePresence>
-      {status === 'ready-ecl' && label && <span className="hidden text-muted xl:inline">{label}</span>}
+      {(status === 'ready-ecl' || status === 'ready-sbcl') && label && <span className="hidden text-muted xl:inline">{label}</span>}
     </div>
   )
 }
@@ -249,7 +251,7 @@ function IconButton({ icon, title, onClick, danger }: { icon: React.ReactNode; t
 export default function Toolbar() {
   const evaluating = useWorkspace((s) => s.evaluating)
   const engineStatus = useWorkspace((s) => s.engineStatus)
-  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
+  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
   const setPaletteOpen = useUi((s) => s.setPaletteOpen)
   const setSettingsOpen = useUi((s) => s.setSettingsOpen)
   const setConfirm = useUi((s) => s.setConfirm)

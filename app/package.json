@@ -1,7 +1,7 @@
 {
   "name": "conscell",
   "version": "0.9.2",
-  "description": "ConsCell \u2014 a notebook-style Common Lisp IDE in the browser, running ECL compiled to WebAssembly",
+  "description": "ConsCell — a notebook-style Common Lisp IDE in the browser, running ECL compiled to WebAssembly",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf",
+    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf && pnpm run test:sbcl",
     "test:boot": "node scripts/boot-harness.mjs",
     "test:package": "node scripts/package-test.mjs",
     "test:modules": "node scripts/pkg-mgr-test.mjs && node scripts/pkg-persist-test.mjs",
@@ -26,7 +26,9 @@
     "test:editor": "node scripts/editor-state-test.mjs",
     "test:history": "node scripts/session-history-test.mjs",
     "test:fold": "node scripts/fold-test.mjs",
-    "test:lineage": "node scripts/lineage-test.mjs"
+    "test:lineage": "node scripts/lineage-test.mjs",
+    "test:sbcl": "node scripts/sbcl-test.mjs",
+    "fetch:sbcl": "node scripts/fetch-sbcl.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
