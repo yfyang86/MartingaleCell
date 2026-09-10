@@ -19,8 +19,8 @@
 | Real browser, all scenarios | `pnpm preview` + `pnpm smoke:browser` | 43 / 43 in 7 scenarios (4 new in `persistence`) |
 | One scenario alone | `node scripts/browser-smoke.mjs --only persistence` | 7 / 7 in 32 s |
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/20 — pending.
-The `smoke` job on the labelled PR: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/20 — green (`check` run https://github.com/yfyang86/ConsCell/actions/runs/34460422452, lint · build · wasm tests in 1 min 3 s), merged as `9dd0c1e`.
+The `smoke` job on the labelled PR: green in the same run, 1 min 40 s including the Playwright + Chromium install — https://github.com/yfyang86/ConsCell/actions/runs/34460422452/job/102816954624.
 
 ## Fixes made along the way
 
