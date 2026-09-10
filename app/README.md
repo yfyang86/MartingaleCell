@@ -26,7 +26,7 @@ pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
 pnpm test            # transcript, search, outline and editor-state tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
-pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI)
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (not in CI); refuses a dist/ older than the sources (--allow-stale to override)
 pnpm check           # lint + build + test
 ```
 

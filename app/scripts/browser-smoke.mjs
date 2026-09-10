@@ -18,6 +18,21 @@ function loadPlaywright() {
 const { chromium } = loadPlaywright()
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const base = process.env.SMOKE_URL || 'http://localhost:4173'
+
+/* Sprint 18: refuse to test a stale build — a `tsc` failure leaves the previous dist in place */
+{
+  const newest = (dir) => {
+    let t = 0
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else t = Math.max(t, fs.statSync(p).mtimeMs) } }
+    walk(dir); return t
+  }
+  const built = fs.existsSync(path.join(root, 'dist', 'index.html')) ? fs.statSync(path.join(root, 'dist', 'index.html')).mtimeMs : 0
+  const sources = Math.max(newest(path.join(root, 'src')), fs.statSync(path.join(root, 'public', 'wecl-worker.js')).mtimeMs, fs.statSync(path.join(root, 'index.html')).mtimeMs)
+  if (built < sources && !process.argv.includes('--allow-stale')) {
+    console.error(`browser-smoke: dist/ is older than the sources (built ${new Date(built).toISOString()}, newest source ${new Date(sources).toISOString()}). Run \`pnpm build\` first, or pass --allow-stale.`)
+    process.exit(2)
+  }
+}
 const results = []
 const check = (name, ok, detail = '') => results.push(`${ok ? '✓' : '✗'} ${name}${ok || !detail ? '' : `\n    ${detail}`}`)
 
@@ -287,6 +302,22 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
   await page.locator('.cm-content').first().waitFor()
+  /* Sprint 18: the editor state survived the reload — undo reverts the edit made before it */
+  await page.waitForTimeout(500)
+  await page.locator('.cm-content').first().click()
+  await page.keyboard.press('Control+z')
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(from-session)')
+  }, null, { timeout: 10_000 })
+  await page.keyboard.press('Control+y')
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defpackage :smoke')
+  }, null, { timeout: 10_000 })
+  check('after a reload, Ctrl+Z undoes the edit made before it and Ctrl+Y redoes — the editor state was persisted', true)
   await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
   await page.keyboard.press('Control+Shift+F')
   const box2 = page.locator('[data-testid="search-panel"] input')
