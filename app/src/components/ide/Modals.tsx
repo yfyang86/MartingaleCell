@@ -1,14 +1,14 @@
 /* Overlays: confirmation modal (restart/interrupt/clear/reset), share modal,
  * keyboard shortcuts reference (Ctrl /). */
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Copy, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useWorkspace } from '@/store/workspace'
 import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
-import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, applyPendingImport } from './actions'
+import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, pendingImportPreview, applyPendingImport } from './actions'
 
 function ModalShell({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -35,7 +35,7 @@ function ModalShell({ onClose, children, wide }: { onClose: () => void; children
   )
 }
 
-const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => string; confirm: string; danger?: boolean; run: () => void }> = {
+const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => ReactNode; confirm: string; danger?: boolean; run: () => void }> = {
   restart: {
     title: 'Restart Lisp image?',
     body: () => 'This clears all definitions. Session cells are kept.',
@@ -59,7 +59,22 @@ const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => 
   },
   'import-replace': {
     title: 'Replace the session with the transcript?',
-    body: () => `${useWorkspace.getState().cells.length} current cell${useWorkspace.getState().cells.length === 1 ? '' : 's'} will be cleared, then ${pendingImportCount()} imported cell${pendingImportCount() === 1 ? '' : 's'} appended. This cannot be undone.`,
+    body: () => {
+      const cur = useWorkspace.getState().cells.length
+      const n = pendingImportCount()
+      const preview = pendingImportPreview()
+      return (
+        <>
+          {cur} current cell{cur === 1 ? '' : 's'} will be cleared, then {n} imported cell{n === 1 ? '' : 's'} appended. This cannot be undone.
+          {preview.length > 0 && (
+            <ul className="mt-2 space-y-0.5 font-mono text-[11.5px] text-muted">
+              {preview.map((line, i) => <li key={i} className="truncate">In [{i + 1}] {line}</li>)}
+              {n > preview.length && <li>… {n - preview.length} more</li>}
+            </ul>
+          )}
+        </>
+      )
+    },
     confirm: 'Replace session',
     danger: true,
     run: () => void applyPendingImport(),
