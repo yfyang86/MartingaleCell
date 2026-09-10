@@ -20,8 +20,8 @@
 | Real browser, all scenarios | `pnpm preview` + `pnpm smoke:browser` | 52 / 52 in 8 scenarios |
 | One scenario alone | `node scripts/browser-smoke.mjs --only history` | 8 / 8 in 21 s |
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/22 — pending.
-CI on the merge commit on `dev` (BC): pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/22 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34470448312: `check` in 56 s, the labelled `smoke` job in 1 min 21 s), merged as `d1a47ab`.
+CI on the merge commit on `dev` (BC): https://github.com/yfyang86/ConsCell/actions/runs/34470623760 — completed, both jobs green (`check` 1 min 6 s, `smoke` 1 min 51 s); this docs commit starts no run, so that run stands.
 
 ## Fixes made along the way
 
