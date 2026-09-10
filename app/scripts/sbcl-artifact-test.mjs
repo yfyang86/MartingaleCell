@@ -37,7 +37,7 @@ const makeContext = (withDecompression = true) => {
   const ctx = {
     self: { postMessage: () => {} },
     fetch: fakeFetch,
-    Blob, Response, TextEncoder, TextDecoder, SharedArrayBuffer, Int32Array, Uint8Array, Atomics, WebAssembly, Promise, Error, console, setTimeout, clearTimeout,
+    Blob, Response, ReadableStream, TextEncoder, TextDecoder, SharedArrayBuffer, Int32Array, Uint8Array, Atomics, WebAssembly, Promise, Error, console, setTimeout, clearTimeout, Date,
     ...(withDecompression ? { DecompressionStream } : {}),
   }
   ctx.globalThis = ctx
@@ -86,6 +86,21 @@ ctx = makeContext()
 ctx.self.__ccSbclLoadBytes = (p) => Buffer.from('harness:' + p)
 got = bytesOf(await ctx.loadArtifactBytes('/sbcl/sbcl.wasm'))
 check('the harness hook still short-circuits fetch', got.toString() === 'harness:/sbcl/sbcl.wasm')
+
+/* Sprint 27: a streamed response reports progress */
+ctx = makeContext()
+const seen = []
+ctx.self.postMessage = (m) => { if (m.type === 'progress') seen.push(m) }
+const chunks = [packed.subarray(0, 700), packed.subarray(700, 1400), packed.subarray(1400)]
+const streamed = () => ({
+  ok: true, status: 200,
+  headers: { get: (k) => (k.toLowerCase() === 'content-length' ? String(packed.length) : k.toLowerCase() === 'content-type' ? 'application/gzip' : null) },
+  body: new ReadableStream({ start(c) { for (const ch of chunks) c.enqueue(new Uint8Array(ch)); c.close() } }),
+})
+ctx.fetch = async (url) => (url === '/sbcl/sbcl.core.gz' ? streamed() : { ok: false, status: 404, headers: { get: () => null }, arrayBuffer: async () => new ArrayBuffer(0) })
+got = bytesOf(await ctx.loadArtifactBytes('/sbcl/sbcl.core'))
+check('a streamed .gz still inflates to the original bytes', got.equals(original))
+check('progress messages name the file and end at loaded === total', seen.length >= 1 && seen.every((m) => m.file === 'sbcl.core.gz') && seen[seen.length - 1].loaded === packed.length && seen[seen.length - 1].total === packed.length, JSON.stringify(seen))
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

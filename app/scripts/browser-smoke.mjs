@@ -535,10 +535,60 @@ const scenarios = {
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:ENGINE"SBCL"42)'))`, null, { timeout: 60_000 })
     check('a cell evaluates on SBCL: (:ENGINE "SBCL" 42)', true)
   },
+
+  /* Sprint 27: Settings → Lisp implementation switches engines through Restart, ECL comes back, the choice survives a reload and resets with the workspace */
+  async engine({ page, check, setCode }) {
+    await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
+    const eclProgress = await page.waitForFunction(`(document.querySelector('[data-testid="boot-progress"]')?.textContent || '').includes('wecl.wasm')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    await page.locator('.cm-content').first().waitFor()
+    check('the boot screen shows the ECL download progress (wecl.wasm, MB)', eclProgress)
+
+    const closeDrawer = async () => {
+      /* the drawer closes from its backdrop or X, not Escape */
+      const backdrop = page.locator('div.fixed.inset-0.z-40')
+      if (await backdrop.isVisible().catch(() => false)) await backdrop.click({ position: { x: 8, y: 8 } })
+      await backdrop.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+    }
+    const choose = async (engine) => {
+      await page.locator('button[title="Settings"]').click()
+      await page.getByRole('button', { name: engine, exact: true }).click()
+      await closeDrawer()
+    }
+    const restart = async () => {
+      await page.locator('button[title="Restart Lisp image"]').click()
+      await page.getByRole('button', { name: 'Restart', exact: true }).click()
+    }
+    await choose('sbcl')
+    await restart()
+    const barProgress = await page.waitForFunction(`(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('MB')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    check('choosing sbcl and Restart Lisp image boots SBCL; the status bar shows the download while it restarts', barProgress)
+
+    await choose('ecl')
+    await restart()
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    await setCode('(lisp-implementation-type)')
+    await page.keyboard.press('Control+Enter')
+    await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>"ECL"'))`, null, { timeout: 30_000 })
+    check('choosing ecl after an SBCL session and restarting brings ECL back: (lisp-implementation-type) → "ECL"', true)
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    const prefAfterReload = await page.evaluate(`localStorage.getItem('conscell-engine-pref')`)
+    check('the choice survives a reload (ECL boots, preference still ecl)', prefAfterReload === 'ecl', String(prefAfterReload))
+
+    await page.locator('button[title="Settings"]').click()
+    await page.getByRole('button', { name: 'Reset workspace' }).click()
+    await page.getByRole('button', { name: 'Reset everything', exact: true }).click() /* the confirm sits above the drawer; the drawer can stay open for the check */
+    await page.waitForFunction(`localStorage.getItem('conscell-engine-pref') === 'auto'`, null, { timeout: 5_000 }).catch(() => {})
+    const prefAfterReset = await page.evaluate(`localStorage.getItem('conscell-engine-pref')`)
+    check('Reset workspace puts the choice back to auto', prefAfterReset === 'auto', String(prefAfterReset))
+  },
 }
 
-/* scenarios that do not need the IDE booted first (sbcl boots its own way) */
-const NO_BOOT = new Set(['landing', 'sbcl'])
+/* scenarios that do not need the IDE booted first (sbcl and engine boot their own way) */
+const NO_BOOT = new Set(['landing', 'sbcl', 'engine'])
 
 if (argv.includes('--list')) { console.log(Object.keys(scenarios).join('\n')); process.exit(0) }
 const selected = only.length ? only : Object.keys(scenarios)

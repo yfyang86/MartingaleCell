@@ -1618,8 +1618,34 @@ function gunzipBytes(bytes) {
   return new Response(stream).arrayBuffer()
 }
 
+/* Sprint 27: count the bytes of an artifact as they stream in, so the page can show progress */
+function progressResponse(r, file) {
+  if (!r || !r.ok || !r.body || typeof ReadableStream !== 'function' || typeof Response !== 'function') return r
+  var total = Number(r.headers && r.headers.get && r.headers.get('content-length')) || null
+  var loaded = 0, last = 0
+  var reader = r.body.getReader()
+  var stream = new ReadableStream({
+    pull: function (controller) {
+      return reader.read().then(function (res) {
+        if (res.done) {
+          controller.close()
+          self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total || loaded })
+          return
+        }
+        loaded += res.value.byteLength
+        var now = Date.now()
+        if (now - last > 80) { last = now; self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total }) }
+        controller.enqueue(res.value)
+      })
+    },
+    cancel: function () { return reader.cancel() },
+  })
+  return new Response(stream, { status: r.status, statusText: r.statusText, headers: r.headers })
+}
+
 function fetchGzipArtifact(path) {
-  return fetch(path + '.gz').then(function (r) {
+  return fetch(path + '.gz').then(function (r0) {
+    var r = progressResponse(r0, path.split('/').pop() + '.gz')
     if (!r.ok) return null
     var type = String(r.headers && r.headers.get ? r.headers.get('content-type') || '' : '')
     return r.arrayBuffer().then(function (bytes) {
@@ -1634,7 +1660,8 @@ function loadArtifactBytes(path) {
   if (typeof self.__ccSbclLoadBytes === 'function') return Promise.resolve(self.__ccSbclLoadBytes(path))
   return fetchGzipArtifact(path).then(function (bytes) {
     if (bytes) return bytes
-    return fetch(path).then(function (r) {
+    return fetch(path).then(function (r0) {
+      var r = progressResponse(r0, path.split('/').pop())
       if (!r.ok) throw new Error(path + ' → HTTP ' + r.status)
       return r.arrayBuffer()
     })
