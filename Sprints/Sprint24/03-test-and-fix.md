@@ -17,7 +17,7 @@ Not run: the SBCL engine against the real image (artifacts not
 available here); the `sbcl` smoke scenario's boot path.
 
 CI on the pull request: https://github.com/yfyang86/ConsCell/pull/24 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34472437627: `check` incl. the artifact-loader test in 1 min 7 s, the labelled `smoke` job in 1 min 48 s with the `smoke-report` artifact), merged as `54eee66`.
-CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
+CI on the merge commit on `dev`: https://github.com/yfyang86/ConsCell/actions/runs/34472697855 — completed, both jobs green in 1 min 44 s wall time; the `smoke-report` artifact (smoke-report.json, no screenshots) attached to the run.
 
 ## Fixes made along the way
 
