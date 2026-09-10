@@ -247,6 +247,16 @@ try {
     return view.state.doc.toString()
   })
   check('"Open as buffer" on the first cell adds a tab whose document is the cell input (/ 1 0)', openedDoc.trim() === '(/ 1 0)', JSON.stringify(openedDoc))
+  /* Sprint 17: the cell and the buffer are linked — re-run evaluates the buffer's current text */
+  const linkedTab = await page.locator('[data-testid="buffer-tab"][data-active="true"]').innerText()
+  await setCode('(+ 1 2)')
+  const cellsBeforeRerun = await page.locator('.cc-cell').count()
+  await page.locator('.cc-cell').first().hover()
+  await page.locator('.cc-cell').first().locator('button[title="Re-run"]').click()
+  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n + 1, cellsBeforeRerun, { timeout: 20_000 })
+  await page.locator('.cc-cell').last().getByText('3', { exact: true }).waitFor({ state: 'attached', timeout: 20_000 })
+  const rerunText = await page.locator('.cc-cell').last().evaluate((el) => el.textContent || '') /* textContent: an off-screen cell has no innerText under content-visibility:auto */
+  check('re-running the linked cell evaluates the edited buffer: new cell (+ 1 2) → 3, tab badged [1]', rerunText.includes('(+ 1 2)') && /\[1\]/.test(linkedTab), `tab=${JSON.stringify(linkedTab)} cell=${JSON.stringify(rerunText.slice(0, 80))}`)
   /* back to the first buffer: the checks below edit and index it */
   await page.locator('[data-testid="buffer-tab"]').nth(0).click()
   await page.waitForFunction(() => {
