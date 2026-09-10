@@ -92,7 +92,8 @@ function markdownCell(cell: Cell, limit?: number): string {
   const head = cell.kind === 'project'
     ? `## Cell ${cell.n} · project load${cell.project ? ` \`${cell.project.projectName}\`` : ''}`
     : `## Cell ${cell.n} · \`${cell.pkg}\``
-  out.push(head + (dur ? ` · ${dur}` : ''))
+  const from = cell.kind !== 'project' && cell.bufferName ? ` · from ${cell.bufferName}` : ''
+  out.push(head + (dur ? ` · ${dur}` : '') + from)
 
   if (cell.kind === 'project' && cell.project) {
     const p = cell.project
@@ -148,7 +149,7 @@ function lispCell(cell: Cell, prevPkg: string | null, limit?: number): { text: s
     if (cell.error) out.push(comment(';; ERROR: ', cell.error))
     return { text: out.join('\n'), pkg: prevPkg }
   }
-  out.push(`;;; ---- cell ${cell.n} · ${cell.pkg}${dur ? ` · ${dur}` : ''} ----`)
+  out.push(`;;; ---- cell ${cell.n} · ${cell.pkg}${dur ? ` · ${dur}` : ''}${cell.bufferName ? ` · from ${cell.bufferName}` : ''} ----`)
   if (cell.pkg !== prevPkg && !(prevPkg === null && cell.pkg === 'CL-USER')) out.push(`(in-package :${cell.pkg.toLowerCase()})`)
   out.push(cell.input.replace(/\n$/, ''))
   if (cell.stdout) out.push(comment(';; OUT ', cell.stdout))
@@ -253,7 +254,7 @@ export function parseMarkdownTranscript(md: string): ImportedCell[] {
     } else {
       const pm = tail[0].match(/^`(.*)`$/)
       cell.pkg = pm ? pm[1] : tail[0]
-      cell.durationMs = parseDuration(tail[1])
+      cell.durationMs = parseDuration(tail.slice(1).find((t) => /^[\d.]+\s*(ms|s)$/.test(t)))
     }
     let expectOutput = false, expectError = false, haveInput = cell.kind === 'project'
     for (const tok of tokenize(body)) {

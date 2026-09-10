@@ -9,7 +9,7 @@ import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, rectangularSelection,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyField, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
@@ -19,7 +19,8 @@ import { indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { BufferStates, scheduleScrollRestore } from '@/editor/buffer-states'
+import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON } from '@/editor/buffer-states'
+import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { useEditorMeta } from '@/store/editor-meta'
 import { clSyntaxExtension, clEditorTheme } from './cl-language'
 import { rainbowParens } from './rainbow-parens'
@@ -82,6 +83,8 @@ const lispIndent = indentService.of((context, pos) => {
 })
 
 /* -------- context menu -------- */
+
+const EDITOR_STATES_KEY = 'conscell-editor-states-v1'
 
 interface MenuState { x: number; y: number }
 
@@ -253,6 +256,18 @@ function EditorSurface() {
   const extensionsRef = useRef<Extension[]>([])
   const statesRef = useRef(new BufferStates())
   const shownBufferRef = useRef<string | null>(null)
+  /* Sprint 18: stashed states (and the shown one) persist to IndexedDB so undo history survives a reload */
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const persistStates = useCallback((immediate = false) => {
+    if (persistTimer.current) clearTimeout(persistTimer.current)
+    const run = () => {
+      const v = viewRef.current
+      const shown = shownBufferRef.current
+      const live = v && shown ? { id: shown, state: v.state, scrollTop: v.scrollDOM.scrollTop } : null
+      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, { history: historyField }, live)).catch(() => {})
+    }
+    if (immediate) run(); else persistTimer.current = setTimeout(run, 500)
+  }, [])
   const themeComp = useRef(new Compartment())
   const rainbowComp = useRef(new Compartment())
   const tabComp = useRef(new Compartment())
@@ -387,6 +402,7 @@ function EditorSurface() {
             const st = useWorkspace.getState()
             const id = st.activeBufferId
             if (id) st.updateBufferContent(id, u.state.doc.toString())
+            persistStates()
           }
         }
         if (u.selectionSet || u.docChanged) updateMeta(u.view)
@@ -403,6 +419,30 @@ function EditorSurface() {
     })
     viewRef.current = view
     shownBufferRef.current = useWorkspace.getState().activeBufferId
+    /* restore persisted per-buffer states; the shown buffer takes its stash when the document still matches */
+    void idbGet(EDITOR_STATES_KEY).then((json) => {
+      if (viewRef.current !== view || typingWelcomeRef.current) return
+      const ws = useWorkspace.getState()
+      const restored = statesFromJSON(json, extensions, { history: historyField }, ws.buffers.map((b) => b.id))
+      if (restored.size === 0) return
+      const shown = shownBufferRef.current
+      let shownEntry: { state: EditorState; scrollTop: number } | undefined
+      for (const [id, st] of restored.entries()) {
+        if (id === shown) shownEntry = st
+        else statesRef.current.stash(id, st.state, st.scrollTop)
+      }
+      if (shown && shownEntry) {
+        const content = ws.buffers.find((b) => b.id === shown)?.content ?? ''
+        const tmp = new BufferStates()
+        tmp.stash(shown, shownEntry.state, shownEntry.scrollTop)
+        const r = tmp.resolve(shown, content, (doc) => EditorState.create({ doc, extensions }))
+        if (r.source !== 'fresh') {
+          view.setState(r.state)
+          if (r.scrollTop !== null) scheduleScrollRestore(r.scrollTop, () => viewRef.current === view && shownBufferRef.current === shown, (top) => { view.scrollDOM.scrollTop = top }, requestAnimationFrame)
+          updateMeta(view)
+        }
+      }
+    }).catch(() => {})
     registerEditor(view)
     updateMeta(view)
 
@@ -464,7 +504,8 @@ function EditorSurface() {
     }
     shownBufferRef.current = activeBufferId
     updateMeta(v)
-  }, [activeBufferId, updateMeta])
+    persistStates(true)
+  }, [activeBufferId, updateMeta, persistStates])
 
   // live settings reconfiguration
   useEffect(() => {

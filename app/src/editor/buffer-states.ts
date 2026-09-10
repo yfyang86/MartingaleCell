@@ -34,6 +34,7 @@ export class BufferStates {
 
   has(id: string): boolean { return this.map.has(id) }
   get size(): number { return this.map.size }
+  entries(): IterableIterator<[string, Stashed]> { return this.map.entries() }
 
   /**
    * The state to show for `id` whose store content is `content`. A stashed
@@ -63,4 +64,36 @@ export function scheduleScrollRestore(
   schedule: (fn: () => void) => unknown,
 ): void {
   schedule(() => { if (stillShown()) apply(top) })
+}
+
+/* ---- persistence (Sprint 18) ---- */
+
+export interface SerializedStates {
+  version: 1
+  buffers: Record<string, { state: unknown; scrollTop: number }>
+}
+
+/** Serialisable state fields (e.g. `{ history: historyField }`), supplied by the caller so this file stays state-only. */
+export type StateFields = Record<string, import('@codemirror/state').StateField<unknown>>
+
+export function statesToJSON(bs: BufferStates, fields: StateFields, live?: { id: string; state: EditorState; scrollTop: number } | null): SerializedStates {
+  const buffers: SerializedStates['buffers'] = {}
+  for (const [id, s] of bs.entries()) buffers[id] = { state: s.state.toJSON(fields), scrollTop: s.scrollTop }
+  if (live) buffers[live.id] = { state: live.state.toJSON(fields), scrollTop: live.scrollTop }
+  return { version: 1, buffers }
+}
+
+/** Rebuild stashes from JSON for the buffers that still exist; malformed entries are skipped. */
+export function statesFromJSON(json: unknown, extensions: import('@codemirror/state').Extension, fields: StateFields, liveIds: Iterable<string>): BufferStates {
+  const bs = new BufferStates()
+  const j = json as Partial<SerializedStates> | null
+  if (!j || j.version !== 1 || !j.buffers) return bs
+  const live = new Set(liveIds)
+  for (const [id, entry] of Object.entries(j.buffers)) {
+    if (!live.has(id) || !entry || typeof entry !== 'object') continue
+    try {
+      bs.stash(id, EditorState.fromJSON(entry.state as Parameters<typeof EditorState.fromJSON>[0], { extensions }, fields), Number(entry.scrollTop) || 0)
+    } catch { /* an entry from another version of the extensions: start fresh for that buffer */ }
+  }
+  return bs
 }
