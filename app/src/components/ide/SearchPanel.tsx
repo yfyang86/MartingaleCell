@@ -2,13 +2,14 @@
  * grouped by file, click to jump. Lives at the top of the explorer column. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, CaseSensitive, Regex, WholeWord, Sigma } from 'lucide-react'
+import { X, CaseSensitive, Regex, WholeWord, Sigma, Replace, ReplaceAll } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useProject, collectLispFiles } from '@/store/project'
 import { useUi } from '@/store/ui'
-import { searchSources, mergeSources, type SearchOptions, type SearchResults, type SearchFileResult, type SearchMatch } from '@/search/workspace-search'
-import { gotoBuffer, gotoLocation } from './actions'
+import { searchSources, mergeSources, replaceInSources, compileQuery, type SearchOptions, type SearchResults, type SearchFileResult, type SearchMatch } from '@/search/workspace-search'
+import { gotoBuffer, gotoLocation, getEditor } from './actions'
+import { toast } from 'sonner'
 
 function Toggle({ on, title, onClick, children }: { on: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -24,10 +25,11 @@ function Toggle({ on, title, onClick, children }: { on: boolean; title: string; 
   )
 }
 
-function MatchRow({ m, onOpen }: { m: SearchMatch; onOpen: () => void }) {
+function MatchRow({ m, onOpen, preview }: { m: SearchMatch; onOpen: () => void; preview?: (hit: string) => string }) {
   const pre = m.lineText.slice(Math.max(0, m.from - 30), m.from)
   const hit = m.lineText.slice(m.from, m.to)
   const post = m.lineText.slice(m.to, m.to + 60)
+  const after = preview ? preview(hit) : null
   return (
     <button
       type="button"
@@ -37,7 +39,7 @@ function MatchRow({ m, onOpen }: { m: SearchMatch; onOpen: () => void }) {
     >
       <span className="w-7 shrink-0 text-right text-muted">{m.line}</span>
       <span className="truncate text-secondary">
-        {m.from > 30 ? '…' : ''}{pre}<mark className="rounded-[2px] bg-amber-400/25 px-[1px] text-primary">{hit}</mark>{post}
+        {m.from > 30 ? '…' : ''}{pre}<mark className={cn('rounded-[2px] px-[1px] text-primary', after !== null ? 'bg-error/20 line-through decoration-error/60' : 'bg-amber-400/25')}>{hit}</mark>{after !== null && <span className="rounded-[2px] bg-steel/25 px-[1px] text-primary">{after}</span>}{post}
       </span>
     </button>
   )
@@ -57,6 +59,11 @@ export default function SearchPanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [results, setResults] = useState<(SearchResults & { query: string }) | null>(null)
   const [searching, setSearching] = useState(false)
+  /* replace (Sprint 13) */
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [replacement, setReplacement] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [runTick, setRunTick] = useState(0)
   const projectCache = useRef<{ at: number; key: string; files: { path: string; content: string }[] } | null>(null)
 
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [focusTick])
@@ -85,13 +92,57 @@ export default function SearchPanel() {
       })
     }, 150)
     return () => { cancelled = true; clearTimeout(t) }
-  }, [query, opts, buffers, projectFiles])
+  }, [query, opts, buffers, projectFiles, runTick])
   const shown = query && results && results.query === query ? results : null
 
   const open = useCallback((f: SearchFileResult, m: SearchMatch) => {
     if (f.bufferId) gotoBuffer(f.bufferId, m.line, m.col)
     else gotoLocation(f.path, m.line, m.col)
   }, [])
+
+  const previewFor = useMemo(() => {
+    if (!replaceOpen) return undefined
+    const re = compileQuery(query, opts)
+    if (typeof re === 'string') return undefined
+    const single = opts.regex ? new RegExp(`^(?:${re.source})$`, re.flags.replace('g', '')) : null
+    return (hit: string) => (single ? hit.replace(single, replacement) : replacement)
+  }, [replaceOpen, query, opts, replacement])
+
+  /* Apply: the active buffer through the editor (one undoable transaction), other open
+   * buffers through the store, unopened project files opened as buffers first — nothing
+   * touches disk until the user saves. */
+  const applyReplace = useCallback(async (only?: SearchFileResult) => {
+    const ws = useWorkspace.getState()
+    const pf = await projectFiles()
+    const sources = mergeSources(ws.buffers, pf).filter((src) => !only || (src.path === only.path && src.bufferId === only.bufferId))
+    const r = replaceInSources(sources, query, opts, replacement)
+    if (r.error || r.files.length === 0) { setConfirming(false); return }
+    const activeId = ws.activeBufferId
+    const view = getEditor()
+    let opened = 0
+    for (const f of r.files) {
+      if (f.bufferId) {
+        if (f.bufferId === activeId && view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: f.text }, userEvent: 'input.replace' })
+        else useWorkspace.getState().updateBufferContent(f.bufferId, f.text)
+      } else {
+        await useProject.getState().openFile(f.path)
+        const b = useWorkspace.getState().buffers.find((x) => x.origin?.type === 'project' && x.origin.path === f.path)
+        if (b) { useWorkspace.getState().updateBufferContent(b.id, f.text); opened++ }
+      }
+    }
+    const msg = `Replaced ${r.total} occurrence${r.total === 1 ? '' : 's'} of "${query}" in ${r.files.length} file${r.files.length === 1 ? '' : 's'}${opened ? ` (${opened} opened as dirty buffer${opened === 1 ? '' : 's'} — save with Ctrl+S)` : ''}`
+    useWorkspace.getState().addLog('INFO', 'UI', msg)
+    toast(msg)
+    setConfirming(false)
+    projectCache.current = null
+    setRunTick((t) => t + 1)
+  }, [projectFiles, query, opts, replacement])
+
+  useEffect(() => {
+    if (!confirming) return
+    const t = setTimeout(() => setConfirming(false), 4000)
+    return () => clearTimeout(t)
+  }, [confirming])
 
   const summary = useMemo(() => {
     if (!query) return 'open buffers' + (projectKind ? ' + project files' : '')
@@ -128,10 +179,33 @@ export default function SearchPanel() {
         <Toggle on={!!opts.wholeWord} title="Whole symbol" onClick={() => flip('wholeWord')}><WholeWord size={12} /></Toggle>
         <Toggle on={!!opts.regex} title="Regular expression" onClick={() => flip('regex')}><Regex size={12} /></Toggle>
         <Toggle on={!!opts.symbolsOnly} title="Code only — skip strings and comments" onClick={() => flip('symbolsOnly')}><Sigma size={12} /></Toggle>
+        <Toggle on={replaceOpen} title="Replace…" onClick={() => { setReplaceOpen((v) => !v); setConfirming(false) }}><Replace size={12} /></Toggle>
         <span className={cn('ml-auto truncate font-mono text-[10px]', shown?.error ? 'text-error' : 'text-muted')} title={summary}>
           {searching ? 'searching…' : summary}
         </span>
       </div>
+      {replaceOpen && (
+        <div className="flex items-center gap-1 px-2 pb-1">
+          <input
+            value={replacement}
+            onChange={(e) => { setReplacement(e.target.value); setConfirming(false) }}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setReplaceOpen(false) } }}
+            placeholder={opts.regex ? 'replacement ($1 …)' : 'replacement'}
+            spellCheck={false}
+            aria-label="Replacement"
+            className="h-6 w-full min-w-0 rounded-sm bg-inset px-2 font-mono text-[11.5px] text-primary outline-none ring-1 ring-hairline focus:ring-steel"
+          />
+          <button
+            type="button"
+            disabled={!shown || shown.totalMatches === 0 || !!shown.error}
+            title={confirming ? `Confirm: replace ${shown?.totalMatches ?? 0} in ${shown?.files.length ?? 0} file(s)` : `Replace all (${shown?.totalMatches ?? 0} in ${shown?.files.length ?? 0} file(s))`}
+            onClick={() => (confirming ? void applyReplace() : setConfirming(true))}
+            className={cn('flex h-6 shrink-0 items-center gap-1 rounded-sm px-2 font-mono text-[10.5px] transition-colors duration-100 disabled:opacity-40', confirming ? 'bg-error/20 text-primary ring-1 ring-error/60' : 'text-secondary ring-1 ring-hairline hover:bg-raised hover:text-primary')}
+          >
+            <ReplaceAll size={12} />{confirming ? 'confirm?' : 'all'}
+          </button>
+        </div>
+      )}
       <div className="min-h-0 overflow-y-auto pb-1">
         {shown?.files.map((f) => (
           <div key={(f.bufferId ?? '') + f.path}>
@@ -139,8 +213,13 @@ export default function SearchPanel() {
               <span className="truncate" title={f.path}>{f.path}</span>
               {f.kind === 'buffer' && <span className="text-muted">· buffer</span>}
               <span className="ml-auto text-muted">{f.matches.length}</span>
+              {replaceOpen && (
+                <button type="button" title={`Replace ${f.matches.length} in ${f.path}`} onClick={() => void applyReplace(f)} className="flex h-4 w-4 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">
+                  <Replace size={11} />
+                </button>
+              )}
             </div>
-            {f.matches.map((m, i) => <MatchRow key={i} m={m} onOpen={() => open(f, m)} />)}
+            {f.matches.map((m, i) => <MatchRow key={i} m={m} onOpen={() => open(f, m)} preview={previewFor} />)}
           </div>
         ))}
       </div>
