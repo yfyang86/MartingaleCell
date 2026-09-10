@@ -14,13 +14,13 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { BufferStates } from './src/editor/buffer-states'\nexport { EditorState } from '@codemirror/state'\nexport { history, undo, redo, undoDepth, redoDepth } from '@codemirror/commands'\n",
+    contents: "export { BufferStates, scheduleScrollRestore } from './src/editor/buffer-states'\nexport { EditorState } from '@codemirror/state'\nexport { history, undo, redo, undoDepth, redoDepth } from '@codemirror/commands'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { BufferStates, EditorState, history, undo, redo, undoDepth, redoDepth } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { BufferStates, scheduleScrollRestore, EditorState, history, undo, redo, undoDepth, redoDepth } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 /* newGroupDelay 0: adjacent edits are separate undo events (the default groups typing within 500 ms, which in Node is every edit) */
 const ext = [history({ newGroupDelay: 0 })]
@@ -68,6 +68,20 @@ check('prune drops states of closed buffers only', bs.has('A') && bs.has('C') &&
 /* null id → fresh */
 const rn = bs.resolve(null, '', fresh)
 check('no active buffer → fresh empty state', rn.source === 'fresh' && rn.state.doc.toString() === '')
+
+/* scroll restore guard (Sprint 17) */
+{
+  const applied = []
+  let queued = null
+  const schedule = (fn) => { queued = fn }
+  scheduleScrollRestore(2000, () => true, (t) => applied.push(t), schedule)
+  check('scroll restore is deferred to the scheduler, not applied immediately', applied.length === 0 && typeof queued === 'function')
+  queued()
+  check('…and applied on the frame when the buffer is still shown', applied.join() === '2000')
+  scheduleScrollRestore(500, () => false, (t) => applied.push(t), schedule)
+  queued()
+  check('…but skipped when another buffer took over in between', applied.join() === '2000')
+}
 
 console.log(results.join('\n'))
 const failed = results.filter((x) => x.startsWith('✗')).length

@@ -49,3 +49,18 @@ export class BufferStates {
     return { state: updated, scrollTop: saved.scrollTop, source: 'updated' }
   }
 }
+
+/**
+ * Restore a stashed scroll offset once the view has laid the new state
+ * out — on the next frame — but only if the buffer it belongs to is still
+ * the one shown (a switch may have happened in between). `schedule` is
+ * requestAnimationFrame in the browser and a plain callback in tests.
+ */
+export function scheduleScrollRestore(
+  top: number,
+  stillShown: () => boolean,
+  apply: (top: number) => void,
+  schedule: (fn: () => void) => unknown,
+): void {
+  schedule(() => { if (stillShown()) apply(top) })
+}
