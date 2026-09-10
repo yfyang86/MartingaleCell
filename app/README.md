@@ -1,10 +1,15 @@
 # ConsCell
 
-A notebook-style Common Lisp IDE that runs entirely in the browser. The
-runtime is **ECL** (Embeddable Common Lisp, ANSI CL) compiled to WebAssembly
-as [WECL](https://turtleware.eu/) by the ECL maintainer; ConsCell wraps it in
-a CodeMirror editor, Jupyter-like result cells, a log console, a project
+A notebook-style Common Lisp IDE that runs entirely in the browser, with
+**two real engines**: **ECL** (ANSI CL, compiled to WebAssembly as
+[WECL](https://turtleware.eu/)) by default, and **SBCL** (compiled to
+`wasm32-wasip1`) as a switchable second choice. ConsCell wraps either in a
+CodeMirror editor, Jupyter-like result cells, a log console, a project
 explorer and an in-runtime package manager. Nothing leaves the browser.
+
+User-facing documentation: [`../README.md`](../README.md). Architecture,
+worker protocol, artifacts and the release process:
+[`../Developer-Manual.md`](../Developer-Manual.md).
 
 ## Run it
 
@@ -24,11 +29,19 @@ Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # transcript, search, outline, editor-state, session-history, fold and lineage tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
+pnpm test            # every harness: transcript/search/outline/editor-state/
+                     # history/fold/lineage (pure TS) + boot/package/settings/
+                     # debugger/stdin/perf (real ECL image) + sbcl + sbcl-artifacts
+                     # + smoke-summary
+pnpm test:sbcl       # the SBCL engine against the real image (skips without artifacts)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
-pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI on PRs labelled `smoke` and on pushes to dev); refuses a dist/ older than the sources (--allow-stale to override); --json writes a report, scripts/smoke-summary.mjs renders it (the CI job page shows it)
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (--only name, --list); refuses a dist/ older than the sources (--allow-stale); --json writes a report
 pnpm check           # lint + build + test
 ```
+
+The SBCL artifacts (~19 MB of tracked `.gz` copies under `public/sbcl/`)
+are refreshed from a local sbcl `wasm-dev` build with
+`node scripts/fetch-sbcl.mjs --gzip` — see the Developer Manual.
 
 The tests under `scripts/` boot the **real** `public/wecl-worker.js` and
 `wecl.wasm` inside a Node `vm` sandbox and drive it over the same message

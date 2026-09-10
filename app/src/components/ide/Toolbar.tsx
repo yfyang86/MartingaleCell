@@ -281,7 +281,7 @@ export default function Toolbar() {
             <MenuItem label="Back to home" href="/" />
             <MenuItem label="Examples" href="/examples" />
             <MenuItem label="Docs" href="/docs" />
-            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', 'ConsCell v0.9.2 — ECL (ANSI Common Lisp) compiled to WebAssembly')} />
+            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', 'ConsCell v1.0.0-alpha.0 — ANSI Common Lisp in the browser (ECL or SBCL, compiled to WebAssembly)')} />
           </>
         )}
       </Dropdown>

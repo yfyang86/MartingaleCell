@@ -1,0 +1,199 @@
+# ConsCell — Developer Manual
+
+Everything a contributor needs: layout, architecture, the two Lisp
+engines, the worker protocol, tests, artifacts and the release process.
+For the user-facing story start with [README.md](README.md). The
+sprint-by-sprint history lives in `Sprints/SprintN/` (goal →
+implementation → test log → next-sprint proposal); this manual is the
+stable cross-section of it.
+
+## Repository layout
+
+```
+app/                      the IDE (Vite + React + TypeScript)
+  src/                    main-thread code
+    lisp/                 runtime client: engine ladder, worker protocol,
+                          marker parsing (runtime.ts, types.ts)
+    store/                zustand stores (workspace, project, cells, ui)
+    components/ide/       Toolbar, StatusBar, ExplorerPanel, SettingsDrawer,
+                          Cell, SessionPanel, CommandPalette, …
+    project/              project loading, zip import/export, examples
+    plot/                 ;;PLOT64 payload → gnuplot parse → SVG render
+    session/              cells, transcripts, history/lineage
+  public/
+    wecl/ + wecl-worker.js   the ECL engine (WECL image + hand-written worker)
+    sbcl/*.gz + sbcl-worker.js  the SBCL engine (wasm32-wasip1 artifacts +
+                             hand-written browser host worker)
+    sample-projects/cl-plot.zip
+  scripts/                Node harnesses (the whole test suite), the
+                          browser smoke, artifact fetch, smoke summary
+Sprints/                  sprint records (Sprint 1 … current)
+.github/workflows/ci.yml  lint · build · all harnesses (PRs + dev)
+```
+
+Toolchain: Node 22, pnpm 10, TypeScript strict, ESLint (zero warnings).
+There is no backend — everything runs in the browser.
+
+## Architecture in one page
+
+```
+main thread                     worker thread (per engine)
+───────────                     ─────────────────────────
+UI (React stores)               classic Web Worker running the Lisp image
+  │  runtime.ts (LispRuntime)     • ECL: wecl-worker.js + WECL (Emscripten)
+  │    eval/loadProject/etc →     • SBCL: sbcl-worker.js — a hand-written
+  │      postMessage OR             WASI shim + the sbcl_host contract,
+  │      SharedArrayBuffer mailbox  REPL driven over a WASI stdin we own
+  │  ◄── stdout/stderr lines with ;; markers, done/joberror, …
+```
+
+Both engines speak **the same wire protocol** (`WorkerInMessage` /
+`WorkerOutMessage`, `src/lisp/types.ts`), so the main thread is
+engine-agnostic. A job's output is parsed from line markers
+(`parseEclOutput` in `runtime.ts`):
+
+| marker | stream | meaning |
+|---|---|---|
+| `;;=> value` | stdout | one value per line (`; no values` for zero) |
+| `;;ERROR:` / `;;ERRTYPE:` / `;;DETAIL:` | stderr | an error, its `type-of`, condition slots |
+| `;;WARNING:` (located form: `path\|offset\|text`) | stderr | warnings |
+| `;;PACKAGE:` | stdout | the reader package the next job reads in |
+| `;;FILE:/;;PKG:/;;SYM:/;;NOTE:/;;HINT:/;;DEF:` | stdout | project-load progress |
+| `;;PLOT64 <base64>` | stdout | gnuplot capture → in-browser SVG |
+| `;;READ-WAIT` / `;;DEBUG:/;;RESTART:/;;DEBUG-WAIT` | stderr | stdin request / debugger pause |
+| `;;MODULES-CHANGED` | stdout | persist /modules to IndexedDB |
+
+The markers are **emitted by a Lisp helper (`cc` package) living inside
+each worker** — `CC_HELPER_SRC` in `wecl-worker.js` and its SBCL port in
+`sbcl-worker.js`. Both are plain strings of CL source; keep the two in
+step when changing marker semantics.
+
+### The engine ladder
+
+`LispRuntime.init()` boots the best available engine: the Settings
+preference `sbcl` tries SBCL first (falling back to ECL on failure);
+`auto` is ECL → JSCL (CDN, CL subset) → a built-in mock. Status surfaces
+as `ready-ecl` / `ready-sbcl` / `ready-jscl` / `ready-mock`.
+
+### The ECL worker (`public/wecl-worker.js`)
+
+Loads the self-hosted WECL image (`/wecl/`), captures stdout/stderr,
+bootstraps the `cc` helper, and talks `postMessage` both ways. Notable
+tricks in there: the fast setjmp-trampoline patch (Sprint 7), the
+gnuplot interception on `ext:shell`, and dummy-ASDF handling. Requests
+are plain `postMessage`; evaluation is Asyncify-async and serialized.
+
+### The SBCL worker (`public/sbcl-worker.js`)
+
+A from-scratch browser host for the SBCL wasm port
+(github.com/yfyang86/sbcl, branch `wasm-dev` — see its `SBCL-Handoff.md`):
+
+- **WASI preview1 shim** over an in-memory file system (args, environ,
+  clocks, fds, preopen, readdir, poll, file writes buffered per fd and
+  committed at close). The std fds report as **character devices** —
+  SBCL's `unix-simple-poll` then short-circuits and the block happens in
+  `fd_read` (filetype 0 sends it into a wasi-libc select spin).
+- **`sbcl_host` imports**: a synchronous `instantiate` (compile the Lisp
+  module the runtime read into memory, grow the shared funcref table,
+  link against the runtime's memory/table, one shared `lisp_unwind`
+  WebAssembly.Tag), `set_timer`, `run_process` (−1), `process_id`.
+  i64/u64 imports arrive as **BigInt** — always coerce.
+- **Threading model**: after boot the worker thread is inside `_start`
+  forever; the page submits jobs through a SharedArrayBuffer (a form
+  ring, a stdin ring, a one-slot JSON mailbox, an interrupt flag) served
+  from inside the WASI imports; `Atomics.wait` is the block. Copy bytes
+  out of the SAB before `TextDecoder` — browsers reject shared views.
+  Every fed form ends with a `;;CC-DONE` marker (= job done) and a
+  trailing blank line (SBCL's reader otherwise parks a buffered form).
+- **Boot requirements**: SharedArrayBuffer ⇒ the page must be
+  crossOriginIsolated (COOP `same-origin` + COEP `credentialless`;
+  `vite.config.ts` sends them for dev and preview — a static host must
+  too, otherwise the engine bootfails with a clear message and ECL
+  takes over). Node needs `--experimental-wasm-exnref` (the harness
+  re-execs itself with it).
+- **Project loading**: `ext-compat.lisp` (if present) loads first —
+  ECL-targeted systems read `EXT:SHELL`/`EXT:CD` at load time; a dummy
+  ASDF package + a `*module-provider-functions*` entry make
+  `(require :asdf)` / `(asdf:load-system …)` behave; the gnuplot capture
+  replaces `EXT:SHELL` after every file (loader files can reload
+  `ext-compat.lisp` and revert it). `(directory …)` cannot enumerate on
+  this port build — track file lists explicitly.
+
+## Testing
+
+All harnesses are plain Node scripts in `app/scripts/` — no test
+framework, deterministic, each exits 0/1. `pnpm test` chains them all;
+CI runs lint → build → every harness.
+
+- Pure-TS: transcript, search, outline, editor-state, session-history,
+  fold, lineage.
+- Real ECL image: `boot-harness.mjs` (boots the actual worker + wasm in
+  a `vm` sandbox; `--exercise` loads the cl-plot sample end-to-end
+  incl. the SVG render), package/settings/debugger/stdin/perf harnesses
+  reuse the pattern.
+- Real SBCL image: `sbcl-test.mjs` boots `sbcl-worker.js` in a real
+  `worker_threads` thread (so SAB/Atomics behave as in the browser) and
+  exercises eval, errors, packages, project load, stdin, timers, the
+  debugger pause, runaway recursion, the interrupt ack, module
+  persistence and the cl-plot sample. Skips (exit 0) when the artifacts
+  are absent. `test:sbcl-artifacts` checks the tracked `.gz` copies.
+- Browser: `smoke:browser` (Playwright/Chromium, `--only name`,
+  `--list`, `--json report`) — scenario `sbcl` boots the SBCL engine and
+  evaluates a cell. Refuses a stale `dist/` unless `--allow-stale`.
+
+When you touch the worker or the helper, run at minimum:
+
+```sh
+cd app
+pnpm test:boot -- --exercise      # ECL, real image + sample
+pnpm test:sbcl                    # SBCL, real image
+pnpm smoke:browser -- --only sbcl # browser, if UI/engine-visible
+```
+
+## The SBCL artifact pipeline
+
+The artifacts are built from the sbcl repo (branch `wasm-dev`,
+`./build-wasm-darwin-arm64.sh`, ~35 min; `version.lisp-expr` must be
+non-empty in a fresh clone). `scripts/fetch-sbcl.mjs [--gzip]` copies
+`sbcl.wasm` / `sbcl.core` / `sbcl-core.wasm` into gitignored
+`public/sbcl/`; **only the `.gz` copies are tracked** (~19 MB total,
+`!app/public/sbcl/*.gz` in `.gitignore`) — the runtime, core and core
+module must come from one build (the ABI changes between port sprints).
+The worker fetches `.gz` first and inflates with `DecompressionStream`.
+After syncing artifacts, run `pnpm test:sbcl` before committing.
+
+## Conventions
+
+- Work lands as **sprints**: branch `sprintN` → PR into `dev` → CI green
+  → merge; `Sprints/SprintN/` documents it (01 goal/plan … 04 next
+  proposal). Direct `dev` commits are fine for chores.
+- Every behavioural change ships with a harness or smoke assertion the
+  first time it is exercised — several browser-only bugs survived only
+  because a path had never been tested (see Sprints/Sprint25).
+- No new dependency without a harness-visible reason; no backend.
+- Match the existing style: TS strict, plain-JS hand-written workers
+  (`/* eslint-disable */`, ES5-ish idioms), marker protocol first.
+
+## Release process (alpha)
+
+1. `pnpm check` green (lint + build + all harnesses) on `dev`.
+2. `pnpm smoke:browser` (all scenarios) against a fresh `pnpm build`.
+3. Bump `version` in `app/package.json` and the two hard-coded version
+   strings (`Toolbar.tsx` About line, `BootScreen.tsx`), keeping all
+   three in sync.
+4. `pnpm build`; the static site is `app/dist/` (deploy behind headers
+   `Cross-Origin-Opener-Policy: same-origin` and
+   `Cross-Origin-Embedder-Policy: credentialless` — required for the
+   SBCL engine; ECL works either way).
+5. Tag and build notes from the latest `Sprints/*/03-test-and-fix.md`.
+
+## Known open ends
+
+- Ctrl-C delivery to Lisp is unimplemented in the sbcl port itself
+  (`wasm-arch.c`) — `interrupt()` respawns the SBCL image; drop the
+  respawn when a port build grows delivery.
+- SBCL on static hosts without COOP/COEP: falls back to ECL (clear
+  boot-log message).
+- Plain (uncompressed) SBCL artifacts are still in early git history
+  (~124 MB); a history rewrite is proposed but undecided
+  (Sprints/Sprint26/04-next-sprint.md, item BK).

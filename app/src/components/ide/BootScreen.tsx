@@ -52,7 +52,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
         ref={termRef}
         className="scrollbar-thin h-[160px] w-[420px] max-w-[92vw] overflow-y-auto rounded-lg border border-hairline bg-inset px-3.5 py-3 font-mono text-[12px] leading-[1.7]"
       >
-        <div className="text-lisp-purple">λ conscell boot v0.9.2</div>
+        <div className="text-lisp-purple">λ conscell boot v1.0.0-alpha.0</div>
         {lines.map((l, i) => (
           <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="flex items-baseline gap-2">
             <Check size={11} className="shrink-0 translate-y-px text-success" />
