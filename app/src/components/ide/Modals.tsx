@@ -10,7 +10,7 @@ import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
 import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, pendingImportPreview, applyPendingImport, rerunCell, gotoCell } from './actions'
 import { runsOf, compareRuns } from '@/session/lineage'
-import { diffLines } from '@/session/diff'
+import { diffLines, diffTokens } from '@/session/diff'
 
 function ModalShell({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -333,9 +333,19 @@ function CellHistoryModal() {
                       {runs.map((r, i) => {
                         const v = r.values[vi]
                         const changed = v !== undefined && cmp[i].valueChanged[vi]
+                        const prev = i > 0 ? runs[i - 1].values[vi] : undefined
                         return (
                           <td key={r.id} className={`${td} ${changed ? 'text-warning' : 'text-primary'}`}>
-                            {v === undefined ? <span className="text-muted">—</span> : <span className="whitespace-pre-wrap break-words" data-testid={changed ? 'run-value-changed' : 'run-value'}>{v}</span>}
+                            {v === undefined ? <span className="text-muted">—</span> : changed && prev !== undefined ? (
+                              /* Sprint 24: the changed tokens against the run before */
+                              <span className="whitespace-pre-wrap break-words" data-testid="run-value-changed" data-value={v} title={v}>
+                                <span data-testid="run-value-diff">
+                                  {diffTokens(prev, v).map((t, ti) => (
+                                    <span key={ti} data-diff={t.kind} className={t.kind === 'add' ? 'rounded-sm bg-success/15 text-success' : t.kind === 'del' ? 'rounded-sm bg-error/15 text-error line-through decoration-error/50' : 'text-primary'}>{t.text}</span>
+                                  ))}
+                                </span>
+                              </span>
+                            ) : <span className="whitespace-pre-wrap break-words" data-testid={changed ? 'run-value-changed' : 'run-value'} data-value={v}>{v}</span>}
                           </td>
                         )
                       })}

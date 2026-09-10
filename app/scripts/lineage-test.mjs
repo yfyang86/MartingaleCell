@@ -19,7 +19,7 @@ const built = await esbuild.build({
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { lineageOf, runsOf, runIndex, runIndexAll, runLabels, compareRuns, lineageForBuffer, diffLines, diffSummary } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { lineageOf, runsOf, runIndex, runIndexAll, runLabels, compareRuns, lineageForBuffer, diffLines, diffSummary, diffTokens, tokenizeValue } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const cell = (id, n, extra = {}) => ({ id, n, input: '(f)', status: 'done', values: ['1'], ...extra })
 const a1 = cell('a', 1)
@@ -72,6 +72,15 @@ const d3 = diffLines('(a)', '(z)\n(a)\n(q)')
 check('diffLines: lines added around', d3.map((l) => l.kind + ':' + l.text).join(' ') === 'add:(z) same:(a) add:(q)', JSON.stringify(d3))
 check('diffLines: empty vs text → all add; text vs empty → all del', diffLines('', '(a)\n(b)').filter((l) => l.kind === 'add').length === 2 && diffLines('(a)', '').map((l) => l.kind).join() === 'del,add' && diffLines('(a)', '')[1].text === '')
 check('diffSummary counts', JSON.stringify(diffSummary(d3)) === '{"added":2,"removed":0}')
+
+/* token diff of printed values (Sprint 24) */
+check('tokenizeValue: parens, atoms, whitespace and strings', JSON.stringify(tokenizeValue('(1 "a b" (c))')) === JSON.stringify(['(', '1', ' ', '"a b"', ' ', '(', 'c', ')', ')']), JSON.stringify(tokenizeValue('(1 "a b" (c))')))
+const t1 = diffTokens('(1 2 3)', '(1 2 4)')
+check('diffTokens: one changed element of a list', t1.map((l) => l.kind[0] + l.text).join('') === 's(s1s s2s d3a4s)', JSON.stringify(t1))
+const t2 = diffTokens('(:A 1)', '(:A 1 :B 2)')
+check('diffTokens: elements appended', t2.filter((l) => l.kind === 'add').map((l) => l.text).join('') === ' :B 2' && t2.filter((l) => l.kind === 'del').length === 0, JSON.stringify(t2))
+check('diffTokens: identical values → all same', diffTokens('#<FOO 1>', '#<FOO 1>').every((l) => l.kind === 'same'))
+check('diffTokens: a changed string token', diffTokens('"hi there"', '"hi you"').map((l) => l.kind).join() === 'del,add')
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

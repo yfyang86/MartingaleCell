@@ -299,9 +299,8 @@ class LispRuntime {
 
   /** The SBCL/wasm engine (public/sbcl-worker.js, artifacts at /sbcl/). */
   private async bootSbcl(): Promise<void> {
-    const present = await fetch('/sbcl/sbcl.wasm', { method: 'HEAD' })
-      .then((r) => r.ok)
-      .catch(() => false)
+    const head = (url: string) => fetch(url, { method: 'HEAD' }).then((r) => r.ok && !/text\/html/i.test(r.headers.get('content-type') ?? '')).catch(() => false)
+    const present = (await head('/sbcl/sbcl.wasm')) || (await head('/sbcl/sbcl.wasm.gz')) /* plain or gzip'd (Sprint 24) */
     if (!present) throw new Error('/sbcl/sbcl.wasm not found (copy the artifacts with scripts/fetch-sbcl.mjs)')
     /* a deep-enough native stack so runaway Lisp recursion reports a Lisp
      * storage-condition rather than an engine RangeError (SBCL-Handoff 4.5) */
