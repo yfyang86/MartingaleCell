@@ -12,6 +12,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const results = []
 const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} ${name}${ok || !detail ? '' : `\n    ${detail}`}`); return ok }
 
+const applyBuilt = await esbuild.build({
+  entryPoints: [path.join(root, 'src/search/apply-replace.ts')],
+  bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
+  alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
+})
+const { applyReplacements } = await import('data:text/javascript;base64,' + Buffer.from(applyBuilt.outputFiles[0].text).toString('base64'))
+
 const built = await esbuild.build({
   entryPoints: [path.join(root, 'src/search/workspace-search.ts')],
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
@@ -94,6 +101,33 @@ check('replace case-sensitive: only the exact case', rc.text === 'Plot p PLOT' &
 const rsrc = replaceInSources(sources, 'plot', { wholeWord: true, symbolsOnly: true }, 'draw')
 check('replaceInSources: only sources with hits, totals add up', rsrc.files.length === 2 && rsrc.total === rsrc.files.reduce((n, f) => n + f.count, 0) && rsrc.files[1].bufferId === 'b1' && /\(draw nil\)/.test(rsrc.files[1].text), JSON.stringify(rsrc.files.map((f) => [f.path, f.count])))
 check('replaceInSources: invalid regex reports an error', replaceInSources(sources, '[', { regex: true }, 'x').error !== undefined)
+
+/* apply order (Sprint 14) */
+{
+  const calls = []
+  const deps = {
+    activeBufferId: 'b-active',
+    dispatchActive: (text) => calls.push(['editor', text]),
+    updateBuffer: (id, text) => calls.push(['store', id, text]),
+    openFile: async (p) => { calls.push(['open', p]) },
+    findBufferByPath: (p) => (p === 'src/x.lisp' ? { id: 'b-x', isProject: true } : undefined),
+    isProjectBuffer: (id) => id === 'b-proj',
+  }
+  const files = [
+    { path: 'src/x.lisp', kind: 'project', text: 'X', count: 2 },
+    { path: 'scratch.lisp', kind: 'buffer', bufferId: 'b-other', text: 'O', count: 1 },
+    { path: 'src/p.lisp', kind: 'project', bufferId: 'b-proj', text: 'P', count: 3 },
+    { path: 'main.lisp', kind: 'buffer', bufferId: 'b-active', text: 'A', count: 4 },
+    { path: 'src/missing.lisp', kind: 'project', text: 'M', count: 9 },
+  ]
+  const o = await applyReplacements(files, deps)
+  check('apply order: active buffer through the editor first, other buffers through the store, unopened files opened then updated',
+    JSON.stringify(calls) === JSON.stringify([['editor', 'A'], ['store', 'b-other', 'O'], ['store', 'b-proj', 'P'], ['open', 'src/x.lisp'], ['store', 'b-x', 'X'], ['open', 'src/missing.lisp']]), JSON.stringify(calls))
+  check('apply outcome: counts, opened files, dirty project buffers; a file that failed to open is not counted', o.total === 10 && o.files === 4 && o.opened === 1 && o.dirtyProjectBuffers === 2 && o.viaEditor === 1 && o.viaStore === 3, JSON.stringify(o))
+  const calls2 = []
+  const o2 = await applyReplacements([{ path: 'main.lisp', kind: 'buffer', bufferId: 'b-active', text: 'A', count: 1 }], { ...deps, dispatchActive: null, updateBuffer: (id, t) => calls2.push([id, t]) })
+  check('apply without a mounted editor: the active buffer goes through the store', JSON.stringify(calls2) === JSON.stringify([['b-active', 'A']]) && o2.viaStore === 1 && o2.viaEditor === 0, JSON.stringify(calls2))
+}
 
 console.log(results.join('\n'))
 const failed = results.filter((x) => x.startsWith('✗')).length
