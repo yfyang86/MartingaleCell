@@ -232,21 +232,40 @@ try {
   const toasts = await page.locator('[data-sonner-toast]').allInnerTexts()
   check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips} accept=${accept} file=${mdPath} size=${mdPath ? fs.statSync(mdPath).size : -1} toasts=${JSON.stringify(toasts)}`)
 
-  /* Sprint 11: the definition index survives a reload (buffers persist too) */
+  /* Sprint 11/12: the definition index survives a reload, and an entry follows the defun when the buffer changes.
+   * Index path vs text-scan path differ here: the ACTIVE buffer (2) also defines sq at line 1; the index says sq was
+   * evaluated in buffer 1, where it now sits on line 3 — F12 must land in buffer 1, line 3. */
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
   await page.locator('.cm-content').first().waitFor()
-  await setCode('(sq 3)')
+  await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
+  await page.keyboard.press('Control+Shift+F')
+  const box2 = page.locator('[data-testid="search-panel"] input')
+  await box2.waitFor({ timeout: 5_000 })
+  await box2.fill('sq 3')
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-testid="search-panel"] mark').first().click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(sq 3)')
+  }, null, { timeout: 10_000 })
+  await box2.press('Escape')
+  await setCode('(defun sq (z) z)\n(sq 3)\n')
   await page.evaluate(() => {
     const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
     const view = t.view || t.rootView.view
-    view.dispatch({ selection: { anchor: 2 } })
+    view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('(sq 3)') + 2 } })
     view.focus()
   })
-  await page.getByText('Ln 1, Col 3').waitFor({ timeout: 5_000 })
   await page.keyboard.press('F12')
-  await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
-  check('after a reload, F12 on `sq` still jumps to where it was evaluated (persisted index; no defun sq in any buffer now)', true)
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defpackage :x)')
+  }, null, { timeout: 10_000 })
+  await page.getByText('Ln 3, Col 1').waitFor({ timeout: 10_000 })
+  check('after a reload, F12 on `sq` uses the persisted index and follows the defun to its new line (buffer 1, Ln 3)', true)
 
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
