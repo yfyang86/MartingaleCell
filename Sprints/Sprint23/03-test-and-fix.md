@@ -60,3 +60,24 @@ Not yet exercised (honest gaps): the interactive debugger pause
 interrupt (Ctrl-C) bit, timers (with-timeout), modules snapshot/restore
 round trip, and the browser itself (Chrome ≥ 137 for exnref) — the
 browser smoke still boots ECL. All are follow-ups.
+
+## On landing (cherry-pick onto `dev`, 2026-09-10)
+
+Checks run on `sprint23` (the cherry-pick rebased onto `d1a47ab`):
+
+| Check | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | 0 errors, 0 warnings |
+| Type-check + build | `pnpm build` | pass |
+| SBCL harness without artifacts | `node scripts/sbcl-test.mjs` | skips with exit 0 ("artifacts not present") |
+| All other Node suites (13) | `pnpm test` | all pass — unchanged counts |
+| Real browser, all scenarios (ECL default) | `pnpm preview` + `pnpm smoke:browser` | 52 / 52 in 8 scenarios |
+
+Not verified here: booting the SBCL engine itself — the wasm artifacts
+are produced by the sbcl repository's `wasm-dev` build and are not
+available in this environment. The results above that the branch
+recorded against the real image stand as its own evidence; the first
+run of `pnpm fetch:sbcl && pnpm test:sbcl` after the port is finished
+is the next check.
+
+CI on the pull request: pending.

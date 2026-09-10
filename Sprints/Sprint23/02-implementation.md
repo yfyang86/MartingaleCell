@@ -79,3 +79,31 @@ boots the real image and passes its harness.
   acceptance eval, a `;;READ-WAIT` stdin round trip, and a clean
   `(sb-ext:exit)`. Skips (exit 0) without artifacts. Wired into
   `pnpm test` and CI.
+
+## On landing (cherry-pick onto `dev`, 2026-09-10)
+
+The `sbcl-dev` commit was based on `5bc1d62` (before Sprint 19); it was
+cherry-picked onto `dev` at `d1a47ab` (after Sprint 22) as `sprint23`.
+Resolutions:
+
+- **`app/package.json`** — both sides had added scripts. Kept every
+  test the loop added since (history, fold, lineage) and appended
+  `test:sbcl` at the end of `pnpm test`; `fetch:sbcl` added.
+- **`.github/workflows/ci.yml`** — the SBCL step (skips without
+  artifacts) goes at the end of the `check` job, before the `smoke` job
+  that Sprints 20–22 added.
+- **`Sprints/Sprint19/*`** — the branch had written its documents as
+  "Sprint 19"; `dev` already had a Sprint 19. The branch's four
+  documents live here as Sprint 23 (headings renamed, a provenance note
+  at the top of the plan); `dev`'s Sprint 19 is untouched.
+- Code files merged clean: `runtime.ts`, `types.ts`, `actions.ts`
+  (engine label), `Ide.tsx`, `ExplorerPanel`, `SettingsDrawer`,
+  `StatusBar`, `Toolbar`, the new `public/sbcl-worker.js`,
+  `scripts/fetch-sbcl.mjs`, `scripts/sbcl-test.mjs`, `.gitignore`.
+
+The SBCL artifacts (`public/sbcl/`, ~112 MB) come from the
+github.com/yfyang86/sbcl wasm port, which is still being finished; they
+are not in this repository and were not available while landing, so
+the SBCL harness ran its skip path here and in CI. ECL stays the
+default engine: nothing changes for a user until the artifacts exist
+and Settings → Lisp implementation is set to `sbcl`.

@@ -27,3 +27,12 @@ from Sprints 18/19 suggestions.
 
 ## Suggested Sprint 24 scope
 AV + AW, AX if time allows.
+
+## On landing: carried candidates from Sprint 22
+
+The Sprint 22 proposal (`Sprints/Sprint22/04-next-sprint.md`) still
+stands: value diff between runs (BD), `.lisp` transcript import (BE),
+a smoke timing report (BF), session-box search across cells (BB). With
+the SBCL artifacts finished, the first Sprint 24 item is running the
+SBCL harness for real and the browser smoke with the engine set to
+`sbcl`.
