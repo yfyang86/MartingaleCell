@@ -70,10 +70,14 @@ step when changing marker semantics.
 
 ### The engine ladder
 
-`LispRuntime.init()` boots the best available engine: the Settings
-preference `sbcl` tries SBCL first (falling back to ECL on failure);
-`auto` is ECL → JSCL (CDN, CL subset) → a built-in mock. Status surfaces
-as `ready-ecl` / `ready-sbcl` / `ready-jscl` / `ready-mock`.
+`LispRuntime.init()` boots the preference's engine (`src/lisp/engine-pref.ts`):
+the default (`auto`, the alpha default) is **SBCL first** — ECL takes
+over when SBCL cannot boot (artifacts missing, page not
+crossOriginIsolated) — then JSCL (CDN, CL subset) → a built-in mock;
+`ecl` is ECL-only with no fallback. Status surfaces as `ready-sbcl` /
+`ready-ecl` / `ready-jscl` / `ready-mock`. Note for smoke scenarios: the
+general scenarios pin `ecl` explicitly; the `sbcl` scenario sets its own
+pref.
 
 ### The ECL worker (`public/wecl-worker.js`)
 

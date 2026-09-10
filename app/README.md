@@ -117,5 +117,6 @@ sprint, and lands on `dev` through a pull request that must be green in CI.
 
 ## Licence notes
 
-WECL / ECL are LGPL-2.1+. The bundled sample project cl-plot is MIT
-(© Martin Kersner). See the respective upstream projects.
+ConsCell's own code is MIT. The default engine is SBCL (MIT + BSD-style);
+ECL / WECL (LGPL-2.1+) ship as the cited fallback engine. The bundled
+sample project cl-plot is MIT (© Martin Kersner).

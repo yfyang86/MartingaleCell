@@ -62,6 +62,9 @@ function tools(page, check) {
     if (now !== want) throw new Error(`setCode: buffer is "${now.slice(0, 80)}" not "${want.slice(0, 80)}"`)
   }
   const bootIde = async () => {
+    /* pin ECL for the general scenarios — the app default is SBCL-first
+     * since the alpha; scenarios that want SBCL set their own pref */
+    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'ecl') } catch { /* private mode */ } })
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
     await page.locator('.cm-content').first().waitFor()
@@ -539,10 +542,11 @@ const scenarios = {
   /* Sprint 27: Settings → Lisp implementation switches engines through Restart, ECL comes back, the choice survives a reload and resets with the workspace */
   async engine({ page, check, setCode }) {
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
-    const eclProgress = await page.waitForFunction(`(document.querySelector('[data-testid="boot-progress"]')?.textContent || '').includes('wecl.wasm')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
-    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    /* the alpha default: SBCL (MIT+BSD core engine) boots with no preference set */
+    const sbclProgress = await page.waitForFunction(`(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('MB')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
     await page.locator('.cm-content').first().waitFor()
-    check('the boot screen shows the ECL download progress (wecl.wasm, MB)', eclProgress)
+    check('with no preference set, the default engine is SBCL (download shown in the status bar)', sbclProgress)
 
     const closeDrawer = async () => {
       /* the drawer closes from its backdrop or X, not Escape */
@@ -559,19 +563,13 @@ const scenarios = {
       await page.locator('button[title="Restart Lisp image"]').click()
       await page.getByRole('button', { name: 'Restart', exact: true }).click()
     }
-    await choose('sbcl')
-    await restart()
-    const barProgress = await page.waitForFunction(`(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('MB')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
-    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
-    check('choosing sbcl and Restart Lisp image boots SBCL; the status bar shows the download while it restarts', barProgress)
-
     await choose('ecl')
     await restart()
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
     await setCode('(lisp-implementation-type)')
     await page.keyboard.press('Control+Enter')
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>"ECL"'))`, null, { timeout: 30_000 })
-    check('choosing ecl after an SBCL session and restarting brings ECL back: (lisp-implementation-type) → "ECL"', true)
+    check('choosing ecl and Restart Lisp image brings ECL up: (lisp-implementation-type) → "ECL"', true)
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })

@@ -11,10 +11,12 @@ leaves your machine.
 ## What you get
 
 - **Two real Lisp engines**, switchable in Settings:
+  - **SBCL** compiled to `wasm32-wasip1` — the default engine (MIT+BSD
+    licensed, and the base of our own WebAssembly work).
   - **ECL** (Embeddable Common Lisp, ANSI CL) compiled to WebAssembly —
-    the default, boots in a second.
-  - **SBCL** compiled to `wasm32-wasip1` — a second choice with the same
-    editor, cells and project tooling (see *Differences* below).
+    the automatic fallback when SBCL cannot boot (artifacts missing, or
+    a host without isolation headers), and selectable any time. Same
+    editor, cells and project tooling either way.
 - **A notebook session**: evaluate a form or a whole buffer (`Ctrl+Enter`),
   get one result cell per run with values, printed output, warnings,
   errors with condition details, timing, and gnuplot plots rendered as
@@ -56,14 +58,15 @@ git-tracked `.gz` copies) — with a full checkout they are already in
 
 ## Choosing an engine
 
-Settings → **Lisp implementation**: `auto` (ECL first, JSCL and a mock
-fallback if the wasm fails) or `sbcl`. Switching takes effect on the next
-runtime restart (toolbar ↻).
+Settings → **Lisp implementation**: `auto` (SBCL first — the default;
+ECL, then JSCL and a mock fallback if SBCL cannot boot), `sbcl` or `ecl`.
+Switching takes effect on the next runtime restart (toolbar ↻).
 
-|  | ECL (default) | SBCL |
+|  | SBCL (default) | ECL (fallback) |
 |---|---|---|
-| standard | ANSI CL via WECL/wasm | SBCL 2.4.8 via wasm32-wasip1 |
-| boot time | ~1 s | ~4–5 s (19 MB of .gz artifacts) |
+| standard | SBCL 2.4.8 via wasm32-wasip1 | ANSI CL via WECL/wasm |
+| licence | MIT + BSD (per upstream SBCL) | LGPL-2.1+ (cited, not the core engine) |
+| boot time | ~4–5 s (19 MB of .gz artifacts) | ~1 s |
 | projects, cells, packages, debugger, stdin | ✓ | ✓ |
 | gnuplot plots (cl-plot) | ✓ captured to SVG | ✓ captured to SVG (Sprint 28) |
 | interrupt (Ctrl+.) | restarts the image | restarts the image (the port cannot deliver Ctrl-C to Lisp yet) |
@@ -103,10 +106,14 @@ explorer · `Ctrl+R` input history · `Ctrl+Shift+F` search ·
 
 ## Licence notes
 
-WECL / ECL are LGPL-2.1+. The SBCL engine is built from SBCL (public
-domain / MIT-style, see the upstream project). The bundled sample project
-cl-plot is MIT (© Martin Kersner). ConsCell's own code is not yet under a
-decided licence (pre-release).
+- **ConsCell's own code** — MIT (the licence for the WebAssembly work;
+  the LICENSE file lands with the alpha tag).
+- **SBCL** (the default engine) — MIT + BSD-style, per the upstream
+  SBCL project; the wasm port of it used here is our own re-work.
+- **ECL / WECL** — LGPL-2.1+ (Daniel Kochmański's wasm build). Cited
+  with thanks and shipped as the fallback engine; ConsCell does not
+  depend on it as its core engine.
+- **cl-plot** (bundled sample) — MIT, © Martin Kersner.
 
 ---
 

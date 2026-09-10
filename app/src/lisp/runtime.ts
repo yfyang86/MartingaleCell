@@ -248,9 +248,11 @@ class LispRuntime {
     if (this.bootPromise) return this.bootPromise
     this.setStatus('booting', null, '')
     const pref = getEnginePref()
-    this.emitBoot(`engine preference: ${pref}${pref === 'auto' ? ' (ECL, then JSCL, then the mock)' : pref === 'ecl' ? ' (ECL only)' : ' (SBCL, ECL if it cannot boot)'}`)
+    this.emitBoot(`engine preference: ${pref}${pref === 'ecl' ? ' (ECL only)' : ' (SBCL first — ECL if it cannot boot)'}`)
     this.bootPromise = (async () => {
-      if (pref === 'sbcl') {
+      /* the alpha default: SBCL (the MIT+BSD core engine); ECL only when
+       * explicitly chosen, or as the fallback when SBCL cannot boot */
+      if (pref !== 'ecl') {
         try {
           await this.bootSbcl()
         } catch (e) {

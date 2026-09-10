@@ -180,7 +180,7 @@ export default function SettingsDrawer() {
                       toast(
                         v === 'sbcl' ? 'SBCL/wasm boots on the next restart (ECL if its artifacts are missing)'
                           : v === 'ecl' ? 'ECL boots on the next restart — no fallback to another engine'
-                            : 'Automatic: ECL, then JSCL, then the demo interpreter',
+                            : 'Automatic: SBCL, then ECL, then JSCL, then the demo interpreter',
                         { action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') } },
                       )
                     }}

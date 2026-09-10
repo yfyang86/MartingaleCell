@@ -1,5 +1,7 @@
 /* The engine preference (Settings → Lisp implementation), Sprint 27.
- * 'auto'  — ECL first, then JSCL, then the mock (the original ladder)
+ * As of the 1.0 alpha SBCL (MIT+BSD) is the core engine and the default:
+ * 'auto'  — SBCL first (the default); ECL when the artifacts are missing
+ *           or the boot fails, then JSCL, then the mock
  * 'ecl'   — ECL only: a failure stays a failure (Retry on the boot screen)
  * 'sbcl'  — SBCL, then ECL when the artifacts are missing or the boot fails
  * The value lives in the workspace settings (persisted, reset with the
