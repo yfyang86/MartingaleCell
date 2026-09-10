@@ -1644,22 +1644,28 @@ function loadArtifactBytes(path) {
 function boot() {
   phase = 'loading'
   var artifactBase = typeof self.__CC_SBCL_BASE === 'string' ? self.__CC_SBCL_BASE : '/sbcl/'
-  bootLine('SBCL/wasm host boot — fetching ' + artifactBase + '{sbcl.wasm,sbcl.core,sbcl-core.wasm} (~112 MB, or their .gz copies)')
+  bootLine('SBCL/wasm host boot — fetching ' + artifactBase + '{sbcl.wasm,sbcl.core,sbcl-core.wasm} (.gz copies first, ~19 MB; ~124 MB inflated)')
   var runtimeBytes, coreBytes, coreModuleBytes
+  var bootT0 = Date.now()
+  /* Sprint 26: one line per artifact as it lands, so a slow fetch shows progress in the boot log */
+  var fetched = function (name, b) {
+    bootLine('  ' + name + ': ' + (b.byteLength / 1e6).toFixed(1) + ' MB inflated, ' + ((Date.now() - bootT0) / 1000).toFixed(1) + ' s so far')
+    return b
+  }
   loadArtifactBytes(artifactBase + 'sbcl.wasm')
     .then(function (b) {
-      runtimeBytes = b
+      runtimeBytes = fetched('sbcl.wasm', b)
       return loadArtifactBytes(artifactBase + 'sbcl.core')
     })
     .then(function (b) {
-      coreBytes = b
+      coreBytes = fetched('sbcl.core', b)
       return loadArtifactBytes(artifactBase + 'sbcl-core.wasm')
     })
     .then(function (b) {
-      coreModuleBytes = b
+      coreModuleBytes = fetched('sbcl-core.wasm', b)
       bootLine('artifacts loaded (' +
         ((runtimeBytes.byteLength + coreBytes.byteLength + coreModuleBytes.byteLength) / 1e6).toFixed(1) +
-        ' MB) — instantiating the runtime')
+        ' MB in ' + ((Date.now() - bootT0) / 1000).toFixed(1) + ' s) — instantiating the runtime')
 
       vfsWriteFile('/sbcl/sbcl.core', new Uint8Array(coreBytes))
       vfsWriteFile('/sbcl/sbcl-core.wasm', new Uint8Array(coreModuleBytes))

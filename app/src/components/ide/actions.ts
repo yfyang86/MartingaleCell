@@ -529,13 +529,15 @@ export async function importTranscriptText(name: string, text: string, mode: 'ap
   const ws = useWorkspace.getState()
   /* by extension, or by content when the file has none (a browser download, a paste) */
   const isMarkdown = /\.(md|markdown)$/i.test(name) || (!/\.(lisp|lsp|cl)$/i.test(name) && /^## Cell \d+ · /m.test(text))
-  if (!isMarkdown) {
+  /* a .lisp transcript with cell sections imports as cells too (Sprint 26); any other Lisp file opens as a buffer */
+  const isLispTranscript = !isMarkdown && /^;;; ---- cell \d+ · /m.test(text)
+  if (!isMarkdown && !isLispTranscript) {
     ws.newBuffer(name.replace(/[^\w.-]+/g, '_') || 'transcript.lisp', text)
     toast(`Opened ${name} as a buffer`)
     return 0
   }
-  const { parseMarkdownTranscript } = await import('@/session/transcript')
-  const cells = parseMarkdownTranscript(text)
+  const { parseMarkdownTranscript, parseLispTranscript } = await import('@/session/transcript')
+  const cells = isMarkdown ? parseMarkdownTranscript(text) : parseLispTranscript(text)
   if (!cells.length) { toast(`No cells found in ${name} — is it a ConsCell transcript?`); return 0 }
   if (mode === 'replace' && ws.cells.length > 0) {
     pendingImport = { name, cells }

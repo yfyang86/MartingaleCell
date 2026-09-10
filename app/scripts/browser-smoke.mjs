@@ -83,8 +83,12 @@ function tools(page, check) {
     await box.press('Escape')
   }
   const paletteCommand = async (name) => {
+    const input = page.getByPlaceholder('Type a command…')
     await page.keyboard.press('Control+k')
-    await page.keyboard.type(name)
+    /* Ctrl+K toggles: after a file chooser the palette can still be open, so press again if it went away */
+    if (!(await input.isVisible().catch(() => false))) await page.keyboard.press('Control+k')
+    await input.waitFor({ timeout: 5_000 })
+    await input.fill(name)
     await page.keyboard.press('Enter') /* exact-prefix matches rank first in the palette */
   }
   const cells = () => page.locator('.cc-cell')
@@ -238,6 +242,18 @@ const scenarios = {
     const cellsAfter = await cells().count()
     const importedChips = await page.getByText('imported', { exact: true }).count()
     check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips}`)
+
+    /* Sprint 26: the .lisp transcript round-trips too */
+    const [lispDownload] = await Promise.all([page.waitForEvent('download', { timeout: 10_000 }), paletteCommand('Export session as Lisp transcript')])
+    const lispPath = await lispDownload.path()
+    const lispText = lispPath ? fs.readFileSync(lispPath, 'utf8') : ''
+    const lispSections = lispText.split('\n').filter((l) => l.startsWith(';;; ---- cell ')).length
+    const [lispChooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10_000 }), paletteCommand('Import session transcript')])
+    await lispChooser.setFiles({ name: 'session.lisp', mimeType: 'text/plain', buffer: Buffer.from(lispText) })
+    await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, cellsAfter * 2, { timeout: 15_000 }).catch(() => {})
+    const cellsAfterLisp = await cells().count()
+    const abortedNotes = await page.getByText('resolved via ABORT', { exact: false }).count()
+    check('exporting as .lisp and importing it appends the cells again (sections = cells, the aborted cell keeps its resolution)', lispSections === cellsAfter && cellsAfterLisp === cellsAfter * 2 && abortedNotes >= 2, `sections=${lispSections} after=${cellsAfterLisp} aborted=${abortedNotes}`)
 
     const tabsBefore = await page.locator('[data-testid="buffer-tab"]').count()
     await cells().first().hover()
@@ -507,11 +523,13 @@ const scenarios = {
     const have = (f) => fs.existsSync(path.join(root, 'public', 'sbcl', f)) || fs.existsSync(path.join(root, 'public', 'sbcl', f + '.gz'))
     if (!['sbcl.wasm', 'sbcl.core', 'sbcl-core.wasm'].every(have)) throw new SkipScenario('SBCL artifacts not in public/sbcl/ (run scripts/fetch-sbcl.mjs)')
     await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'sbcl') } catch { /* private mode */ } })
+    const bootT0 = Date.now()
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    const bootSeconds = ((Date.now() - bootT0) / 1000).toFixed(1)
     await page.locator('.cm-content').first().waitFor()
     const label = await page.getByText('SBCL 2.4.8').first().count()
-    check('with the engine preference set to sbcl, the IDE boots SBCL/wasm (status bar SBCL · WASM, label SBCL 2.4.8)', label >= 1, String(label))
+    check(`with the engine preference set to sbcl, the IDE boots SBCL/wasm from the .gz artifacts in ${bootSeconds} s (status bar SBCL · WASM, label SBCL 2.4.8)`, label >= 1, String(label))
     await setCode('(list :engine (lisp-implementation-type) (+ 40 2))')
     await page.keyboard.press('Control+Enter')
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:ENGINE"SBCL"42)'))`, null, { timeout: 60_000 })
