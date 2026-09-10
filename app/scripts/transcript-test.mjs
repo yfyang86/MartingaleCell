@@ -23,7 +23,7 @@ const built = await esbuild.build({
   logLevel: 'silent',
 })
 const mod = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
-const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot, parseMarkdownTranscript } = mod
+const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot, parseMarkdownTranscript, clipValue } = mod
 
 const plotSpec = parseGnuplot('set title "squares"\nplot "/tmp/d.dat" using 1:2 with lines title "y = x^2"\n', [{ path: '/tmp/d.dat', content: '0 0\n1 1\n2 4\n3 9\n' }])
 const base = { bufferName: undefined, warnings: [], values: [], stdout: '', durationMs: 12, startedAt: 0, restartsUsed: 0 }
@@ -121,6 +121,18 @@ check('import: hand-edited transcript — prose and a fence before the first cel
 check('import: four-backtick fences and a multi-line warning', h[0].input === '(defun f (x)\n  "has ``` inside"\n  x)' && h[0].values.join() === 'F' && h[0].warnings[0] === 'first line\nsecond line', JSON.stringify(h[0]))
 check('import: output fence and duration without a package label', h[1].stdout === 'printed\n' && h[1].durationMs === 1500 && h[1].values.join() === '1', JSON.stringify(h[1]))
 check('import: an empty or unrelated document yields no cells', parseMarkdownTranscript('').length === 0 && parseMarkdownTranscript('# just a title\n\ntext').length === 0)
+
+/* value limit (Sprint 15) */
+{
+  const long = '(' + Array.from({ length: 200 }, (_, i) => `x${i}`).join(' ') + ')'
+  const lc = [{ ...base, id: 'l1', n: 1, pkg: 'CL-USER', status: 'done', input: '(big)', values: [long, '42'] }]
+  const mdL = buildMarkdownTranscript(lc, { exportedAt: when, valueLimit: 40 })
+  const lispL = buildLispTranscript(lc, { exportedAt: when, valueLimit: 40 })
+  check('clipValue: cut at the limit with an ellipsis and the original length; short values and limit 0 untouched', clipValue(long, 40) === long.slice(0, 40) + `… [${long.length} chars]` && clipValue('42', 40) === '42' && clipValue(long, 0) === long && clipValue(long) === long)
+  check('md export with a value limit: the long value is clipped, the short one whole', mdL.includes(`;;=> ${long.slice(0, 40)}… [${long.length} chars]`) && mdL.includes(';;=> 42') && !mdL.includes('x199)'), mdL.split('```lisp')[2])
+  check('lisp export with a value limit: same rule', lispL.includes(`;;=> ${long.slice(0, 40)}… [${long.length} chars]`) && lispL.includes(';;=> 42'), lispL)
+  check('no limit: values are whole in both exports', buildMarkdownTranscript(lc, { exportedAt: when }).includes(`;;=> ${long}`) && buildLispTranscript(lc, { exportedAt: when }).includes(`;;=> ${long}`))
+}
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
