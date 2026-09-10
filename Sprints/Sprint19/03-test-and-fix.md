@@ -44,4 +44,6 @@ stdin 14.9 s, definitions 16.5 s, transcript 17.1 s, persistence 31.5 s
 
 ## CI
 
+Pull request: https://github.com/yfyang86/ConsCell/pull/19
+
 CI on the pull request: to be recorded after the run.
