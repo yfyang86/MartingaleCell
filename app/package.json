@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf && pnpm run test:sbcl && pnpm run test:sbcl-artifacts",
+    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf && pnpm run test:sbcl && pnpm run test:sbcl-artifacts && pnpm run test:smoke-summary",
     "test:boot": "node scripts/boot-harness.mjs",
     "test:package": "node scripts/package-test.mjs",
     "test:modules": "node scripts/pkg-mgr-test.mjs && node scripts/pkg-persist-test.mjs",
@@ -29,6 +29,7 @@
     "test:lineage": "node scripts/lineage-test.mjs",
     "test:sbcl": "node scripts/sbcl-test.mjs",
     "test:sbcl-artifacts": "node scripts/sbcl-artifact-test.mjs",
+    "test:smoke-summary": "node scripts/smoke-summary-test.mjs",
     "fetch:sbcl": "node scripts/fetch-sbcl.mjs"
   },
   "dependencies": {

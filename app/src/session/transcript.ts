@@ -209,6 +209,63 @@ export interface ImportedCell {
   runOf?: number
 }
 
+/**
+ * Parse a `.lisp` transcript produced by buildLispTranscript (Sprint 26):
+ * sections start at `;;; ---- cell n · … ----`; forms are the input, the
+ * comment lines carry output, warnings, the error, values, the resumption
+ * and the state. A leading `(in-package :pkg)` that names the section's
+ * own package is the exporter's and is dropped. Anything before the first
+ * section is ignored; a file without sections yields no cells.
+ */
+export function parseLispTranscript(text: string): ImportedCell[] {
+  const cells: ImportedCell[] = []
+  const parts = text.replace(/\r\n/g, '\n').split(/^(?=;;; ---- cell \d+ · )/m) /* a preamble, if any, fails the header match below */
+  for (const part of parts) {
+    const lines = part.split('\n')
+    const hm = lines[0].match(/^;;; ---- cell (\d+) · (.*?) ----\s*$/)
+    if (!hm) continue
+    const n = parseInt(hm[1], 10)
+    const tail = hm[2].split(' · ')
+    const cell: ImportedCell = { n, pkg: 'CL-USER', input: '', status: 'done', stdout: '', values: [], warnings: [], durationMs: 0 }
+    if (tail[0].startsWith('project load')) {
+      cell.kind = 'project'
+      cell.project = { projectName: tail[0].replace(/^project load ?/, '') || 'project', files: [] }
+    } else {
+      cell.pkg = tail[0]
+    }
+    cell.durationMs = parseDuration(tail.slice(1).find((t) => /^[\d.]+\s*(ms|s)$/.test(t)))
+    const run = tail.slice(1).map((t) => t.match(/^run (\d+)\/(\d+) of cell (\d+)$/)).find(Boolean)
+    if (run) cell.runOf = parseInt(run[3], 10)
+    const input: string[] = []
+    const out: string[] = []
+    const err: string[] = []
+    for (const line of lines.slice(1)) {
+      let m: RegExpMatchArray | null
+      if ((m = line.match(/^;; OUT ?(.*)$/))) { out.push(m[1]); continue }
+      if ((m = line.match(/^;; WARNING: ?(.*)$/))) { cell.warnings.push(m[1]); continue }
+      if ((m = line.match(/^;; ERROR(?: \(([^)]*)\))?: ?(.*)$/))) { if (m[1] && !cell.errorType) cell.errorType = m[1]; err.push(m[2]); cell.status = 'error'; continue }
+      if ((m = line.match(/^;;=> ?(.*)$/))) { cell.values.push(m[1]); continue }
+      if ((m = line.match(/^;; resumed via (.*)$/))) { cell.resumedVia = m[1]; continue }
+      if (line === ';; Evaluation aborted.') { cell.status = 'aborted'; continue }
+      if (cell.project && (m = line.match(/^;; {3}(\w+)\s+(\S+)(?:\s+; (.*))?$/))) {
+        cell.project.files.push({ path: m[2], status: m[1] as 'ok' | 'warn' | 'error' | 'skipped' | 'pending', message: m[3] || undefined })
+        continue
+      }
+      if (line.startsWith(';;')) continue /* state / plots / other notes */
+      if (!cell.project) input.push(line)
+    }
+    while (input.length && input[input.length - 1].trim() === '') input.pop()
+    while (input.length && input[0].trim() === '') input.shift()
+    if (input.length && input[0].trim().toLowerCase() === `(in-package :${cell.pkg.toLowerCase()})`) input.shift()
+    while (input.length && input[0].trim() === '') input.shift()
+    cell.input = input.join('\n')
+    if (out.length) cell.stdout = out.join('\n') + '\n'
+    if (err.length) cell.error = err.join('\n')
+    cells.push(cell)
+  }
+  return cells
+}
+
 interface Fence { lang: string; text: string }
 
 /** Split a section into a list of fences and non-fence lines (in order). */
@@ -247,7 +304,7 @@ const unescapeCell = (s: string) => s.replace(/\\\|/g, '|').trim()
  */
 export function parseMarkdownTranscript(md: string): ImportedCell[] {
   const cells: ImportedCell[] = []
-  const parts = md.replace(/\r\n/g, '\n').split(/^(?=## Cell \d+ · )/m).slice(1)
+  const parts = md.replace(/\r\n/g, '\n').split(/^(?=## Cell \d+ · )/m) /* a preamble, if any, fails the header match below */
   for (const part of parts) {
     const nl = part.indexOf('\n')
     const head = (nl === -1 ? part : part.slice(0, nl)).trim()

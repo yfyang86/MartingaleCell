@@ -98,11 +98,14 @@ jobs:
       # SBCL/wasm second engine — skips (exit 0) when public/sbcl/ artifacts
       # are absent (they are ~112 MB, gitignored, copied in by
       # scripts/fetch-sbcl.mjs from a local sbcl wasm-dev build)
-      - name: SBCL/wasm engine test (skips without artifacts)
+      - name: SBCL/wasm engine test (real image from the tracked .gz artifacts)
         run: node scripts/sbcl-test.mjs --timeout-ms 180000
 
       - name: SBCL artifact loader (gzip) test — synthetic data, no artifacts needed
         run: node scripts/sbcl-artifact-test.mjs
+
+      - name: smoke summary formatter test
+        run: node scripts/smoke-summary-test.mjs
 
   smoke:
     name: browser smoke (label `smoke`, and pushes to dev)
@@ -145,6 +148,10 @@ jobs:
 
       - name: Browser scenarios
         run: node scripts/browser-smoke.mjs --json dist/smoke-report.json
+
+      - name: Summary on the job page
+        if: always()
+        run: node scripts/smoke-summary.mjs dist/smoke-report.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke report and screenshots
         if: always()

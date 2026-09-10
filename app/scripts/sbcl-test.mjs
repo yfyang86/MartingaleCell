@@ -17,9 +17,10 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
+/* plain or gzip'd (Sprint 26: only the .gz copies are tracked; the load hook below inflates them) */
 const artifacts = ['sbcl.wasm', 'sbcl.core', 'sbcl-core.wasm']
   .map((f) => path.join(publicDir, 'sbcl', f))
-if (!artifacts.every((p) => fs.existsSync(p))) {
+if (!artifacts.every((p) => fs.existsSync(p) || fs.existsSync(p + '.gz'))) {
   console.log('sbcl artifacts not present (public/sbcl/) — run scripts/fetch-sbcl.mjs; skipping')
   process.exit(0)
 }
@@ -74,12 +75,14 @@ const prelude = `
 const { parentPort } = require('node:worker_threads')
 const nodeFs = require('node:fs')
 const nodePath = require('node:path')
+const nodeZlib = require('node:zlib')
 const self = {
   postMessage: (m) => parentPort.postMessage(m),
   onmessage: null,
   __ccSbclLoadBytes: (p) => {
     const f = nodePath.join(${JSON.stringify(path.join(publicDir, 'sbcl'))}, nodePath.basename(p))
-    return nodeFs.readFileSync(f)
+    if (nodeFs.existsSync(f)) return nodeFs.readFileSync(f)
+    return nodeZlib.gunzipSync(nodeFs.readFileSync(f + '.gz')) /* only the .gz copies are tracked */
   },
 }
 globalThis.self = self

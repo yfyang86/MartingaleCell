@@ -23,7 +23,7 @@ const built = await esbuild.build({
   logLevel: 'silent',
 })
 const mod = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
-const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot, parseMarkdownTranscript, clipValue } = mod
+const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName, encodeBase64, parseGnuplot, parseMarkdownTranscript, parseLispTranscript, clipValue } = mod
 
 const plotSpec = parseGnuplot('set title "squares"\nplot "/tmp/d.dat" using 1:2 with lines title "y = x^2"\n', [{ path: '/tmp/d.dat', content: '0 0\n1 1\n2 4\n3 9\n' }])
 const base = { bufferName: undefined, warnings: [], values: [], stdout: '', durationMs: 12, startedAt: 0, restartsUsed: 0 }
@@ -159,6 +159,20 @@ const rlisp = buildLispTranscript(runs, { exportedAt: new Date(0) })
 check('export (.lisp): the cell comment carries the run label too', rlisp.includes(';;; ---- cell 3 · CL-USER · 12 ms · run 2/3 of cell 1 ----') && rlisp.includes(';;; ---- cell 2 · CL-USER · 12 ms ----'), rlisp.split('\n').filter((l) => l.startsWith(';;; ----')).join(' | '))
 const rback = parseMarkdownTranscript(rmd)
 check('import: `run k/N of cell m` parses to runOf (the first run\'s cell number); a lone cell has none', rback.map((c) => c.runOf).join() === '1,,1,1' && rback[3].durationMs === 12 && rback[3].values[0] === '12', JSON.stringify(rback.map((c) => [c.n, c.runOf])))
+
+/* .lisp transcript import (Sprint 26): the same cells as the Markdown round trip */
+const viaMd = parseMarkdownTranscript(buildMarkdownTranscript(cells, { exportedAt: new Date(0) }))
+const viaLisp = parseLispTranscript(buildLispTranscript(cells, { exportedAt: new Date(0) }))
+const strip = (c) => ({ n: c.n, pkg: c.pkg, input: c.input, status: c.status, stdout: c.stdout, values: c.values, error: c.error, errorType: c.errorType, resumedVia: c.resumedVia, durationMs: c.durationMs, kind: c.kind, files: c.project?.files.map((f) => [f.path, f.status, f.message ?? '']) })
+check('import (.lisp): the same number of cells as the Markdown import', viaLisp.length === viaMd.length && viaLisp.length === cells.length, `${viaLisp.length} vs ${viaMd.length}`)
+const diffs = viaMd.map((c, i) => [c.n, JSON.stringify(strip(c)) === JSON.stringify(strip(viaLisp[i]))]).filter(([, same]) => !same).map(([n]) => n)
+check('import (.lisp): input, package, values, output, error, resumption, duration and project files match the Markdown import cell by cell', diffs.length === 0, diffs.length ? `cells ${diffs.join(',')}: ${JSON.stringify(strip(viaMd[cells.findIndex((c) => c.n === diffs[0])]))} vs ${JSON.stringify(strip(viaLisp[cells.findIndex((c) => c.n === diffs[0])]))}` : '')
+check('import (.lisp): warnings arrive (one per exported line)', viaLisp[1].warnings.length >= 1 && viaLisp[1].warnings[0] === 'careful', JSON.stringify(viaLisp[1].warnings))
+const rlispBack = parseLispTranscript(rlisp)
+check('import (.lisp): the run label parses to runOf', rlispBack.map((c) => c.runOf).join() === '1,,1,1', JSON.stringify(rlispBack.map((c) => c.runOf)))
+const pkgSwitch = parseLispTranscript(';;; ---- cell 1 · CL-USER ----\n(defpackage :p (:use :cl))\n;;=> #<PACKAGE "P">\n\n;;; ---- cell 2 · P · 3 ms ----\n(in-package :p)\n(+ 1 1)\n;;=> 2\n')
+check('import (.lisp): the exporter\'s (in-package …) line for the section\'s own package is dropped, a user form stays', pkgSwitch[1].input === '(+ 1 1)' && pkgSwitch[1].pkg === 'P' && pkgSwitch[0].input === '(defpackage :p (:use :cl))', JSON.stringify(pkgSwitch.map((c) => c.input)))
+check('import (.lisp): no sections → no cells', parseLispTranscript('(defun f () 1)\n').length === 0)
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

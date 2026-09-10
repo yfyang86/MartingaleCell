@@ -10,7 +10,9 @@
  * With --check, only verifies presence and exits. With --gzip (Sprint 24),
  * also writes a gzip'd copy next to each artifact (sbcl.core.gz, …): the
  * worker fetches those first and inflates them in the browser, so about
- * a third of the bytes go over the wire.
+ * a third of the bytes go over the wire. Only the .gz copies are tracked
+ * in git (Sprint 26); the plain files stay local and are optional — the
+ * Node harness inflates the .gz copies when they are absent.
  */
 import fs from 'node:fs'
 import zlib from 'node:zlib'

@@ -26,7 +26,7 @@ pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
 pnpm test            # transcript, search, outline, editor-state, session-history, fold and lineage tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
-pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI on PRs labelled `smoke` and on pushes to dev); refuses a dist/ older than the sources (--allow-stale to override); --json writes a report
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI on PRs labelled `smoke` and on pushes to dev); refuses a dist/ older than the sources (--allow-stale to override); --json writes a report, scripts/smoke-summary.mjs renders it (the CI job page shows it)
 pnpm check           # lint + build + test
 ```
 
@@ -47,13 +47,14 @@ Superseded runs are cancelled on pull requests only, so a `dev` run always compl
 ## SBCL engine (experimental)
 
 Sprint 23 added the SBCL WebAssembly port (github.com/yfyang86/sbcl, branch `wasm-dev`) as a
-second engine, next to ECL. Its artifacts (~112 MB) are not in this repository:
+second engine, next to ECL. Its artifacts are tracked as gzip'd copies only (`public/sbcl/*.gz`,
+~19 MB); the plain files (~124 MB) are gitignored and optional:
 
 ```sh
-pnpm fetch:sbcl [path-to-sbcl-checkout] [--gzip]   # copies sbcl.wasm, sbcl.core, sbcl-core.wasm into public/sbcl/ (gitignored); --gzip also writes .gz copies the worker fetches first
-pnpm test:sbcl                                    # boots the real worker + image in a worker thread (skips when public/sbcl/ is empty)
+pnpm fetch:sbcl [path-to-sbcl-checkout] --gzip     # from a local sbcl build: writes the plain files and the .gz copies into public/sbcl/ (only the .gz are committed)
+pnpm test:sbcl                                    # boots the real worker + image in a worker thread from the .gz copies (inflated by the harness; skips if none are present)
 pnpm test:sbcl-artifacts                          # the gzip loader on synthetic data — no artifacts needed
-node scripts/browser-smoke.mjs --only sbcl        # the browser scenario: reported as skipped without the artifacts
+node scripts/browser-smoke.mjs --only sbcl        # the browser scenario: boots SBCL from the .gz copies (reported as skipped without them)
 ```
 
 In the IDE, Settings → "Lisp implementation" → `sbcl` boots SBCL on the next restart; ECL remains the
