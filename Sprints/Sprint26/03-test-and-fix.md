@@ -14,7 +14,8 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 57 / 57 in 9 scenarios, none skipped; `sbcl` boots in 21 s |
 | Summary render | `node scripts/smoke-summary.mjs dist/smoke-report.json` | the table above the failures section, slowest `persistence` 34 s |
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/26 — pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/26 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34484079073: `check` incl. the SBCL harness from the .gz copies in 1 min 12 s, the labelled `smoke` job in 1 min 52 s with the summary on the job page), merged as `b1122a1`.
+CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
 
 ## Fixes made along the way
 
