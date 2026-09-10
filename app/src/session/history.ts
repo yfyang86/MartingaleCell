@@ -49,3 +49,15 @@ export function sanitizeHistory(raw: unknown, cap = HISTORY_CAP): string[] {
   }
   return out
 }
+
+/** entries containing `query` (case-insensitive substring), newest first, capped — an empty query lists the newest entries */
+export function filterHistory(history: readonly string[], query: string, cap = 8): string[] {
+  const q = query.trim().toLowerCase()
+  const out: string[] = []
+  for (const h of history) {
+    if (q && !h.toLowerCase().includes(q)) continue
+    out.push(h)
+    if (out.length >= cap) break
+  }
+  return out
+}

@@ -1,6 +1,6 @@
 /* Session panel — notebook-style result cells with smart autoscroll. */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown, Download } from 'lucide-react'
 import { EditorState, Compartment } from '@codemirror/state'
@@ -9,7 +9,8 @@ import { autocompletion, completionKeymap, completionStatus, closeCompletion, st
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
-import { recallStep } from '@/session/history'
+import { recallStep, filterHistory } from '@/session/history'
+import { runIndexAll } from '@/session/lineage'
 import { CellView } from './Cell'
 import { copyText, pasteIntoEditor, exportSession } from './actions'
 import { clCompletionSource } from './completion'
@@ -30,6 +31,9 @@ const replTheme = EditorView.theme({
  * workspace store, so it survives a reload — Sprint 20). Completion is
  * the same source as the editor (CL core + project symbols) — Ctrl+Space
  * forces it, typing activates it. */
+const setText = (v: EditorView, text: string) =>
+  v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, selection: { anchor: text.length } })
+
 function ReplInput() {
   const packageName = useWorkspace((s) => s.packageName)
   const fontSize = useWorkspace((s) => s.settings.fontSize)
@@ -38,6 +42,17 @@ function ReplInput() {
   const viewRef = useRef<EditorView | null>(null)
   const themeComp = useRef(new Compartment())
   const histIdx = useRef(-1)
+  /* Ctrl+R: search the persisted history (Sprint 21) */
+  const [search, setSearch] = useState<{ query: string; sel: number } | null>(null)
+  const sessionHistory = useWorkspace((s) => s.sessionHistory)
+  const matches = useMemo(() => (search ? filterHistory(sessionHistory, search.query) : []), [search, sessionHistory])
+  const closeSearch = useCallback((recall?: string) => {
+    setSearch(null)
+    const v = viewRef.current
+    if (!v) return
+    if (recall !== undefined) { setText(v, recall); histIdx.current = -1 }
+    v.focus()
+  }, [])
 
   const submit = useCallback(() => {
     const v = viewRef.current
@@ -49,9 +64,6 @@ function ReplInput() {
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: '' } })
     void evaluateCode(text, undefined, { bufferId: '', from: 0, session: true })
   }, [])
-
-  const setText = (v: EditorView, text: string) =>
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, selection: { anchor: text.length } })
 
   const recall = (dir: 1 | -1): boolean => {
     const v = viewRef.current
@@ -102,6 +114,7 @@ function ReplInput() {
             },
             { key: 'ArrowUp', run: () => recall(1) },
             { key: 'ArrowDown', run: () => recall(-1) },
+            { key: 'Ctrl-r', run: () => { setSearch({ query: '', sel: 0 }); return true } },
             { key: 'Ctrl-Space', run: (v) => (completionStatus(v.state) !== null ? false : (startCompletion(v), true)) },
           ]),
           /* after ours → higher precedence: Enter accepts a completion when
@@ -120,8 +133,52 @@ function ReplInput() {
     viewRef.current?.dispatch({ effects: themeComp.current.reconfigure(clEditorTheme(fontSize, ligatures)) })
   }, [fontSize, ligatures])
 
+  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!search) return
+    const move = (d: number) => setSearch({ ...search, sel: matches.length ? (search.sel + d + matches.length) % matches.length : 0 })
+    if (e.key === 'ArrowDown' || (e.key === 'r' && e.ctrlKey)) { e.preventDefault(); move(1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+    else if (e.key === 'Enter') { e.preventDefault(); closeSearch(matches[search.sel]) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch() }
+  }
+
   return (
-    <div className="shrink-0 border-t border-hairline bg-panel px-3 py-2">
+    <div className="relative shrink-0 border-t border-hairline bg-panel px-3 py-2">
+      {search && (
+        <div data-testid="session-history-search" className="absolute inset-x-3 bottom-full z-20 mb-1 rounded-md border border-hairline bg-raised p-1.5 shadow-modal">
+          <div className="flex items-center gap-2 px-1 pb-1">
+            <span className="select-none font-mono text-[10.5px] uppercase tracking-wide text-muted">history</span>
+            <input
+              autoFocus
+              value={search.query}
+              onChange={(e) => setSearch({ query: e.target.value, sel: 0 })}
+              onKeyDown={onSearchKey}
+              onBlur={() => closeSearch()}
+              placeholder="type to search — ↑↓ or Ctrl R move, Enter recalls, Esc closes"
+              aria-label="Search session history"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-primary outline-none placeholder:text-muted"
+            />
+          </div>
+          {matches.length === 0 ? (
+            <div className="px-1 py-1 font-mono text-[11px] text-muted">{sessionHistory.length ? 'no match' : 'no history yet'}</div>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto">
+              {matches.map((m, i) => (
+                <li key={`${i}-${m}`}>
+                  <button
+                    type="button"
+                    className={`block w-full truncate rounded-sm px-1.5 py-0.5 text-left font-mono text-[11.5px] ${i === search.sel ? 'bg-steel-dim text-primary' : 'text-secondary hover:text-primary'}`}
+                    onMouseDown={(e) => { e.preventDefault(); closeSearch(m) }}
+                    title={m}
+                  >
+                    {m.split('\n')[0]}{m.includes('\n') ? ' …' : ''}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="flex items-start gap-2 rounded-md border border-hairline bg-inset px-2.5 py-0.5 transition-colors duration-150 focus-within:border-steel/50">
         <span className="mt-px select-none whitespace-nowrap py-1 font-mono text-[12px] text-steel">{packageName}&gt;</span>
         <div ref={hostRef} data-testid="session-input" className="min-w-0 flex-1 [&_.cm-editor]:bg-transparent" />
@@ -159,6 +216,8 @@ export default function SessionPanel() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [flashCell, setFlashCell] = useState<number | null>(null)
+  /* "run k/N" per cell, one pass per cells change (Sprint 21) */
+  const runs = useMemo(() => runIndexAll(cells), [cells])
 
   const warningCount = cells.reduce((n, c) => n + c.warnings.length, 0)
 
@@ -269,7 +328,7 @@ export default function SessionPanel() {
         {cells.length === 0 ? (
           <EmptySession />
         ) : (
-          cells.map((c) => <CellView key={c.id} cell={c} flash={flashCell === c.n} />)
+          cells.map((c) => <CellView key={c.id} cell={c} flash={flashCell === c.n} run={runs.get(c.id)} />)
         )}
       </div>
 

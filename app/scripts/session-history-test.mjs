@@ -16,7 +16,7 @@ const built = await esbuild.build({
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { pushHistory, recallStep, sanitizeHistory, HISTORY_CAP } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { pushHistory, recallStep, sanitizeHistory, filterHistory, HISTORY_CAP } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 /* push */
 let h = pushHistory([], '(+ 1 2)')
@@ -52,6 +52,13 @@ check('↑ on an empty history falls through', recallStep([], live, 1) === null)
 check('restore: non-arrays become an empty list', sanitizeHistory(undefined).length === 0 && sanitizeHistory('x').length === 0)
 check('restore: non-strings and blanks are dropped, adjacent repeats collapsed', JSON.stringify(sanitizeHistory(['(a)', 3, '', '(a)', ' (b) '])) === JSON.stringify(['(a)', '(b)']))
 check('restore: capped', sanitizeHistory(Array.from({ length: 500 }, (_, i) => `(f ${i})`)).length === HISTORY_CAP)
+
+/* search (Sprint 21) */
+const hist = ['(defun g () 2)', '(list :a 1)', '(defun f () 1)', '(+ 1 2)']
+check('filterHistory: substring, case-insensitive, newest first', JSON.stringify(filterHistory(hist, 'DEFUN')) === JSON.stringify(['(defun g () 2)', '(defun f () 1)']))
+check('filterHistory: an empty query lists the newest entries', JSON.stringify(filterHistory(hist, '  ')) === JSON.stringify(hist))
+check('filterHistory: capped', filterHistory(hist, '', 2).length === 2 && filterHistory(hist, '(', 3).length === 3)
+check('filterHistory: no match → empty', filterHistory(hist, 'zzz').length === 0)
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

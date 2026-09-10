@@ -39,6 +39,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
       { keys: ['Ctrl', 'Shift', 'L'], action: 'Clear session cells' },
       { keys: ['0', '–', '9'], action: 'Choose a restart while a cell is paused in the debugger' },
       { keys: ['Ctrl', 'D'], action: 'End of file for a cell waiting on standard input' },
+      { keys: ['Ctrl', 'R'], action: 'In the session box: search the input history (↑↓ move, Enter recalls); ↑ / ↓ alone walk it' },
     ],
   },
   {

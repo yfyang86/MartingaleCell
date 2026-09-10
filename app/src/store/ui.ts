@@ -35,6 +35,9 @@ interface UiState {
   searchOpts: SearchOptions
   /** dirty project buffer pending a close confirmation */
   confirmCloseBufferId: string | null
+  /** lineage id whose run history is open (Sprint 21) */
+  cellHistory: string | null
+  setCellHistory: (lineage: string | null) => void
   setPaletteOpen: (v: boolean) => void
   setSettingsOpen: (v: boolean) => void
   setShortcutsOpen: (v: boolean) => void
@@ -68,6 +71,8 @@ export const useUi = create<UiState>((set) => ({
   searchQuery: '',
   searchOpts: loadSearchOpts(),
   confirmCloseBufferId: null,
+  cellHistory: null,
+  setCellHistory: (cellHistory) => set({ cellHistory }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
