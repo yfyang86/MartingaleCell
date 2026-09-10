@@ -3,6 +3,7 @@ import { SectionDivider } from '@/components/docs/shared'
 import GettingStarted from '@/components/docs/GettingStarted'
 import FeatureMatrix from '@/components/docs/FeatureMatrix'
 import SessionCells from '@/components/docs/SessionCells'
+import Editor from '@/components/docs/Editor'
 import DebuggerSection from '@/components/docs/DebuggerSection'
 import Projects from '@/components/docs/Projects'
 import Modules from '@/components/docs/Modules'
@@ -21,6 +22,8 @@ export default function Docs() {
         <FeatureMatrix />
         <SectionDivider />
         <SessionCells />
+        <SectionDivider />
+        <Editor />
         <SectionDivider />
         <DebuggerSection />
         <SectionDivider />

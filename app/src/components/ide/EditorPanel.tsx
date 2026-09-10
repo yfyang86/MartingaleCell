@@ -19,7 +19,7 @@ import { indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON } from '@/editor/buffer-states'
+import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON, type SerializeCache } from '@/editor/buffer-states'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { useEditorMeta } from '@/store/editor-meta'
 import { clSyntaxExtension, clEditorTheme } from './cl-language'
@@ -258,13 +258,14 @@ function EditorSurface() {
   const shownBufferRef = useRef<string | null>(null)
   /* Sprint 18: stashed states (and the shown one) persist to IndexedDB so undo history survives a reload */
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const serializeCache = useRef<SerializeCache>(new Map())
   const persistStates = useCallback((immediate = false) => {
     if (persistTimer.current) clearTimeout(persistTimer.current)
     const run = () => {
       const v = viewRef.current
       const shown = shownBufferRef.current
       const live = v && shown ? { id: shown, state: v.state, scrollTop: v.scrollDOM.scrollTop } : null
-      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, { history: historyField }, live)).catch(() => {})
+      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, { history: historyField }, live, serializeCache.current)).catch(() => {})
     }
     if (immediate) run(); else persistTimer.current = setTimeout(run, 500)
   }, [])

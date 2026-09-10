@@ -8,6 +8,7 @@ export const DOC_SECTIONS = [
   { id: 'getting-started', label: 'Getting started' },
   { id: 'features', label: 'Feature support matrix' },
   { id: 'session', label: 'The session & cells' },
+  { id: 'editor', label: 'Editor & buffers' },
   { id: 'debugger', label: 'Debugger & restarts' },
   { id: 'projects', label: 'Projects' },
   { id: 'modules', label: 'Modules' },

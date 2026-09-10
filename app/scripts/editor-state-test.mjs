@@ -107,6 +107,25 @@ check('no active buffer → fresh empty state', rn.source === 'fresh' && rn.stat
   check('garbage or an older version yields an empty stash set', statesFromJSON(null, ext, { history: historyField }, ['P']).size === 0 && statesFromJSON({ version: 0, buffers: {} }, ext, { history: historyField }, ['P']).size === 0 && statesFromJSON({ version: 1, buffers: { P: { state: 'nope', scrollTop: 0 } } }, ext, { history: historyField }, ['P']).size === 0)
 }
 
+/* serialisation cache (Sprint 19) */
+{
+  const src = new BufferStates()
+  const a = type(fresh('(a)'), ' 1')
+  const b = type(fresh('(b)'), ' 2')
+  src.stash('A', a, 0); src.stash('B', b, 0)
+  const cache = new Map()
+  const j1 = statesToJSON(src, { history: historyField }, null, cache)
+  const j2 = statesToJSON(src, { history: historyField }, null, cache)
+  check('cache: unchanged states reuse the same JSON objects on the next save', j1.buffers.A.state === j2.buffers.A.state && j1.buffers.B.state === j2.buffers.B.state && cache.size === 2)
+  const a2 = type(a, ' more')
+  src.stash('A', a2, 5)
+  const j3 = statesToJSON(src, { history: historyField }, null, cache)
+  check('cache: a changed state is re-serialised, the other still reused; the new JSON restores the new document', j3.buffers.A.state !== j1.buffers.A.state && j3.buffers.B.state === j1.buffers.B.state && j3.buffers.A.scrollTop === 5 && statesFromJSON(JSON.parse(JSON.stringify(j3)), ext, { history: historyField }, ['A']).resolve('A', '(a) 1 more', fresh).source === 'restored')
+  src.prune(['A'])
+  statesToJSON(src, { history: historyField }, null, cache)
+  check('cache: entries for dropped buffers are evicted', cache.size === 1 && cache.has('A'))
+}
+
 console.log(results.join('\n'))
 const failed = results.filter((x) => x.startsWith('✗')).length
 console.log(failed ? `\nFAIL: ${failed} check(s) failed` : `\nPASS: ${results.length} checks passed`)
