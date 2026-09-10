@@ -36,4 +36,6 @@
 
 ## CI
 
+Pull request: https://github.com/yfyang86/ConsCell/pull/12
+
 CI on the pull request: to be recorded after the run.
