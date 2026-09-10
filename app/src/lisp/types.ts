@@ -124,6 +124,8 @@ export type WorkerInMessage =
 
 export type WorkerOutMessage =
   | { type: 'boot'; line: string }
+  /** an artifact streaming in (Sprint 27): bytes so far and the content length when the server sent one */
+  | { type: 'progress'; file: string; loaded: number; total: number | null }
   | { type: 'ready' }
   | { type: 'bootfail'; message: string }
   | { type: 'stdout'; id: number; text: string }

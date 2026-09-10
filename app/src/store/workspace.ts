@@ -6,6 +6,7 @@ import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
 import { pushHistory, sanitizeHistory } from '@/session/history'
+import { getEnginePref, setEnginePref, type EnginePref } from '@/lisp/engine-pref'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
 export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string } | { type: 'cell'; cellId: string; n: number }
@@ -110,6 +111,8 @@ export interface IdeSettings {
   verbosity: 'quiet' | 'normal' | 'verbose'
   /** pause in the interactive debugger on an unhandled error (ECL only) */
   debugOnError: boolean
+  /** Lisp implementation (Sprint 27): auto = ECL then JSCL then mock; ecl = ECL only; sbcl = SBCL, ECL if it cannot boot */
+  engine: EnginePref
 }
 
 export const DEFAULT_SETTINGS: IdeSettings = {
@@ -124,6 +127,7 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   printLength: 100,
   transcriptValueLimit: 0,
   verbosity: 'normal',
+  engine: 'auto',
   debugOnError: true,
 }
 
@@ -182,6 +186,8 @@ interface WorkspaceState {
   saveState: 'saved' | 'saving'
   bootLines: string[]
   bootFailed: boolean
+  /** an artifact streaming in during boot (Sprint 27) */
+  bootProgress: { file: string; loaded: number; total: number | null } | null
   mobileView: 'editor' | 'session' | 'log' | 'files'
 
   hydrate: () => Promise<void>
@@ -213,6 +219,7 @@ interface WorkspaceState {
   setSplits: (h: number, v: number) => void
   addBootLine: (line: string) => void
   setBootFailed: (v: boolean) => void
+  setBootProgress: (p: { file: string; loaded: number; total: number | null } | null) => void
   setMobileView: (v: 'editor' | 'session' | 'log' | 'files') => void
   flushSave: () => void
   resetWorkspace: () => void
@@ -273,6 +280,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     saveState: 'saved',
     bootLines: [],
     bootFailed: false,
+    bootProgress: null,
     mobileView: 'editor',
 
     hydrate: async () => {
@@ -286,19 +294,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
             activeBufferId: data.activeBufferId ?? data.buffers?.[0]?.id ?? null,
             cells: data.cells ?? [],
             cellCounter: data.cellCounter ?? (data.cells?.length ?? 0),
-            settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
+            /* settings saved before Sprint 27 have no `engine`: adopt the localStorage-only choice they were using */
+            settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}), engine: data.settings?.engine ?? getEnginePref() },
             splitH: data.splitH ?? 55,
             splitV: data.splitV ?? 60,
             sessionHistory: sanitizeHistory(data.sessionHistory),
           })
         } else {
-          set({ hydrated: true, freshVisit: true })
+          set({ hydrated: true, freshVisit: true, settings: { ...DEFAULT_SETTINGS, engine: getEnginePref() } })
         }
       } catch {
-        set({ hydrated: true, freshVisit: true })
+        set({ hydrated: true, freshVisit: true, settings: { ...DEFAULT_SETTINGS, engine: getEnginePref() } })
         get().addLog('WARN', 'STORAGE', 'Could not read workspace from IndexedDB — starting fresh')
       }
       const s = get()
+      /* keep the runtime's copy of the engine choice in step with the persisted setting (a reset or an import of settings must win) */
+      setEnginePref(s.settings.engine ?? 'auto')
       if (s.buffers.length === 0) {
         const id = s.newBuffer('scratch.lisp', WELCOME_CODE)
         set({ activeBufferId: id })
@@ -397,7 +408,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
     clearLogs: () => set({ logs: [] }),
 
-    setSettings: (patch) => { set((s) => ({ settings: { ...s.settings, ...patch } })); scheduleSave() },
+    setSettings: (patch) => {
+      set((s) => ({ settings: { ...s.settings, ...patch } }))
+      if (patch.engine) setEnginePref(patch.engine) /* the runtime reads localStorage at boot */
+      scheduleSave()
+    },
     setEngine: (status, label) => set((s) => ({
       engineStatus: status, engineLabel: label,
       bootDone: s.bootDone || status.startsWith('ready-'),
@@ -407,6 +422,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     setSplits: (h, v) => { set({ splitH: h, splitV: v }); scheduleSave() },
     addBootLine: (line) => set((s) => ({ bootLines: [...s.bootLines, line] })),
     setBootFailed: (v) => set({ bootFailed: v }),
+    setBootProgress: (bootProgress) => set({ bootProgress }),
     setMobileView: (v) => set({ mobileView: v }),
     flushSave: () => { if (saveTimer) clearTimeout(saveTimer); persist() },
     resetWorkspace: () => {
@@ -416,6 +432,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         buffers: [], activeBufferId: null, cells: [], cellCounter: 0,
         historyTrimmed: false, sessionHistory: [], settings: DEFAULT_SETTINGS, freshVisit: true,
       })
+      setEnginePref('auto') /* the engine choice resets with the workspace (Sprint 27) */
       const id = get().newBuffer('scratch.lisp', WELCOME_CODE)
       set({ activeBufferId: id })
     },

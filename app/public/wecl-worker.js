@@ -1377,6 +1377,46 @@ self.onmessage = function (ev) {
   self.WebAssembly = WA;
 })();
 
+/* ---- download progress (Sprint 27) ----
+ * The Emscripten glue fetches wecl.wasm itself; wrapping fetch for .wasm
+ * URLs hands it a Response whose body is counted on the way through, so
+ * the page can show "wecl.wasm 4.2 / 9.0 MB". Harness sandboxes without
+ * web streams get the original response. */
+(function () {
+  if (typeof self.fetch !== 'function') return;
+  var origFetch = self.fetch;
+  self.fetch = function (input, init) {
+    var url = String(input && input.url ? input.url : input);
+    var p = origFetch.apply(self, arguments);
+    if (!/\.wasm(\?|$)/.test(url)) return p;
+    return p.then(function (r) { return progressResponse(r, url.split('/').pop()); });
+  };
+})();
+
+function progressResponse(r, file) {
+  if (!r || !r.ok || !r.body || typeof ReadableStream !== 'function' || typeof Response !== 'function') return r;
+  var total = Number(r.headers && r.headers.get && r.headers.get('content-length')) || null;
+  var loaded = 0, last = 0;
+  var reader = r.body.getReader();
+  var stream = new ReadableStream({
+    pull: function (controller) {
+      return reader.read().then(function (res) {
+        if (res.done) {
+          controller.close();
+          self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total || loaded });
+          return;
+        }
+        loaded += res.value.byteLength;
+        var now = Date.now();
+        if (now - last > 80) { last = now; self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total }); }
+        controller.enqueue(res.value);
+      });
+    },
+    cancel: function () { return reader.cancel(); },
+  });
+  return new Response(stream, { status: r.status, statusText: r.statusText, headers: r.headers });
+}
+
 /* ---- boot sequence ---- */
 
 try {

@@ -5,8 +5,10 @@ import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Check, TriangleAlert } from 'lucide-react'
 
-export default function BootScreen({ lines, failed, onRetry, onDemo }: {
+export default function BootScreen({ lines, progress, failed, onRetry, onDemo }: {
   lines: string[]
+  /** an artifact streaming in (Sprint 27) */
+  progress?: { file: string; loaded: number; total: number | null } | null
   failed: boolean
   onRetry: () => void
   onDemo: () => void
@@ -17,7 +19,9 @@ export default function BootScreen({ lines, failed, onRetry, onDemo }: {
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight })
   }, [lines.length])
 
-  const progress = failed ? 1 : Math.min(0.97, lines.length / 6)
+  /* the bar follows the download while one is streaming, the boot-line count otherwise */
+  const mb = (n: number) => (n / 1e6).toFixed(1)
+  const fraction = failed ? 1 : progress && progress.total ? Math.min(0.97, progress.loaded / progress.total) : Math.min(0.97, lines.length / 6)
 
   return (
     <motion.div
@@ -71,11 +75,17 @@ export default function BootScreen({ lines, failed, onRetry, onDemo }: {
           <motion.div
             className="h-full"
             style={{ background: 'linear-gradient(120deg, #6EA8DC 0%, #A78BFA 100%)' }}
-            animate={{ width: `${Math.max(6, progress * 100)}%` }}
+            animate={{ width: `${Math.max(6, fraction * 100)}%` }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           />
         )}
       </div>
+
+      {!failed && progress && (
+        <p className="mt-2 font-mono text-[11px] text-muted" data-testid="boot-progress">
+          {progress.file} · {mb(progress.loaded)}{progress.total ? ` / ${mb(progress.total)}` : ''} MB
+        </p>
+      )}
 
       {failed && (
         <motion.div

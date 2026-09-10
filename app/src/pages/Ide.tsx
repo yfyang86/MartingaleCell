@@ -67,6 +67,7 @@ export default function Ide() {
   const engineStatus = useWorkspace((s) => s.engineStatus)
   const bootLines = useWorkspace((s) => s.bootLines)
   const bootFailed = useWorkspace((s) => s.bootFailed)
+  const bootProgress = useWorkspace((s) => s.bootProgress)
   const splitH = useWorkspace((s) => s.splitH)
   const splitV = useWorkspace((s) => s.splitV)
   const isNarrow = useMediaQuery('(max-width: 1023px)')
@@ -111,6 +112,8 @@ export default function Ide() {
           s.addLog(runtime.status === 'error' ? 'ERROR' : 'INFO', 'RUNTIME', `engine → ${names[runtime.status] ?? runtime.status}`)
         }
       })
+      runtime.subscribeProgress((p) => useWorkspace.getState().setBootProgress(p))
+      runtime.subscribeStatus(() => { if (runtime.status !== 'booting') useWorkspace.getState().setBootProgress(null) })
       runtime.subscribeBoot((line) => {
         const s = useWorkspace.getState()
         s.addBootLine(line)
@@ -317,6 +320,7 @@ export default function Ide() {
         {showBoot && (
           <BootScreen
             lines={bootLines}
+            progress={bootProgress}
             failed={bootFailed || (!bootDone && engineStatus === 'error')}
             onRetry={() => {
               useWorkspace.getState().setBootFailed(false)
