@@ -267,6 +267,37 @@ try {
   await page.getByText('Ln 3, Col 1').waitFor({ timeout: 10_000 })
   check('after a reload, F12 on `sq` uses the persisted index and follows the defun to its new line (buffer 1, Ln 3)', true)
 
+  /* Sprint 13: replace across open buffers — active one through the editor (undoable), the other through the store */
+  await page.keyboard.press('Control+Shift+F')
+  const box3 = page.locator('[data-testid="search-panel"] input[aria-label="Search workspace"]')
+  await box3.waitFor({ timeout: 5_000 })
+  await box3.fill('sq')
+  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-testid="search-panel"] button[title="Replace…"]').click()
+  const rbox = page.locator('[data-testid="search-panel"] input[aria-label="Replacement"]')
+  await rbox.waitFor({ timeout: 5_000 })
+  await rbox.fill('sq2')
+  await page.locator('[data-testid="search-panel"] button[title^="Replace all"]').click()
+  await page.locator('[data-testid="search-panel"] button[title^="Confirm"]').click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().includes('(defun sq2 (y) y)')
+  }, null, { timeout: 10_000 })
+  await box3.fill('sq2')
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="search-panel"] mark').length === 3, null, { timeout: 10_000 })
+  check('Replace all sq → sq2 rewrites both open buffers (3 hits of sq2 afterwards)', true)
+  await page.locator('.cm-content').first().click()
+  await page.keyboard.press('Control+z')
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().includes('(defun sq (y) y)')
+  }, null, { timeout: 10_000 })
+  check('Ctrl+Z in the editor undoes the replacement in the active buffer', true)
+  await page.keyboard.press('Control+Shift+F')
+  await box3.press('Escape')
+
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
   await page.locator('h1').first().waitFor({ timeout: 20_000 })
