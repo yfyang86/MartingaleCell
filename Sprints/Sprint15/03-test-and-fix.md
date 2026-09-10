@@ -37,4 +37,4 @@
 
 Pull request: https://github.com/yfyang86/ConsCell/pull/15
 
-CI on the pull request: to be recorded after the run.
+CI on the pull request: green — job "lint · build · wasm tests" run 34431091093 completed successfully on `3705baa` in 64 s (https://github.com/yfyang86/ConsCell/actions/runs/34431091093). Merged into `dev` as `d1ed3d8`.
