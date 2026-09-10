@@ -12,7 +12,7 @@
 | ECL comes back | `engine` scenario: sbcl → Restart → ecl → Restart | `(lisp-implementation-type)` → `"ECL"`, preference `ecl` after reload, `auto` after Reset workspace |
 
 CI on the pull request: https://github.com/yfyang86/ConsCell/pull/27 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34488555079: `check` in 1 min 8 s, the labelled `smoke` job in 2 min 19 s with the new `engine` scenario), merged as `da6c182`.
-CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
+CI on the merge commit on `dev`: https://github.com/yfyang86/ConsCell/actions/runs/34488964746 — completed, both jobs green in 2 min 36 s wall time (the `engine` scenario with its two engine restarts included).
 
 ## Fixes made along the way
 
