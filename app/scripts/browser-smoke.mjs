@@ -1,7 +1,7 @@
 /* Real-browser smoke test of the IDE (Chromium via Playwright), organised
  * as named scenarios (Sprint 19). In CI on pull requests labelled `smoke`
  * and on pushes to dev (the `smoke` job, Sprints 20–21); run it locally after `pnpm build`:
- *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs [--only a,b] [--list] [--allow-stale]
+ *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs [--only a,b] [--list] [--allow-stale] [--json report.json]
  * Each scenario runs in its own browser context (fresh IndexedDB), boots
  * the IDE and sets up its own state, so any one can run alone. Resolves
  * playwright from node_modules or the global npm root. Screenshots go to
@@ -22,7 +22,10 @@ const { chromium } = loadPlaywright()
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const base = process.env.SMOKE_URL || 'http://localhost:4173'
 const argv = process.argv.slice(2)
-const only = (argv[argv.indexOf('--only') + 1] || '').split(',').filter(Boolean)
+const only = (argv.includes('--only') ? argv[argv.indexOf('--only') + 1] || '' : '').split(',').filter(Boolean)
+const jsonOut = argv.includes('--json') ? argv[argv.indexOf('--json') + 1] : null
+/* a scenario throws this to be reported as skipped (neither passed nor failed) — e.g. the SBCL artifacts are absent */
+class SkipScenario extends Error {}
 
 /* Sprint 18: refuse to test a stale build — a `tsc` failure leaves the previous dist in place */
 {
@@ -426,10 +429,14 @@ const scenarios = {
     const modal = page.locator('[data-testid="cell-history"]')
     await modal.waitFor({ timeout: 5_000 })
     const cols = await modal.locator('thead th').count() - 1
-    const values = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').allTextContents()
+    const values = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-value')))
     const changed = await modal.locator('[data-testid="run-value-changed"]').count()
     const inputsChanged = await modal.locator('[data-testid="run-input-changed"]').count()
     check('the history view shows the three runs with values 1, 2, 3; the two later values marked changed, the input never', cols === 3 && values.join(',') === '1,2,3' && changed === 2 && inputsChanged === 0, `cols=${cols} values=${values} changed=${changed} input=${inputsChanged}`)
+    const valueDiffs = await modal.locator('[data-testid="run-value-diff"]').count()
+    const dels3 = await modal.locator('[data-testid="run-value-diff"]').last().locator('[data-diff="del"]').allTextContents()
+    const adds3 = await modal.locator('[data-testid="run-value-diff"]').last().locator('[data-diff="add"]').allTextContents()
+    check('a changed value shows its token diff against the run before (2 → 3: - 2 / + 3)', valueDiffs === 2 && dels3.join() === '2' && adds3.join() === '3', `diffs=${valueDiffs} del=${dels3} add=${adds3}`)
     await modal.locator('thead button').first().click()
     await modal.waitFor({ state: 'detached', timeout: 5_000 }) /* the exit animation */
     await page.locator('.cc-cell.ring-2').first().waitFor({ timeout: 5_000 })
@@ -468,7 +475,7 @@ const scenarios = {
     await page.locator('[data-testid="run-chip"]').last().click()
     await modal.waitFor({ timeout: 5_000 })
     const importedCols = await modal.locator('thead th').count() - 1
-    const importedValues = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').allTextContents()
+    const importedValues = await modal.locator('[data-testid="run-value"], [data-testid="run-value-changed"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-value')))
     await page.keyboard.press('Escape')
     await modal.waitFor({ state: 'detached', timeout: 5_000 })
     check('importing it re-links the runs: the imported cells carry run 1/4 … 4/4 of their own and the view shows their four values', chipsAfter.slice(4).join(' ') === 'run 1/4 run 2/4 run 3/4 run 4/4' && importedCols === 4 && importedValues.join(',') === '1,2,3,13', `chips=${chipsAfter.join(' ')} cols=${importedCols} values=${importedValues}`)
@@ -494,10 +501,26 @@ const scenarios = {
     await page.waitForFunction(`document.querySelector('[data-testid="session-input"] .cm-content').textContent.trim() === '(list :remembered 42)'`, null, { timeout: 5_000 })
     check('Ctrl+R lists the history newest first, a substring filters it, Enter recalls the entry into the box', listed === 2 && filtered.join('|') === '(list :remembered 42)' && (await searchBox.count()) === 0, `listed=${listed} filtered=${filtered.join('|')}`)
   },
+
+  /* Sprint 24: the SBCL/wasm engine, when its artifacts are in public/sbcl/ (plain or .gz) — skipped otherwise */
+  async sbcl({ page, check, setCode }) {
+    const have = (f) => fs.existsSync(path.join(root, 'public', 'sbcl', f)) || fs.existsSync(path.join(root, 'public', 'sbcl', f + '.gz'))
+    if (!['sbcl.wasm', 'sbcl.core', 'sbcl-core.wasm'].every(have)) throw new SkipScenario('SBCL artifacts not in public/sbcl/ (run scripts/fetch-sbcl.mjs)')
+    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'sbcl') } catch { /* private mode */ } })
+    await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    await page.locator('.cm-content').first().waitFor()
+    const label = await page.getByText('SBCL 2.4.8').first().count()
+    check('with the engine preference set to sbcl, the IDE boots SBCL/wasm (status bar SBCL · WASM, label SBCL 2.4.8)', label >= 1, String(label))
+    await setCode('(list :engine (lisp-implementation-type) (+ 40 2))')
+    await page.keyboard.press('Control+Enter')
+    await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:ENGINE"SBCL"42)'))`, null, { timeout: 60_000 })
+    check('a cell evaluates on SBCL: (:ENGINE "SBCL" 42)', true)
+  },
 }
 
-/* scenarios that do not need the IDE booted first */
-const NO_BOOT = new Set(['landing'])
+/* scenarios that do not need the IDE booted first (sbcl boots its own way) */
+const NO_BOOT = new Set(['landing', 'sbcl'])
 
 if (argv.includes('--list')) { console.log(Object.keys(scenarios).join('\n')); process.exit(0) }
 const selected = only.length ? only : Object.keys(scenarios)
@@ -507,13 +530,16 @@ if (unknown.length) { console.error(`unknown scenario(s): ${unknown.join(', ')} 
 /* ---- runner ---- */
 
 const results = []
+const report = { startedAt: new Date().toISOString(), base, scenarios: [] }
 const browser = await chromium.launch({ headless: true })
 for (const name of selected) {
+  const entry = { name, seconds: 0, checks: [], skipped: null }
+  report.scenarios.push(entry)
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 } })
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
-  const check = (label, ok, detail = '') => results.push(`${ok ? '✓' : '✗'} [${name}] ${label}${ok || !detail ? '' : `\n    ${detail}`}`)
+  const check = (label, ok, detail = '') => { entry.checks.push({ label, ok: !!ok, detail: ok ? '' : String(detail) }); results.push(`${ok ? '✓' : '✗'} [${name}] ${label}${ok || !detail ? '' : `\n    ${detail}`}`) }
   const t = tools(page, check)
   const t0 = Date.now()
   try {
@@ -521,15 +547,26 @@ for (const name of selected) {
     await scenarios[name](t)
     check('no uncaught page errors', errors.length === 0, errors.join(' | '))
   } catch (e) {
-    check('scenario completed', false, e?.message ?? String(e))
-    await page.screenshot({ path: path.join(root, 'dist', `smoke-failure-${name}.png`) }).catch(() => {})
+    if (e instanceof SkipScenario) {
+      entry.skipped = e.message
+      results.push(`– [${name}] skipped: ${e.message}`)
+    } else {
+      check('scenario completed', false, e?.message ?? String(e))
+      const shot = path.join(root, 'dist', `smoke-failure-${name}.png`)
+      await page.screenshot({ path: shot }).then(() => { entry.screenshot = shot }).catch(() => {})
+    }
   } finally {
-    console.error(`  ${name}: ${((Date.now() - t0) / 1000).toFixed(1)} s`)
+    entry.seconds = Number(((Date.now() - t0) / 1000).toFixed(1))
+    console.error(`  ${name}: ${entry.seconds} s`)
     await context.close()
   }
 }
 await browser.close()
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
-console.log(failed ? `\nFAIL: ${failed} check(s) failed` : `\nPASS: ${results.length} checks passed`)
+const skipped = results.filter((r) => r.startsWith('–')).length
+const passed = results.length - failed - skipped
+report.passed = passed; report.failed = failed; report.skipped = skipped; report.finishedAt = new Date().toISOString()
+if (jsonOut) { fs.mkdirSync(path.dirname(path.resolve(jsonOut)), { recursive: true }); fs.writeFileSync(jsonOut, JSON.stringify(report, null, 2) + '\n'); console.error(`  report: ${jsonOut}`) }
+console.log(failed ? `\nFAIL: ${failed} check(s) failed${skipped ? `, ${skipped} scenario(s) skipped` : ''}` : `\nPASS: ${passed} checks passed${skipped ? `, ${skipped} scenario(s) skipped` : ''}`)
 process.exit(failed ? 1 : 0)
