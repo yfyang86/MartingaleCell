@@ -101,6 +101,9 @@ jobs:
       - name: SBCL/wasm engine test (skips without artifacts)
         run: node scripts/sbcl-test.mjs --timeout-ms 180000
 
+      - name: SBCL artifact loader (gzip) test — synthetic data, no artifacts needed
+        run: node scripts/sbcl-artifact-test.mjs
+
   smoke:
     name: browser smoke (label `smoke`, and pushes to dev)
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke'))
@@ -143,12 +146,14 @@ jobs:
           curl -sf http://localhost:4173/ > /dev/null
 
       - name: Browser scenarios
-        run: node scripts/browser-smoke.mjs
+        run: node scripts/browser-smoke.mjs --json dist/smoke-report.json
 
-      - name: Screenshots
-        if: failure()
+      - name: Smoke report and screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-screenshots
-          path: app/dist/smoke-*.png
+          name: smoke-report
+          path: |
+            app/dist/smoke-report.json
+            app/dist/smoke-*.png
           if-no-files-found: ignore

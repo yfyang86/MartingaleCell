@@ -1572,19 +1572,51 @@ function hostInstantiate(ptr, len, regArea, tableBase) {
 /* Boot                                                                */
 /* ------------------------------------------------------------------ */
 
+/* Sprint 24: a gzip'd copy next to an artifact (scripts/fetch-sbcl.mjs
+ * --gzip) is fetched first — about a third of the bytes over the wire —
+ * and inflated here. A copy the server already decoded (Content-Encoding)
+ * arrives without the gzip magic and is used as is; an HTML answer (a SPA
+ * fallback for a missing file) is refused; anything else falls back to
+ * the plain artifact. */
+function isGzip(bytes) {
+  var u8 = new Uint8Array(bytes)
+  return u8.length > 2 && u8[0] === 0x1f && u8[1] === 0x8b
+}
+
+function gunzipBytes(bytes) {
+  if (!isGzip(bytes)) return Promise.resolve(bytes)
+  if (typeof DecompressionStream !== 'function') return Promise.reject(new Error('gzip artifact but DecompressionStream is unavailable'))
+  var stream = new Blob([new Uint8Array(bytes)]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return new Response(stream).arrayBuffer()
+}
+
+function fetchGzipArtifact(path) {
+  return fetch(path + '.gz').then(function (r) {
+    if (!r.ok) return null
+    var type = String(r.headers && r.headers.get ? r.headers.get('content-type') || '' : '')
+    return r.arrayBuffer().then(function (bytes) {
+      if (!isGzip(bytes) && /text\/html/i.test(type)) return null /* SPA fallback page, not an artifact */
+      return gunzipBytes(bytes)
+    })
+  }).catch(function () { return null })
+}
+
 function loadArtifactBytes(path) {
   /* harness hook: Node can hand us the bytes without fetch */
   if (typeof self.__ccSbclLoadBytes === 'function') return Promise.resolve(self.__ccSbclLoadBytes(path))
-  return fetch(path).then(function (r) {
-    if (!r.ok) throw new Error(path + ' → HTTP ' + r.status)
-    return r.arrayBuffer()
+  return fetchGzipArtifact(path).then(function (bytes) {
+    if (bytes) return bytes
+    return fetch(path).then(function (r) {
+      if (!r.ok) throw new Error(path + ' → HTTP ' + r.status)
+      return r.arrayBuffer()
+    })
   })
 }
 
 function boot() {
   phase = 'loading'
   var artifactBase = typeof self.__CC_SBCL_BASE === 'string' ? self.__CC_SBCL_BASE : '/sbcl/'
-  bootLine('SBCL/wasm host boot — fetching ' + artifactBase + '{sbcl.wasm,sbcl.core,sbcl-core.wasm} (~112 MB)')
+  bootLine('SBCL/wasm host boot — fetching ' + artifactBase + '{sbcl.wasm,sbcl.core,sbcl-core.wasm} (~112 MB, or their .gz copies)')
   var runtimeBytes, coreBytes, coreModuleBytes
   loadArtifactBytes(artifactBase + 'sbcl.wasm')
     .then(function (b) {

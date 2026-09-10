@@ -26,7 +26,7 @@ pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
 pnpm test            # transcript, search, outline, editor-state, session-history, fold and lineage tests (pure TS) + boot + package + settings + debugger + stdin + perf-floor tests (real wasm, Node)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
-pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI on PRs labelled `smoke` and on pushes to dev); refuses a dist/ older than the sources (--allow-stale to override)
+pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (in CI on PRs labelled `smoke` and on pushes to dev); refuses a dist/ older than the sources (--allow-stale to override); --json writes a report
 pnpm check           # lint + build + test
 ```
 
@@ -43,6 +43,21 @@ pull request and on pushes to `dev` (docs-only pushes under `Sprints/` start no 
 that carry the `smoke` label — add the label to opt a PR in — and on every push to `dev`, as a report
 on the merge commit; on failure the scenario screenshots are attached as a workflow artifact.
 Superseded runs are cancelled on pull requests only, so a `dev` run always completes.
+
+## SBCL engine (experimental)
+
+Sprint 23 added the SBCL WebAssembly port (github.com/yfyang86/sbcl, branch `wasm-dev`) as a
+second engine, next to ECL. Its artifacts (~112 MB) are not in this repository:
+
+```sh
+pnpm fetch:sbcl [path-to-sbcl-checkout] [--gzip]   # copies sbcl.wasm, sbcl.core, sbcl-core.wasm into public/sbcl/ (gitignored); --gzip also writes .gz copies the worker fetches first
+pnpm test:sbcl                                    # boots the real worker + image in a worker thread (skips when public/sbcl/ is empty)
+pnpm test:sbcl-artifacts                          # the gzip loader on synthetic data — no artifacts needed
+node scripts/browser-smoke.mjs --only sbcl        # the browser scenario: reported as skipped without the artifacts
+```
+
+In the IDE, Settings → "Lisp implementation" → `sbcl` boots SBCL on the next restart; ECL remains the
+default and the fallback when the artifacts are missing.
 
 ## How it is put together
 
