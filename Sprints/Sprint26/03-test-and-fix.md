@@ -14,7 +14,7 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 57 / 57 in 9 scenarios, none skipped; `sbcl` boots in 21 s |
 | Summary render | `node scripts/smoke-summary.mjs dist/smoke-report.json` | the table above the failures section, slowest `persistence` 34 s |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/26 — pending.
 
 ## Fixes made along the way
 
