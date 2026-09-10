@@ -99,6 +99,8 @@ export interface IdeSettings {
   autoEvalOnSave: boolean
   /** `*print-length*` in the image; 0 = unlimited */
   printLength: number
+  /** transcript export: clip values longer than this many characters (0 = whole) */
+  transcriptValueLimit: number
   /** how boot lines / engine noise land in the log */
   verbosity: 'quiet' | 'normal' | 'verbose'
   /** pause in the interactive debugger on an unhandled error (ECL only) */
@@ -115,6 +117,7 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   evalMode: 'eval',
   autoEvalOnSave: false,
   printLength: 100,
+  transcriptValueLimit: 0,
   verbosity: 'normal',
   debugOnError: true,
 }

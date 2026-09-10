@@ -162,6 +162,8 @@ function TabBar() {
             )}
             onClick={() => setActiveBuffer(b.id)}
             onContextMenu={(e) => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, id: b.id }) }}
+            data-testid="buffer-tab"
+            data-active={active ? 'true' : undefined}
           >
             <span className="text-[11px] text-muted">λ</span>
             {renaming === b.id ? (
@@ -245,7 +247,7 @@ function EditorSurface() {
   const [menu, setMenu] = useState<MenuState | null>(null)
   /* Sprint 14: one EditorState per buffer so undo history never crosses a buffer switch */
   const extensionsRef = useRef<Extension[]>([])
-  const statesRef = useRef(new Map<string, EditorState>())
+  const statesRef = useRef(new Map<string, { state: EditorState; scrollTop: number }>())
   const shownBufferRef = useRef<string | null>(null)
   const themeComp = useRef(new Compartment())
   const rainbowComp = useRef(new Compartment())
@@ -448,11 +450,19 @@ function EditorSurface() {
       if (v.state.doc.toString() !== content) { v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: content } }); updateMeta(v) }
       return
     }
-    if (prev) statesRef.current.set(prev, v.state)
+    if (prev) statesRef.current.set(prev, { state: v.state, scrollTop: v.scrollDOM.scrollTop })
     for (const id of [...statesRef.current.keys()]) if (!ws.buffers.some((b) => b.id === id)) statesRef.current.delete(id)
     const saved = activeBufferId ? statesRef.current.get(activeBufferId) : undefined
-    if (saved && saved.doc.toString() === content) v.setState(saved)
-    else v.setState(EditorState.create({ doc: content, extensions: extensionsRef.current }))
+    if (saved) {
+      /* Sprint 15: an edit made through the store while the buffer was away (a replace, a
+       * loaded transcript) becomes one undo step of that buffer instead of wiping its history */
+      const st = saved.state
+      v.setState(st.doc.toString() === content ? st : st.update({ changes: { from: 0, to: st.doc.length, insert: content }, userEvent: 'input.replace' }).state)
+      const top = saved.scrollTop
+      requestAnimationFrame(() => { if (viewRef.current === v && shownBufferRef.current === activeBufferId) v.scrollDOM.scrollTop = top })
+    } else {
+      v.setState(EditorState.create({ doc: content, extensions: extensionsRef.current }))
+    }
     shownBufferRef.current = activeBufferId
     updateMeta(v)
   }, [activeBufferId, updateMeta])

@@ -11,6 +11,14 @@ export interface TranscriptMeta {
   engine?: string
   /** export time; defaults to now */
   exportedAt?: Date
+  /** truncate each value longer than this many characters (0 / undefined = whole values) */
+  valueLimit?: number
+}
+
+/** `value` cut at `limit` characters with an ellipsis and the original length; unchanged when it fits or limit is off. */
+export function clipValue(value: string, limit?: number): string {
+  if (!limit || limit <= 0 || value.length <= limit) return value
+  return `${value.slice(0, limit)}… [${value.length} chars]`
 }
 
 /* ---- helpers ---- */
@@ -78,7 +86,7 @@ function projectTable(files: ProjectFileStatus[]): string {
   return ['| File | Status | Message |', '|---|---|---|', ...rows].join('\n')
 }
 
-function markdownCell(cell: Cell): string {
+function markdownCell(cell: Cell, limit?: number): string {
   const out: string[] = []
   const dur = durationLabel(cell)
   const head = cell.kind === 'project'
@@ -96,7 +104,7 @@ function markdownCell(cell: Cell): string {
   }
 
   if (cell.stdout) out.push('**Output**\n' + fence('text', cell.stdout))
-  if (cell.values.length && !cell.error) out.push(fence('lisp', cell.values.map((v) => `;;=> ${v}`).join('\n')))
+  if (cell.values.length && !cell.error) out.push(fence('lisp', cell.values.map((v) => `;;=> ${clipValue(v, limit)}`).join('\n')))
   for (const w of cell.warnings) out.push(`> ⚠️ ${w.replace(/\n/g, '\n> ')}`)
   if (cell.error) {
     const type = cell.errorType ? ` \`${cell.errorType}\`` : ''
@@ -121,7 +129,7 @@ export function buildMarkdownTranscript(cells: Cell[], meta: TranscriptMeta = {}
   const parts = [
     '# ConsCell session',
     `Exported ${formatStamp(when)}${meta.engine ? ` · ${meta.engine}` : ''} · ${cells.length} cell${cells.length === 1 ? '' : 's'}`,
-    ...cells.map(markdownCell),
+    ...cells.map((c) => markdownCell(c, meta.valueLimit)),
   ]
   return parts.join('\n\n') + '\n'
 }
@@ -130,7 +138,7 @@ export function buildMarkdownTranscript(cells: Cell[], meta: TranscriptMeta = {}
 
 const comment = (prefix: string, text: string) => text.replace(/\n$/, '').split('\n').map((l) => `${prefix}${l}`).join('\n')
 
-function lispCell(cell: Cell, prevPkg: string | null): { text: string; pkg: string | null } {
+function lispCell(cell: Cell, prevPkg: string | null, limit?: number): { text: string; pkg: string | null } {
   const out: string[] = []
   const dur = durationLabel(cell)
   if (cell.kind === 'project') {
@@ -146,7 +154,7 @@ function lispCell(cell: Cell, prevPkg: string | null): { text: string; pkg: stri
   if (cell.stdout) out.push(comment(';; OUT ', cell.stdout))
   for (const w of cell.warnings) out.push(comment(';; WARNING: ', w))
   if (cell.error) out.push(comment(`;; ERROR${cell.errorType ? ` (${cell.errorType})` : ''}: `, cell.error))
-  else for (const v of cell.values) out.push(`;;=> ${v}`)
+  else for (const v of cell.values) out.push(`;;=> ${clipValue(v, limit)}`)
   if (cell.resumedVia) out.push(`;; resumed via ${cell.resumedVia}`)
   const st = stateLine(cell)
   if (st) out.push(`;; ${st}`)
@@ -163,7 +171,7 @@ export function buildLispTranscript(cells: Cell[], meta: TranscriptMeta = {}): s
   const body: string[] = []
   let pkg: string | null = null
   for (const c of cells) {
-    const r = lispCell(c, pkg)
+    const r = lispCell(c, pkg, meta.valueLimit)
     body.push(r.text)
     pkg = r.pkg
   }

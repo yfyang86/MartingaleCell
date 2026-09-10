@@ -153,8 +153,15 @@ export default function SettingsDrawer() {
                     onChange={(v) => setSettings({ printLength: v })}
                   />
                 </Row>
+                <Row label="Transcript value limit">
+                  <Slider
+                    value={settings.transcriptValueLimit ?? 0} min={0} max={2000} step={100}
+                    format={(v) => (v === 0 ? 'whole' : `${v} chars`)}
+                    onChange={(v) => setSettings({ transcriptValueLimit: v })}
+                  />
+                </Row>
                 <p className="text-[11px] leading-snug text-muted">
-                  compile: each form goes through the bytecodes compiler first. Print length sets <code className="font-mono">*print-length*</code> in the image (nil = unlimited).
+                  compile: each form goes through the bytecodes compiler first. Print length sets <code className="font-mono">*print-length*</code> in the image (nil = unlimited). The transcript value limit clips long values in exported transcripts (whole = as printed).
                 </p>
               </Section>
               <Section title="Runtime">

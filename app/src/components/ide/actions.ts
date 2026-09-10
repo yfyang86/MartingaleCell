@@ -461,7 +461,7 @@ export async function exportSession(format: 'md' | 'lisp') {
   const cells = useWorkspace.getState().cells
   if (!cells.length) { toast('Nothing to export — the session is empty'); return }
   const { buildMarkdownTranscript, buildLispTranscript, transcriptFileName } = await import('@/session/transcript')
-  const meta = { engine: engineLabel(), exportedAt: new Date() }
+  const meta = { engine: engineLabel(), exportedAt: new Date(), valueLimit: useWorkspace.getState().settings.transcriptValueLimit || 0 }
   const text = format === 'md' ? buildMarkdownTranscript(cells, meta) : buildLispTranscript(cells, meta)
   const name = transcriptFileName(format, meta.exportedAt)
   downloadText(text, name, format === 'md' ? 'text/markdown;charset=utf-8' : 'text/x-common-lisp;charset=utf-8')
