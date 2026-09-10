@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { runtime, getEnginePref, setEnginePref } from '@/lisp/runtime'
+import { runtime } from '@/lisp/runtime'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -172,16 +172,23 @@ export default function SettingsDrawer() {
                 </div>
                 <Row label="Lisp implementation">
                   <Segmented
-                    value={getEnginePref()}
-                    options={['auto', 'sbcl']}
+                    value={settings.engine}
+                    options={['auto', 'ecl', 'sbcl']}
                     onChange={(v) => {
-                      setEnginePref(v)
-                      toast(v === 'sbcl'
-                        ? 'SBCL/wasm will boot on the next runtime restart (artifacts needed at /sbcl/)'
-                        : 'ECL boots again on the next runtime restart')
+                      if (v === settings.engine) return
+                      setSettings({ engine: v })
+                      toast(
+                        v === 'sbcl' ? 'SBCL/wasm boots on the next restart (ECL if its artifacts are missing)'
+                          : v === 'ecl' ? 'ECL boots on the next restart — no fallback to another engine'
+                            : 'Automatic: ECL, then JSCL, then the demo interpreter',
+                        { action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') } },
+                      )
                     }}
                   />
                 </Row>
+                <p className="mt-1 font-mono text-[10.5px] text-muted">
+                  auto: ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
+                </p>
                 <Row label="Log verbosity">
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />
                 </Row>

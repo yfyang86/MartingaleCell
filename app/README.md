@@ -57,8 +57,11 @@ pnpm test:sbcl-artifacts                          # the gzip loader on synthetic
 node scripts/browser-smoke.mjs --only sbcl        # the browser scenario: boots SBCL from the .gz copies (reported as skipped without them)
 ```
 
-In the IDE, Settings → "Lisp implementation" → `sbcl` boots SBCL on the next restart; ECL remains the
-default and the fallback when the artifacts are missing.
+In the IDE, Settings → "Lisp implementation" offers `auto` (ECL, then JSCL, then the demo
+interpreter), `ecl` (ECL only — a boot failure stays a failure with Retry) and `sbcl` (SBCL/wasm,
+ECL if its artifacts are missing or it cannot boot). The choice is part of the workspace settings
+(reset with the workspace) and takes effect on Restart Lisp image; the boot screen shows each
+artifact's download progress.
 
 ## How it is put together
 

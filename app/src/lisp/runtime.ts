@@ -20,15 +20,8 @@ const MODULES_IDB_KEY = 'conscell-modules-v1'
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
-/** Settings-drawer engine preference ('auto' | 'sbcl'); SBCL is tried first when set. */
-const ENGINE_PREF_KEY = 'conscell-engine-pref'
-
-export function getEnginePref(): 'auto' | 'sbcl' {
-  try { return localStorage.getItem(ENGINE_PREF_KEY) === 'sbcl' ? 'sbcl' : 'auto' } catch { return 'auto' }
-}
-export function setEnginePref(p: 'auto' | 'sbcl') {
-  try { localStorage.setItem(ENGINE_PREF_KEY, p) } catch { /* private mode */ }
-}
+import { getEnginePref, setEnginePref, type EnginePref } from './engine-pref'
+export { getEnginePref, setEnginePref, type EnginePref }
 
 /* the sbcl worker's shared-buffer layout (public/sbcl-worker.js) */
 const SBCL_MAILBOX_OFF = 8192
@@ -194,6 +187,7 @@ class LispRuntime {
   private nextId = 1
   private statusListeners = new Set<Listener>()
   private bootListeners = new Set<(line: string) => void>()
+  private progressListeners = new Set<(p: { file: string; loaded: number; total: number | null }) => void>()
   private jsclEval: ((code: string) => Promise<EvalResult>) | null = null
   private bootPromise: Promise<void> | null = null
   /** pending modules-snapshot/restore round-trips (ids ≥ 1e6, disjoint from eval jobs). */
@@ -204,6 +198,11 @@ class LispRuntime {
   subscribeBoot(fn: (line: string) => void): () => void { this.bootListeners.add(fn); return () => this.bootListeners.delete(fn) }
   private emitStatus() { this.statusListeners.forEach((f) => f()) }
   private emitBoot(line: string) { this.bootListeners.forEach((f) => f(line)) }
+  /** artifact download progress while an engine boots (Sprint 27) */
+  subscribeProgress(f: (p: { file: string; loaded: number; total: number | null }) => void): () => void {
+    this.progressListeners.add(f)
+    return () => this.progressListeners.delete(f)
+  }
 
   private setStatus(s: EngineStatus, engine: EngineKind, label: string) {
     this.status = s
@@ -244,12 +243,14 @@ class LispRuntime {
     return this.eval(`(setf *print-length* ${v})`)
   }
 
-  /** Boot the best available engine. Safe to call again after failure (retry). */
+  /** Boot the engine the preference asks for (see engine-pref.ts). Safe to call again after failure (retry). */
   init(): Promise<void> {
     if (this.bootPromise) return this.bootPromise
     this.setStatus('booting', null, '')
+    const pref = getEnginePref()
+    this.emitBoot(`engine preference: ${pref}${pref === 'auto' ? ' (ECL, then JSCL, then the mock)' : pref === 'ecl' ? ' (ECL only)' : ' (SBCL, ECL if it cannot boot)'}`)
     this.bootPromise = (async () => {
-      if (getEnginePref() === 'sbcl') {
+      if (pref === 'sbcl') {
         try {
           await this.bootSbcl()
         } catch (e) {
@@ -270,6 +271,13 @@ class LispRuntime {
         this.emitBoot(`ECL/WASM boot failed: ${e?.message ?? e}`)
         this.killWorker()
         this.sbclSab = null
+        if (pref === 'ecl') {
+          /* an explicit ECL choice does not fall through to JSCL or the mock: the boot screen offers Retry / demo */
+          this.emitBoot('Lisp implementation is set to ecl — not falling back to another engine')
+          this.setStatus('error', null, '')
+          this.bootPromise = null /* Retry (restart) or a later init() may try again */
+          return
+        }
         try {
           this.jsclEval = await loadJsclEngine((l) => this.emitBoot(l))
           this.setStatus('ready-jscl', 'jscl', 'JSCL 0.9.0 · js')
@@ -342,6 +350,9 @@ class LispRuntime {
         switch (m.type) {
           case 'boot':
             this.emitBoot(m.line)
+            break
+          case 'progress':
+            this.progressListeners.forEach((f) => f({ file: m.file, loaded: m.loaded, total: m.total }))
             break
           case 'ready':
             if (!settled) {
