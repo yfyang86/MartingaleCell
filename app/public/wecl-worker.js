@@ -272,8 +272,10 @@ var CC_HELPER_SRC = [
   '                      (return-from eval-one nil)))))',
   /* one ;;=> line per value: a value that prints with spaces (#<"SMOKE" package>)
    * is still one value main-side (Sprint 12) */
+  /* *print-pretty* nil: the pretty printer would wrap a long value over
+   * several lines and only the first would be taken as the value (Sprint 13) */
   '        (if vals',
-  '            (dolist (v vals) (format t "~&;;=> ~S~%" v))',
+  '            (let ((*print-pretty* nil)) (dolist (v vals) (format t "~&;;=> ~S~%" v)))',
   '            (format t "~&;;=> ; no values~%"))',
   '        t)',
   '    (serious-condition (e)',
