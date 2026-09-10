@@ -14,13 +14,13 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { BufferStates, scheduleScrollRestore } from './src/editor/buffer-states'\nexport { EditorState } from '@codemirror/state'\nexport { history, undo, redo, undoDepth, redoDepth } from '@codemirror/commands'\n",
+    contents: "export { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON } from './src/editor/buffer-states'\nexport { EditorState } from '@codemirror/state'\nexport { history, historyField, undo, redo, undoDepth, redoDepth } from '@codemirror/commands'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { BufferStates, scheduleScrollRestore, EditorState, history, undo, redo, undoDepth, redoDepth } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON, EditorState, history, historyField, undo, redo, undoDepth, redoDepth } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 /* newGroupDelay 0: adjacent edits are separate undo events (the default groups typing within 500 ms, which in Node is every edit) */
 const ext = [history({ newGroupDelay: 0 })]
@@ -81,6 +81,30 @@ check('no active buffer → fresh empty state', rn.source === 'fresh' && rn.stat
   scheduleScrollRestore(500, () => false, (t) => applied.push(t), schedule)
   queued()
   check('…but skipped when another buffer took over in between', applied.join() === '2000')
+}
+
+/* persistence round trip (Sprint 18) */
+{
+  const src = new BufferStates()
+  let p = fresh('(p)')
+  p = type(p, '\n(q)')
+  p = type(p, '\n(r)')
+  src.stash('P', p, 321)
+  let live = fresh('(live)')
+  live = type(live, ' more')
+  const json = statesToJSON(src, { history: historyField }, { id: 'L', state: live, scrollTop: 9 })
+  const text = JSON.stringify(json)
+  check('toJSON: version 1, one entry per stash plus the live buffer, JSON-serialisable', json.version === 1 && Object.keys(json.buffers).sort().join() === 'L,P' && text.length > 0)
+  const back = statesFromJSON(JSON.parse(text), ext, { history: historyField }, ['P', 'L'])
+  const rp = back.resolve('P', '(p)\n(q)\n(r)', fresh)
+  check('fromJSON: the stash is restored with its document, 2 undo steps and scroll 321', rp.source === 'restored' && rp.state.doc.toString() === '(p)\n(q)\n(r)' && undoDepth(rp.state) === 2 && rp.scrollTop === 321, `${rp.source} depth=${undoDepth(rp.state)} scroll=${rp.scrollTop}`)
+  const u = run(undo, rp.state)
+  check('…and undo after the round trip undoes the last edit made before it', u.doc.toString() === '(p)\n(q)', u.doc.toString())
+  const rl = back.resolve('L', '(live) more', fresh)
+  check('the live buffer round-trips too (1 undo step)', rl.source === 'restored' && undoDepth(rl.state) === 1)
+  const pruned = statesFromJSON(JSON.parse(text), ext, { history: historyField }, ['P'])
+  check('entries whose buffer no longer exists are dropped on load', pruned.has('P') && !pruned.has('L') && pruned.size === 1)
+  check('garbage or an older version yields an empty stash set', statesFromJSON(null, ext, { history: historyField }, ['P']).size === 0 && statesFromJSON({ version: 0, buffers: {} }, ext, { history: historyField }, ['P']).size === 0 && statesFromJSON({ version: 1, buffers: { P: { state: 'nope', scrollTop: 0 } } }, ext, { history: historyField }, ['P']).size === 0)
 }
 
 console.log(results.join('\n'))
