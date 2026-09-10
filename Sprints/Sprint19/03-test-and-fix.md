@@ -46,4 +46,4 @@ stdin 14.9 s, definitions 16.5 s, transcript 17.1 s, persistence 31.5 s
 
 Pull request: https://github.com/yfyang86/ConsCell/pull/19
 
-CI on the pull request: to be recorded after the run.
+CI on the pull request: green — job "lint · build · wasm tests" run 34457447358 completed successfully on `ca14d74` in 61 s (https://github.com/yfyang86/ConsCell/actions/runs/34457447358). Merged into `dev` as `a399d8e`.
