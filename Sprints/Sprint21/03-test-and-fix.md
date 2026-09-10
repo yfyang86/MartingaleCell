@@ -20,7 +20,7 @@
 | Real browser, all scenarios | `pnpm preview` + `pnpm smoke:browser` | 48 / 48 in 8 scenarios (new `history`: 5) |
 | One scenario alone | `node scripts/browser-smoke.mjs --only history` | 5 / 5 in 17 s |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/21 — pending.
 The `smoke` job on the merge commit on `dev`: pending.
 
 ## Fixes made along the way
