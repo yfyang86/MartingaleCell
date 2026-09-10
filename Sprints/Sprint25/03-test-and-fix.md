@@ -73,4 +73,4 @@ is the neighbouring form's spelling and gives `(3,4,2)`. ECL and SBCL
 agree on the string either way; the note is about the program, not the
 engines.
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/25 — pending.
