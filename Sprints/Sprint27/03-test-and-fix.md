@@ -11,7 +11,8 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 63 / 63 in 10 scenarios (new `engine`: 5; `sbcl` +1) |
 | ECL comes back | `engine` scenario: sbcl → Restart → ecl → Restart | `(lisp-implementation-type)` → `"ECL"`, preference `ecl` after reload, `auto` after Reset workspace |
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/27 — pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/27 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34488555079: `check` in 1 min 8 s, the labelled `smoke` job in 2 min 19 s with the new `engine` scenario), merged as `da6c182`.
+CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
 
 ## Fixes made along the way
 
