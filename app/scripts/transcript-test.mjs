@@ -134,6 +134,17 @@ check('import: an empty or unrelated document yields no cells', parseMarkdownTra
   check('no limit: values are whole in both exports', buildMarkdownTranscript(lc, { exportedAt: when }).includes(`;;=> ${long}`) && buildLispTranscript(lc, { exportedAt: when }).includes(`;;=> ${long}`))
 }
 
+/* the buffer a cell ran from (Sprint 18) */
+{
+  const bc = [{ ...base, id: 'b1', n: 1, pkg: 'CL-USER', status: 'done', input: '(sq 3)', values: ['9'], bufferName: 'cell-1.lisp', durationMs: 7 }]
+  const mdB = buildMarkdownTranscript(bc, { exportedAt: when })
+  const lispB = buildLispTranscript(bc, { exportedAt: when })
+  check('md heading names the buffer the cell ran from', mdB.includes('## Cell 1 · `CL-USER` · 7 ms · from cell-1.lisp'), mdB.split('\n')[4])
+  check('lisp banner names it too', lispB.includes(';;; ---- cell 1 · CL-USER · 7 ms · from cell-1.lisp ----'), lispB)
+  const backB = parseMarkdownTranscript(mdB)
+  check('import ignores the extra heading part and still reads the duration', backB.length === 1 && backB[0].pkg === 'CL-USER' && backB[0].durationMs === 7 && backB[0].values.join() === '9', JSON.stringify(backB[0]))
+}
+
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
 console.log(failed ? `\nFAIL: ${failed} check(s) failed` : `\nPASS: ${results.length} checks passed`)
