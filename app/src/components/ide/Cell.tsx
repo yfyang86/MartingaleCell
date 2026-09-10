@@ -4,12 +4,12 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2 } from 'lucide-react'
+import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2, FilePlus2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
 import { LispCode } from './LispCode'
-import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput } from './actions'
+import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput, openCellAsBuffer } from './actions'
 import { evaluateCode } from '@/store/evaluate'
 import type { ConditionDetail, DebugRestart } from '@/lisp/types'
 import { findSymbolPosition } from './lisp-utils'
@@ -359,6 +359,11 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Paste into editor" onClick={pasteToEditor}>
             <CornerDownLeft size={12} />
           </button>
+          {!isProject && (
+            <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Open as buffer" onClick={() => openCellAsBuffer(cell.n, cell.input)}>
+              <FilePlus2 size={12} />
+            </button>
+          )}
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Collapse" onClick={() => setCollapsed((c) => !c)}>
             <ChevronDown size={12} className={cn('transition-transform duration-150', collapsed && '-rotate-90')} />
           </button>

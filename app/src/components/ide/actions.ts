@@ -482,8 +482,35 @@ export function findReferences(name?: string) {
 
 /* ---- transcript import (Sprint 10) ---- */
 
-/** Append the cells of a Markdown transcript to the session, or open a .lisp transcript as a buffer. */
-export async function importTranscriptText(name: string, text: string): Promise<number> {
+/** cells parsed for a "replace session" import, waiting for the confirm modal (Sprint 16) */
+let pendingImport: { name: string; cells: import('@/session/transcript').ImportedCell[] } | null = null
+export function pendingImportCount(): number { return pendingImport?.cells.length ?? 0 }
+
+function appendImportedCells(name: string, cells: import('@/session/transcript').ImportedCell[]) {
+  const ws = useWorkspace.getState()
+  for (const c of cells) {
+    ws.addCell({
+      input: c.input, pkg: c.pkg, status: c.status, stdout: c.stdout, values: c.values, warnings: c.warnings,
+      error: c.error, errorType: c.errorType, resumedVia: c.resumedVia, durationMs: c.durationMs,
+      startedAt: Date.now(), restartsUsed: c.resumedVia ? 1 : 0, imported: true,
+      ...(c.kind === 'project' && c.project ? { kind: 'project' as const, project: { projectName: c.project.projectName, files: c.project.files, packages: [] } } : {}),
+    })
+  }
+  ws.addLog('INFO', 'UI', `Imported ${cells.length} cells from ${name}`)
+  toast(`Imported ${cells.length} cell${cells.length === 1 ? '' : 's'} from ${name}`)
+}
+
+/** Confirmed "replace session" import: clear, then append the parsed cells. */
+export async function applyPendingImport() {
+  const p = pendingImport
+  pendingImport = null
+  if (!p) return
+  useWorkspace.getState().clearCells()
+  appendImportedCells(p.name, p.cells)
+}
+
+/** Append the cells of a Markdown transcript to the session (or, with mode 'replace', ask to clear it first); a .lisp transcript opens as a buffer. */
+export async function importTranscriptText(name: string, text: string, mode: 'append' | 'replace' = 'append'): Promise<number> {
   const ws = useWorkspace.getState()
   /* by extension, or by content when the file has none (a browser download, a paste) */
   const isMarkdown = /\.(md|markdown)$/i.test(name) || (!/\.(lisp|lsp|cl)$/i.test(name) && /^## Cell \d+ · /m.test(text))
@@ -495,21 +522,17 @@ export async function importTranscriptText(name: string, text: string): Promise<
   const { parseMarkdownTranscript } = await import('@/session/transcript')
   const cells = parseMarkdownTranscript(text)
   if (!cells.length) { toast(`No cells found in ${name} — is it a ConsCell transcript?`); return 0 }
-  for (const c of cells) {
-    ws.addCell({
-      input: c.input, pkg: c.pkg, status: c.status, stdout: c.stdout, values: c.values, warnings: c.warnings,
-      error: c.error, errorType: c.errorType, resumedVia: c.resumedVia, durationMs: c.durationMs,
-      startedAt: Date.now(), restartsUsed: c.resumedVia ? 1 : 0, imported: true,
-      ...(c.kind === 'project' && c.project ? { kind: 'project' as const, project: { projectName: c.project.projectName, files: c.project.files, packages: [] } } : {}),
-    })
+  if (mode === 'replace' && ws.cells.length > 0) {
+    pendingImport = { name, cells }
+    useUi.getState().setConfirm('import-replace')
+    return cells.length
   }
-  ws.addLog('INFO', 'UI', `Imported ${cells.length} cells from ${name}`)
-  toast(`Imported ${cells.length} cell${cells.length === 1 ? '' : 's'} from ${name}`)
+  appendImportedCells(name, cells)
   return cells.length
 }
 
 /** Palette: pick a .md / .lisp transcript from disk. */
-export function importTranscriptFile() {
+export function importTranscriptFile(mode: 'append' | 'replace' = 'append') {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = '.md,.markdown,.lisp,.lsp,.cl,text/markdown'
@@ -518,9 +541,21 @@ export function importTranscriptFile() {
     const f = input.files?.[0]
     input.remove()
     if (!f) return
-    void f.text().then((t) => importTranscriptText(f.name, t))
+    void f.text().then((t) => importTranscriptText(f.name, t, mode))
   }
   /* attached while open: some browsers ignore clicks on detached file inputs */
   document.body.appendChild(input)
   input.click()
+}
+
+/* ---- session cell → buffer (Sprint 16) ---- */
+
+/** Open a cell's input as a new buffer named after the cell and activate it. */
+export function openCellAsBuffer(cellN: number, input: string) {
+  const ws = useWorkspace.getState()
+  const name = `cell-${cellN}.lisp`
+  const existing = ws.buffers.find((b) => b.name === name && b.content === input)
+  if (existing) { ws.setActiveBuffer(existing.id); return }
+  ws.newBuffer(name, input.endsWith('\n') ? input : input + '\n')
+  ws.addLog('DEBUG', 'UI', `opened cell [${cellN}] as buffer ${name}`)
 }

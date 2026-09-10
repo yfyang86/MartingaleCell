@@ -236,6 +236,41 @@ try {
   const toasts = await page.locator('[data-sonner-toast]').allInnerTexts()
   check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips} accept=${accept} file=${mdPath} size=${mdPath ? fs.statSync(mdPath).size : -1} toasts=${JSON.stringify(toasts)}`)
 
+  /* Sprint 16: a session cell opens as a buffer */
+  const tabsBefore = await page.locator('[data-testid="buffer-tab"]').count()
+  await page.locator('.cc-cell').first().hover()
+  await page.locator('.cc-cell').first().locator('button[title="Open as buffer"]').click()
+  await page.waitForFunction((n) => document.querySelectorAll('[data-testid="buffer-tab"]').length === n + 1, tabsBefore, { timeout: 5_000 })
+  const openedDoc = await page.evaluate(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString()
+  })
+  check('"Open as buffer" on the first cell adds a tab whose document is the cell input (/ 1 0)', openedDoc.trim() === '(/ 1 0)', JSON.stringify(openedDoc))
+  /* back to the first buffer: the checks below edit and index it */
+  await page.locator('[data-testid="buffer-tab"]').nth(0).click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defpackage :smoke')
+  }, null, { timeout: 10_000 })
+
+  /* Sprint 16: import replacing the session goes through the confirm modal */
+  const [chooser2] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 10_000 }),
+    (async () => {
+      await page.keyboard.press('Control+k')
+      await page.keyboard.type('Import transcript replacing')
+      await page.keyboard.press('Enter')
+    })(),
+  ])
+  await chooser2.setFiles(mdPath)
+  await page.getByText('Replace the session with the transcript?').waitFor({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Replace session' }).click()
+  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, headings, { timeout: 15_000 })
+  const chipsAfterReplace = await page.getByText('imported', { exact: true }).count()
+  check('replacing import: the confirm modal, then exactly the transcript\'s cells remain, all imported', chipsAfterReplace === headings, `cells=${headings} chips=${chipsAfterReplace}`)
+
   /* Sprint 11/12: the definition index survives a reload, and an entry follows the defun when the buffer changes.
    * Index path vs text-scan path differ here: the ACTIVE buffer (2) also defines sq at line 1; the index says sq was
    * evaluated in buffer 1, where it now sits on line 3 — F12 must land in buffer 1, line 3. */
