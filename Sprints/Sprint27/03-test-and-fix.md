@@ -11,7 +11,7 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 63 / 63 in 10 scenarios (new `engine`: 5; `sbcl` +1) |
 | ECL comes back | `engine` scenario: sbcl → Restart → ecl → Restart | `(lisp-implementation-type)` → `"ECL"`, preference `ecl` after reload, `auto` after Reset workspace |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/27 — pending.
 
 ## Fixes made along the way
 
