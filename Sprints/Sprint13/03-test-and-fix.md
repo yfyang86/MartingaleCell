@@ -38,4 +38,6 @@ the first run.
 
 ## CI
 
+Pull request: https://github.com/yfyang86/ConsCell/pull/13
+
 CI on the pull request: to be recorded after the run.
