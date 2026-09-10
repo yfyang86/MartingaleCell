@@ -451,6 +451,7 @@ function downloadText(text: string, filename: string, mime: string) {
 function engineLabel(): string | undefined {
   switch (useWorkspace.getState().engineStatus) {
     case 'ready-ecl': return 'ECL 24.5 (WECL, in-browser)'
+    case 'ready-sbcl': return 'SBCL 2.4.8 (wasm32-wasip1, in-browser)'
     case 'ready-jscl': return 'JSCL (fallback)'
     case 'ready-mock': return 'mock interpreter (fallback)'
     default: return undefined

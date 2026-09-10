@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { runtime } from '@/lisp/runtime'
+import { runtime, getEnginePref, setEnginePref } from '@/lisp/runtime'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -168,8 +168,20 @@ export default function SettingsDrawer() {
                 <div className="rounded-md border border-hairline bg-inset px-3 py-2 font-mono text-[11.5px] text-secondary">
                   <div className="flex justify-between"><span className="text-muted">engine</span><span>{engineLabel || engineStatus}</span></div>
                   <div className="flex justify-between"><span className="text-muted">status</span><span>{engineStatus}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">source</span><span>{runtime.engine === 'ecl' ? '/wecl/ (self-hosted)' : runtime.engine === 'jscl' ? 'CDN fallback' : 'built-in'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">source</span><span>{runtime.engine === 'ecl' ? '/wecl/ (self-hosted)' : runtime.engine === 'sbcl' ? '/sbcl/ (self-hosted)' : runtime.engine === 'jscl' ? 'CDN fallback' : 'built-in'}</span></div>
                 </div>
+                <Row label="Lisp implementation">
+                  <Segmented
+                    value={getEnginePref()}
+                    options={['auto', 'sbcl']}
+                    onChange={(v) => {
+                      setEnginePref(v)
+                      toast(v === 'sbcl'
+                        ? 'SBCL/wasm will boot on the next runtime restart (artifacts needed at /sbcl/)'
+                        : 'ECL boots again on the next runtime restart')
+                    }}
+                  />
+                </Row>
                 <Row label="Log verbosity">
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />
                 </Row>
