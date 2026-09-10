@@ -50,8 +50,12 @@ try {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
       view.focus()
     }, code)
-    /* line elements concatenate without newlines — compare ignoring whitespace */
-    const now = ((await editor.textContent()) ?? '').replace(/\s+/g, '')
+    /* compare against the document model: the DOM only holds the viewport's lines for a long buffer */
+    const now = (await page.evaluate(() => {
+      const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+      const view = t.view || t.rootView.view
+      return view.state.doc.toString()
+    })).replace(/\s+/g, '')
     const want = code.replace(/\s+/g, '')
     if (now !== want) throw new Error(`setCode: buffer is "${now.slice(0, 80)}" not "${want.slice(0, 80)}"`)
   }
@@ -315,7 +319,14 @@ try {
     const view = t.view || t.rootView.view
     return view.state.doc.toString()
   })
-  check('Ctrl+Z in the other buffer changes nothing (no history of its own, and no "switch" step)', docAfterUndo.startsWith('(defun sq2 (z) z)'), JSON.stringify(docAfterUndo.slice(0, 40)))
+  check('Ctrl+Z in the other buffer reverts the replace that reached it through the store — and never shows another buffer\'s text', docAfterUndo.startsWith('(defun sq (z) z)'), JSON.stringify(docAfterUndo.slice(0, 40)))
+  await page.keyboard.press('Control+y')
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
+  }, null, { timeout: 10_000 })
+  check('Ctrl+Y re-applies it', true)
   await page.keyboard.press('Control+Shift+F')
   await box3.fill('defpackage :x')
   await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
@@ -335,6 +346,28 @@ try {
     return view.state.doc.toString()
   })
   check('back in the first buffer, redo restores the replacement — its history survived the switch', docAfterRedo.includes('(defun sq2 (y) y)'), JSON.stringify(docAfterRedo))
+
+  /* Sprint 15: each buffer keeps its scroll position across a switch (switching via the tab bar, which does not move the caret) */
+  await setCode(Array.from({ length: 300 }, (_, i) => `(defun line-${i} () ${i})`).join('\n') + '\n')
+  await page.evaluate(() => { document.querySelector('.cm-scroller').scrollTop = 2000 })
+  await page.waitForTimeout(250)
+  const scrollBefore = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
+  const tabs = page.locator('[data-testid="buffer-tab"]')
+  await tabs.nth(1).click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
+  }, null, { timeout: 10_000 })
+  await tabs.nth(0).click()
+  await page.waitForFunction(() => {
+    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
+    const view = t.view || t.rootView.view
+    return view.state.doc.toString().startsWith('(defun line-0 ()')
+  }, null, { timeout: 10_000 })
+  await page.waitForTimeout(300)
+  const scrollAfter = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
+  check('switching away and back through the tab bar restores the buffer\'s scroll position', scrollBefore > 500 && Math.abs(scrollAfter - scrollBefore) < 60, `before=${scrollBefore} after=${scrollAfter}`)
 
   /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
