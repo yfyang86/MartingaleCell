@@ -74,4 +74,4 @@ agree on the string either way; the note is about the program, not the
 engines.
 
 CI on the pull request: https://github.com/yfyang86/ConsCell/pull/25 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34480983471: `check` in 1 min 3 s, the labelled `smoke` job in 1 min 43 s with Chromium installed through the project's playwright), merged as `157fb3e`.
-CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
+CI on the merge commit on `dev`: https://github.com/yfyang86/ConsCell/actions/runs/34481297505 — completed, both jobs green (4 min 57 s wall time). The commit after it (`38dcbdd`, "sbcl: dev version, not fully populated") adds the SBCL artifacts, plain and .gz, to the repository, so from there the SBCL harness and the `sbcl` smoke scenario run for real in CI.
