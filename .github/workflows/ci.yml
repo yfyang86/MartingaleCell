@@ -4,9 +4,10 @@
 # in-package regression test). No browser needed.
 #
 # A second job, `smoke`, runs the real-browser scenarios (Playwright +
-# Chromium against `pnpm preview`) only on pull requests labelled `smoke`;
+# Chromium against `pnpm preview`) on pull requests labelled `smoke` —
 # adding the label triggers it on its own (the `labeled` event runs only
-# that job). Sprint 20.
+# that job) — and on every push to dev (Sprint 21), where it is a report
+# on the merge commit rather than a gate. Sprint 20.
 name: CI
 
 on:
@@ -68,6 +69,9 @@ jobs:
       - name: Lisp fold ranges test
         run: node scripts/fold-test.mjs
 
+      - name: cell lineage (re-run history) test
+        run: node scripts/lineage-test.mjs
+
       - name: Boot the ECL image (real worker + wasm, Node harness)
         run: node scripts/boot-harness.mjs --timeout-ms 120000
 
@@ -87,8 +91,8 @@ jobs:
         run: node scripts/perf-test.mjs
 
   smoke:
-    name: browser smoke (label `smoke`)
-    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke')
+    name: browser smoke (label `smoke`, and pushes to dev)
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:

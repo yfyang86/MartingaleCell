@@ -10,6 +10,7 @@ import { evaluateCode, evaluateAll, splitTopLevelForms, firstSymbol } from '@/st
 import { runtime } from '@/lisp/runtime'
 import { topLevelFormAt, innermostFormAt, findSymbolPosition } from './lisp-utils'
 import { scanDefinitions } from '@/outline/outline'
+import { lineageOf } from '@/session/lineage'
 
 /* ---- editor registry (set by EditorPanel) ---- */
 
@@ -566,9 +567,15 @@ export function openCellAsBuffer(cell: { id: string; n: number; input: string; b
 }
 
 /** Re-run a cell: a linked buffer's current text (as an evaluation from that buffer), else the recorded input. */
-export function rerunCell(cell: { id: string; n: number; input: string; bufferName?: string; bufferId?: string }) {
+export function rerunCell(cell: { id: string; n: number; input: string; bufferName?: string; bufferId?: string; lineage?: string }) {
   const ws = useWorkspace.getState()
   const linked = cell.bufferId ? ws.buffers.find((b) => b.id === cell.bufferId) : undefined
-  if (linked) { void evaluateCode(linked.content, linked.name, { bufferId: linked.id, from: 0 }); return }
-  void evaluateCode(cell.input, cell.bufferName)
+  const lineage = lineageOf(cell) /* the new cell joins this cell's run history (Sprint 21) */
+  if (linked) { void evaluateCode(linked.content, linked.name, { bufferId: linked.id, from: 0, lineage }); return }
+  void evaluateCode(cell.input, cell.bufferName, { bufferId: '', from: 0, lineage })
+}
+
+/** scroll a session cell into view and flash it */
+export function gotoCell(n: number) {
+  window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: n }))
 }

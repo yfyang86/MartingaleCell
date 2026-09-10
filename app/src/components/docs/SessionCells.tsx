@@ -45,6 +45,10 @@ const SPECS = [
     body: 'The download button (or the palette) saves the session as a Markdown notebook — code, output, values, warnings, errors and plots inline as SVG — or as a .lisp transcript with results as comments that evaluates as is. Import (palette) appends the cells of a Markdown transcript back into the session, marked as imported and re-runnable. A settings slider can clip long values in exports. Open as buffer turns a cell into a linked buffer: re-running the cell evaluates the buffer\'s current text.',
   },
   {
+    title: 'Run history',
+    body: 'Re-running a cell (the ↻ button, or evaluating its linked buffer) adds a run to its history. The cell shows run k/N; click it to see the runs side by side — input, status, values — with each value marked when it differs from the run before.',
+  },
+  {
     title: 'Truncation',
     body: 'Long values truncate at 60 chars / 20 lines; an expand chip reveals the full printed form.',
   },

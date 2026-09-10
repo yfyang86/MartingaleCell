@@ -8,6 +8,8 @@ import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2, File
 import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
+import { useUi } from '@/store/ui'
+import { lineageOf } from '@/session/lineage'
 import { LispCode } from './LispCode'
 import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput, openCellAsBuffer, rerunCell } from './actions'
 import type { ConditionDetail, DebugRestart } from '@/lisp/types'
@@ -282,7 +284,24 @@ function DebuggerBlock({ cell }: { cell: Cell }) {
   )
 }
 
-function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
+/** "run k of N" for a re-evaluated cell; opens the run history (Sprint 21) */
+function RunChip({ cell, run }: { cell: Cell; run: string }) {
+  const setCellHistory = useUi((s) => s.setCellHistory)
+  const [k, total] = run.split('/')
+  return (
+    <button
+      type="button"
+      data-testid="run-chip"
+      className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-primary"
+      title={`Run ${k} of ${total} — click to compare the runs`}
+      onClick={() => setCellHistory(lineageOf(cell))}
+    >
+      run {k}/{total}
+    </button>
+  )
+}
+
+function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?: string }) {
   const updateCell = useWorkspace((s) => s.updateCell)
   const removeCell = useWorkspace((s) => s.removeCell)
   /* (updateCell: warning dismissal) */
@@ -356,6 +375,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
           <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
           {cell.imported && <span className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted" title="Appended from a transcript — not evaluated in this session">imported</span>}
           {cell.bufferId && <LinkedBufferChip bufferId={cell.bufferId} />}
+          {run && !run.endsWith('/1') && <RunChip cell={cell} run={run} />}
         </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:opacity-100">
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Copy cell" onClick={() => void copyText(cellText, 'Cell copied')}>

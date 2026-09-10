@@ -70,6 +70,8 @@ export interface Cell {
   imported?: boolean
   /** the buffer this cell was opened into ("Open as buffer"); re-run evaluates that buffer's current text */
   bufferId?: string
+  /** id of the first cell in this cell's re-run chain (Sprint 21); absent on a first run */
+  lineage?: string
 }
 
 export interface LogEntry {

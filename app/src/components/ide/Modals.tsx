@@ -1,14 +1,15 @@
 /* Overlays: confirmation modal (restart/interrupt/clear/reset), share modal,
- * keyboard shortcuts reference (Ctrl /). */
+ * keyboard shortcuts reference (Ctrl /), cell run history (Sprint 21). */
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Copy, X } from 'lucide-react'
+import { Copy, X, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useWorkspace } from '@/store/workspace'
 import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
-import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, pendingImportPreview, applyPendingImport } from './actions'
+import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, pendingImportPreview, applyPendingImport, rerunCell, gotoCell } from './actions'
+import { runsOf, compareRuns } from '@/session/lineage'
 
 function ModalShell({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -238,6 +239,114 @@ function ShortcutsModal() {
   )
 }
 
+/* the runs of a re-evaluated cell side by side, values compared with the run before (Sprint 21) */
+function CellHistoryModal() {
+  const lineage = useUi((s) => s.cellHistory)
+  const setCellHistory = useUi((s) => s.setCellHistory)
+  const cells = useWorkspace((s) => s.cells)
+  const runs = useMemo(() => (lineage ? runsOf(cells, lineage) : []), [cells, lineage])
+  const cmp = useMemo(() => runs.map((r, i) => compareRuns(runs[i - 1], r)), [runs])
+  const close = () => setCellHistory(null)
+  const valueRows = Math.max(0, ...runs.map((r) => r.values.length))
+  const latest = runs[runs.length - 1]
+  const when = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const th = 'sticky top-0 bg-panel px-2 py-1 text-left font-mono text-[10.5px] font-normal uppercase tracking-wide text-muted'
+  const td = 'align-top px-2 py-1 font-mono text-[11.5px]'
+  return (
+    <AnimatePresence>
+      {lineage && (
+        <ModalShell onClose={close} wide>
+          <div data-testid="cell-history" className="flex max-h-[80vh] flex-col">
+            <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
+              <div>
+                <h2 className="text-[13px] font-medium text-primary">Run history</h2>
+                <p className="text-[11.5px] text-muted">{runs.length} run{runs.length === 1 ? '' : 's'} of cell [{runs[0]?.n ?? '?'}] — a value is marked when it differs from the run before</p>
+              </div>
+              <div className="flex items-center gap-1">
+                {latest && (
+                  <button className="cc-btn" onClick={() => { rerunCell(latest); close() }} title="Re-run the latest run again">
+                    <RotateCw className="size-3.5" /> Re-run
+                  </button>
+                )}
+                <button className="rounded-sm p-1 text-muted hover:bg-raised hover:text-primary" onClick={close} aria-label="Close"><X className="size-4" /></button>
+              </div>
+            </div>
+            <div className="overflow-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className={th}>&nbsp;</th>
+                    {runs.map((r) => (
+                      <th key={r.id} className={th}>
+                        <button
+                          type="button"
+                          className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright hover:text-primary"
+                          title="Go to this cell"
+                          onClick={() => { close(); gotoCell(r.n) }}
+                        >
+                          In [{r.n}]
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-hairline">
+                    <td className={`${td} text-muted`}>when</td>
+                    {runs.map((r) => <td key={r.id} className={`${td} text-secondary`}>{when(r.startedAt)}</td>)}
+                  </tr>
+                  <tr>
+                    <td className={`${td} text-muted`}>status</td>
+                    {runs.map((r, i) => (
+                      <td key={r.id} className={`${td} ${r.status === 'error' || r.status === 'aborted' ? 'text-error' : 'text-secondary'}`}>
+                        {r.status}{cmp[i].statusChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-status-changed">changed</span>}
+                        {r.durationMs > 0 && <span className="ml-1 text-muted">· {r.durationMs < 1 ? '<1' : r.durationMs.toFixed(0)} ms</span>}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="border-t border-hairline">
+                    <td className={`${td} text-muted`}>input</td>
+                    {runs.map((r, i) => (
+                      <td key={r.id} className={`${td} text-secondary`}>
+                        {i > 0 && !cmp[i].inputChanged ? (
+                          <span className="text-muted">same as [{runs[i - 1].n}]</span>
+                        ) : (
+                          <pre className="max-h-32 max-w-[260px] overflow-auto whitespace-pre-wrap break-words">{r.input}</pre>
+                        )}
+                        {cmp[i].inputChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-input-changed">changed</span>}
+                      </td>
+                    ))}
+                  </tr>
+                  {Array.from({ length: valueRows }, (_, vi) => (
+                    <tr key={vi} className={vi === 0 ? 'border-t border-hairline' : ''}>
+                      <td className={`${td} text-muted`}>{vi === 0 ? 'values' : ''}</td>
+                      {runs.map((r, i) => {
+                        const v = r.values[vi]
+                        const changed = v !== undefined && cmp[i].valueChanged[vi]
+                        return (
+                          <td key={r.id} className={`${td} ${changed ? 'text-warning' : 'text-primary'}`}>
+                            {v === undefined ? <span className="text-muted">—</span> : <span className="whitespace-pre-wrap break-words" data-testid={changed ? 'run-value-changed' : 'run-value'}>{v}</span>}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                  {runs.some((r) => r.error) && (
+                    <tr className="border-t border-hairline">
+                      <td className={`${td} text-muted`}>error</td>
+                      {runs.map((r) => <td key={r.id} className={`${td} text-error`}>{r.error ? <span className="whitespace-pre-wrap break-words">{r.error}</span> : <span className="text-muted">—</span>}</td>)}
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export default function Modals() {
   return (
     <>
@@ -245,6 +354,7 @@ export default function Modals() {
       <ShareModal />
       <ShortcutsModal />
       <CloseBufferModal />
+      <CellHistoryModal />
     </>
   )
 }

@@ -5,6 +5,7 @@ import { useProject } from '@/store/project'
 import { registerProjectDefinitions } from '@/components/ide/completion'
 import { useWorkspace, type Cell } from './workspace'
 import { autoDownloadSavedPlots } from '@/plot/download'
+import { lineageForBuffer } from '@/session/lineage'
 
 /** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
  * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
@@ -34,6 +35,8 @@ export interface EvalOrigin {
   from: number
   /** the code was typed into the session box — definitions point at the cell */
   session?: boolean
+  /** the new cell is a re-run: id of the first cell of the chain (Sprint 21) */
+  lineage?: string
 }
 
 /** byte offset (UTF-8) within `text` → character index */
@@ -60,10 +63,13 @@ export function charOffsetToLineCol(content: string, offset: number): { line: nu
 export function evaluateCode(code: string, bufferName?: string, origin?: EvalOrigin): Promise<Cell> {
   const store = useWorkspace.getState()
   const trimmed = code.trim()
+  /* a re-run, or an evaluation from a buffer opened from a cell, joins that cell's run history */
+  const lineage = origin?.lineage ?? lineageForBuffer(store.buffers, store.cells, origin?.bufferId)
   const cell = store.addCell({
     input: trimmed,
     pkg: store.packageName,
     bufferName,
+    ...(lineage ? { lineage } : {}),
     status: 'queued',
     stdout: '',
     values: [],
