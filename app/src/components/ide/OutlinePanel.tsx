@@ -3,13 +3,13 @@
  * definitions from the last load, and definitions typed into the session
  * box. Every row jumps. Lives in the explorer column next to search. */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
-import { useProject } from '@/store/project'
+import { useProject, collectLispFiles } from '@/store/project'
 import { useUi } from '@/store/ui'
-import { scanDefinitions, type OutlineEntry } from '@/outline/outline'
+import { scanDefinitions, mergeProjectOutline, type OutlineEntry, type ProjectOutlineFile } from '@/outline/outline'
 import { gotoBuffer, gotoLocation, jumpToPosition } from './actions'
 
 const KIND_SHORT: Record<string, string> = {
@@ -47,8 +47,27 @@ export default function OutlinePanel() {
   const activeBufferId = useWorkspace((s) => s.activeBufferId)
   const definitions = useProject((s) => s.definitions)
   const bufferDefinitions = useProject((s) => s.bufferDefinitions)
+  const projectKind = useProject((s) => s.kind)
+  const projectName = useProject((s) => s.name)
+  const projectFiles = useProject((s) => s.files)
   const setOutlineOpen = useUi((s) => s.setOutlineOpen)
   const [filter, setFilter] = useState('')
+  /* Sprint 12: the project's Lisp files are scanned (same cache rule as the search panel), loaded definitions ticked */
+  const [scannedFiles, setScannedFiles] = useState<{ path: string; content: string }[]>([])
+  const scanCache = useRef<{ at: number; key: string } | null>(null)
+  useEffect(() => {
+    if (!projectKind) { scanCache.current = null; return }
+    const key = (projectKind === 'virtual' ? String(Object.keys(projectFiles).length) : '') + (projectName ?? '')
+    const c = scanCache.current
+    if (c && c.key === key && (projectKind === 'virtual' || Date.now() - c.at < 5000)) return
+    let cancelled = false
+    void collectLispFiles().then((files) => {
+      if (cancelled) return
+      scanCache.current = { at: Date.now(), key }
+      setScannedFiles(files)
+    })
+    return () => { cancelled = true }
+  }, [projectKind, projectName, projectFiles])
 
   const active = buffers.find((b) => b.id === activeBufferId) ?? null
   const scanned = useMemo<OutlineEntry[]>(() => (active ? scanDefinitions(active.content) : []), [active])
@@ -63,15 +82,15 @@ export default function OutlinePanel() {
     return set
   }, [active, bufferDefinitions, definitions])
 
-  const byFile = useMemo(() => {
-    const m = new Map<string, typeof definitions>()
-    for (const d of definitions) if (matches(d.name)) (m.get(d.path) ?? m.set(d.path, []).get(d.path)!).push(d)
-    return [...m.entries()]
+  const projectOutline = useMemo<ProjectOutlineFile[]>(
+    () => mergeProjectOutline(projectKind ? scannedFiles : [], definitions)
+      .map((pf) => ({ ...pf, entries: pf.entries.filter((e) => matches(e.name)) }))
+      .filter((pf) => pf.entries.length > 0),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [definitions, f])
+  [scannedFiles, definitions, projectKind, f])
   const sessionDefs = bufferDefinitions.filter((d) => d.cellN != null && matches(d.name))
   const bufferRows = scanned.filter((e) => matches(e.name))
-  const total = bufferRows.length + byFile.reduce((n, [, ds]) => n + ds.length, 0) + sessionDefs.length
+  const total = bufferRows.length + projectOutline.reduce((n, pf) => n + pf.entries.length, 0) + sessionDefs.length
 
   return (
     <div className="flex max-h-[55%] shrink-0 flex-col border-b border-hairline" data-testid="outline-panel">
@@ -91,7 +110,7 @@ export default function OutlinePanel() {
         </button>
       </div>
       <div className={cn('px-2 py-1 font-mono text-[10px] text-muted', total === 0 && 'pb-2')}>
-        {total === 0 ? (active ? 'no definitions' : 'no buffer') : `${total} definition${total === 1 ? '' : 's'} · ✓ = evaluated`}
+        {total === 0 ? (active ? 'no definitions' : 'no buffer') : `${total} definition${total === 1 ? '' : 's'} · ✓ = evaluated / loaded`}
       </div>
       <div className="min-h-0 overflow-y-auto pb-1">
         <Section title={active ? active.name : 'buffer'} count={bufferRows.length}>
@@ -99,10 +118,10 @@ export default function OutlinePanel() {
             <Row key={e.offset} kind={e.kind} label={e.label} ticked={evaluated.has(e.name)} onClick={() => jumpToPosition(e.line, e.col)} />
           ))}
         </Section>
-        {byFile.map(([path, ds]) => (
-          <Section key={path} title={path} count={ds.length}>
-            {ds.map((d) => (
-              <Row key={`${path}:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`:${d.line}`} onClick={() => gotoLocation(d.path, d.line, d.col)} />
+        {projectOutline.map((pf) => (
+          <Section key={pf.path} title={pf.path} count={pf.entries.length}>
+            {pf.entries.map((e) => (
+              <Row key={`${pf.path}:${e.offset}:${e.name}`} kind={e.kind} label={e.label} where={`:${e.line}`} ticked={e.loaded} onClick={() => gotoLocation(pf.path, e.line, e.col)} />
             ))}
           </Section>
         ))}

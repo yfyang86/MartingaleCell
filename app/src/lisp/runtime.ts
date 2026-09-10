@@ -89,32 +89,6 @@ interface Job {
 
 type Listener = () => void
 
-/** Split `;;=>` payload into top-level values (paren/string aware). */
-export function splitValues(payload: string): string[] {
-  const out: string[] = []
-  let depth = 0, inStr = false, cur = ''
-  for (let i = 0; i < payload.length; i++) {
-    const c = payload[i]
-    if (inStr) {
-      cur += c
-      if (c === '\\') { cur += payload[i + 1] ?? ''; i++ }
-      else if (c === '"') inStr = false
-      continue
-    }
-    if (c === '"') { inStr = true; cur += c; continue }
-    if (c === '(') depth++
-    if (c === ')') depth--
-    if (/\s/.test(c) && depth === 0) {
-      if (cur.trim()) out.push(cur)
-      cur = ''
-      continue
-    }
-    cur += c
-  }
-  if (cur.trim()) out.push(cur)
-  return out
-}
-
 /** Parse accumulated ECL output into a structured EvalResult. */
 export function parseEclOutput(stdoutLines: string[], stderrLines: string[], durationMs: number): EvalResult {
   const values: string[] = []
@@ -135,7 +109,8 @@ export function parseEclOutput(stdoutLines: string[], stderrLines: string[], dur
     const t = line
     if (t.startsWith(';;=>')) {
       const payload = t.slice(4).trim()
-      if (payload && payload !== '; no values') values.push(...splitValues(payload))
+      /* one value per line since Sprint 12 — a value may itself contain spaces (#<"SMOKE" package>) */
+      if (payload && payload !== '; no values') values.push(payload)
       return
     }
     if (t.startsWith(';;WARNING:')) {

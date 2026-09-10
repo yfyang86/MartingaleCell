@@ -110,6 +110,8 @@ interface ProjectState {
   definitionsForCompletion: () => { name: string; kind: string; path: string; line: number }[]
   /** drop index entries whose buffer or cell no longer exists (after both stores hydrated) */
   pruneIndex: (liveBufferIds: Set<string>, liveCellNs: Set<number>) => void
+  /** the name is no longer defined where it was evaluated — drop its entry */
+  forgetBufferDefinition: (name: string) => void
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -549,9 +551,14 @@ export const useProject = create<ProjectState>((set, get) => {
     setDefinitions: (defs) => { set({ definitions: defs }); saveIndex() },
     recordBufferDefinition: (def) => { set((s) => ({ bufferDefinitions: [def, ...s.bufferDefinitions.filter((d) => d.name !== def.name)] })); saveIndex() },
     pruneIndex: (liveBufferIds, liveCellNs) => {
-      set((s) => ({ bufferDefinitions: s.bufferDefinitions.filter((d) => (d.cellN != null ? liveCellNs.has(d.cellN) : liveBufferIds.has(d.bufferId))) }))
+      set((s) => ({
+        bufferDefinitions: s.bufferDefinitions.filter((d) => (d.cellN != null ? liveCellNs.has(d.cellN) : liveBufferIds.has(d.bufferId))),
+        /* project-load definitions only make sense with a project to open them in */
+        definitions: s.kind ? s.definitions : [],
+      }))
       saveIndex()
     },
+    forgetBufferDefinition: (name) => { set((s) => ({ bufferDefinitions: s.bufferDefinitions.filter((d) => d.name !== name) })); saveIndex() },
     definitionsForCompletion: () => {
       const s = get()
       return [

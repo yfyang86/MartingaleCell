@@ -81,3 +81,36 @@ export function scanDefinitions(src: string): OutlineEntry[] {
 export function pruneDefinitions<T extends { bufferId: string; cellN?: number }>(defs: T[], liveBufferIds: Set<string>, liveCellNs: Set<number>): T[] {
   return defs.filter((d) => (d.cellN != null ? liveCellNs.has(d.cellN) : liveBufferIds.has(d.bufferId)))
 }
+
+export interface ProjectOutlineFile {
+  path: string
+  entries: (OutlineEntry & { loaded: boolean })[]
+}
+
+/**
+ * Outline of a project from its scanned Lisp files, ticking entries the
+ * loader reported. Loaded definitions in files the scan did not cover
+ * are listed too (unticked entries never exist for them, so they are
+ * always `loaded`).
+ */
+export function mergeProjectOutline(
+  scanned: { path: string; content: string }[],
+  loaded: { name: string; kind: string; path: string; line: number; col: number }[],
+): ProjectOutlineFile[] {
+  const loadedByPath = new Map<string, Set<string>>()
+  for (const d of loaded) (loadedByPath.get(d.path) ?? loadedByPath.set(d.path, new Set()).get(d.path)!).add(d.name)
+  const out: ProjectOutlineFile[] = []
+  const covered = new Set<string>()
+  for (const f of [...scanned].sort((a, b) => a.path.localeCompare(b.path))) {
+    covered.add(f.path)
+    const names = loadedByPath.get(f.path)
+    const entries = scanDefinitions(f.content).map((e) => ({ ...e, loaded: !!names?.has(e.name) }))
+    if (entries.length) out.push({ path: f.path, entries })
+  }
+  for (const [path, names] of loadedByPath) {
+    if (covered.has(path)) continue
+    const entries = loaded.filter((d) => d.path === path).map((d) => ({ name: d.name, label: d.name.toLowerCase(), kind: d.kind, line: d.line, col: d.col, offset: -1, loaded: names.has(d.name) }))
+    out.push({ path, entries })
+  }
+  return out
+}

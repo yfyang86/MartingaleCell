@@ -87,7 +87,7 @@ async function run() {
     check('1: (read-line) prints ;;READ-WAIT and does not finish', waits(1) === 1 && !isDone(1), linesOf(1).join(' | '))
     feed(1, 'hello, page')
     await untilDone(1)
-    check('1: the fed line is the value', linesOf(1).includes(';;=> "hello, page" NIL'), linesOf(1).join(' | '))
+    check('1: the fed line is the value (two values, one ;;=> line each)', linesOf(1).includes(';;=> "hello, page"') && linesOf(1).includes(';;=> NIL'), linesOf(1).join(' | '))
 
     /* 2. a prompt printed before the read reaches stdout BEFORE the wait */
     evalJob(2, '(progn (format t "Name? ") (finish-output) (let ((n (read-line))) (format t "~&hi ~A~%" n) n))')
@@ -134,7 +134,7 @@ async function run() {
     check('6: the next job asks for input again (EOF is per job)', waits(6) === 1 && !isDone(6), linesOf(6).join(' | '))
     feed(6, 'again')
     await untilDone(6)
-    check('6: … and gets the new line', linesOf(6).includes(';;=> "again" NIL'), linesOf(6).join(' | '))
+    check('6: … and gets the new line', linesOf(6).includes(';;=> "again"') && linesOf(6).includes(';;=> NIL'), linesOf(6).join(' | '))
 
     /* 7. leftover input from one job is not read by the next */
     evalJob(7, '(read)')

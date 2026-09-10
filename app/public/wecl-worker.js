@@ -270,8 +270,10 @@ var CC_HELPER_SRC = [
   '                      (format *error-output* "~&;;ERROR: ~A~%"',
   '                              (if *debug-condition* (%report *debug-condition*) "aborted"))',
   '                      (return-from eval-one nil)))))',
+  /* one ;;=> line per value: a value that prints with spaces (#<"SMOKE" package>)
+   * is still one value main-side (Sprint 12) */
   '        (if vals',
-  '            (format t "~&;;=>~{ ~S~}~%" vals)',
+  '            (dolist (v vals) (format t "~&;;=> ~S~%" v))',
   '            (format t "~&;;=> ; no values~%"))',
   '        t)',
   '    (serious-condition (e)',

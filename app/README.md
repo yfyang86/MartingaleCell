@@ -59,7 +59,7 @@ printed by the Lisp helpers (parsed main-side, never shown as output):
 
 | Marker | Stream | Meaning |
 |---|---|---|
-| `;;=> v1 v2` | stdout | values of a top-level form |
+| `;;=> v` | stdout | one value of a top-level form (one line per value) |
 | `;;WARNING: …` | stderr | a muffled warning |
 | `;;ERRTYPE: T` | stderr | `type-of` the unhandled condition (signal time) |
 | `;;DETAIL: k\|v` | stderr | one condition slot worth showing (datum, expected, name, operands …) |

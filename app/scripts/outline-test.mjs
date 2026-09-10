@@ -17,7 +17,7 @@ const built = await esbuild.build({
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { scanDefinitions, canonicalName, pruneDefinitions } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { scanDefinitions, canonicalName, pruneDefinitions, mergeProjectOutline } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const src = `;;;; (defun in-a-comment ())
 (defpackage :demo (:use :cl))
@@ -55,6 +55,13 @@ const kept = pruneDefinitions([
   { name: 'A', bufferId: 'b1' }, { name: 'B', bufferId: 'gone' }, { name: 'C', bufferId: '', cellN: 3 }, { name: 'D', bufferId: '', cellN: 99 },
 ], new Set(['b1']), new Set([3]))
 check('pruneDefinitions keeps live buffers and cells only', kept.map((k) => k.name).join() === 'A,C', JSON.stringify(kept))
+
+const po = mergeProjectOutline(
+  [{ path: 'src/b.lisp', content: '(defun b1 () 1)\n(defun b2 () 2)\n' }, { path: 'src/a.lisp', content: '(defclass a-class () ())\n' }, { path: 'src/empty.lisp', content: '; nothing\n' }],
+  [{ name: 'B1', kind: 'defun', path: 'src/b.lisp', line: 1, col: 1 }, { name: 'FROM-ASD', kind: 'defsystem', path: 'demo.asd', line: 3, col: 1 }],
+)
+check('mergeProjectOutline: files sorted, empty files dropped, loaded entries ticked, unloaded not', po.map((f) => f.path).join() === 'src/a.lisp,src/b.lisp,demo.asd' && po[1].entries.map((e) => `${e.name}:${e.loaded}`).join() === 'B1:true,B2:false' && po[0].entries[0].loaded === false, JSON.stringify(po))
+check('mergeProjectOutline: a loaded definition in a file the scan did not cover is still listed', po[2].entries.length === 1 && po[2].entries[0].name === 'FROM-ASD' && po[2].entries[0].loaded === true && po[2].entries[0].offset === -1, JSON.stringify(po[2]))
 
 console.log(results.join('\n'))
 const failed = results.filter((x) => x.startsWith('✗')).length
