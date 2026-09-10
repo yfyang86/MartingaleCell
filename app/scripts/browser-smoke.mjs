@@ -1,8 +1,11 @@
-/* Real-browser smoke test of the IDE + debugger (Chromium via Playwright).
- * Not part of CI (needs a browser); run it locally after `pnpm build`:
- *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs
- * Resolves playwright from node_modules or the global npm root.
- * Writes screenshots next to this script's ../dist as smoke-*.png. */
+/* Real-browser smoke test of the IDE (Chromium via Playwright), organised
+ * as named scenarios (Sprint 19). Not part of CI (needs a browser); run it
+ * locally after `pnpm build`:
+ *   pnpm preview --port 4173 &   then   node scripts/browser-smoke.mjs [--only a,b] [--list] [--allow-stale]
+ * Each scenario runs in its own browser context (fresh IndexedDB), boots
+ * the IDE and sets up its own state, so any one can run alone. Resolves
+ * playwright from node_modules or the global npm root. Screenshots go to
+ * ../dist as smoke-*.png. */
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import { execSync } from 'node:child_process'
@@ -18,6 +21,8 @@ function loadPlaywright() {
 const { chromium } = loadPlaywright()
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const base = process.env.SMOKE_URL || 'http://localhost:4173'
+const argv = process.argv.slice(2)
+const only = (argv[argv.indexOf('--only') + 1] || '').split(',').filter(Boolean)
 
 /* Sprint 18: refuse to test a stale build — a `tsc` failure leaves the previous dist in place */
 {
@@ -28,436 +33,371 @@ const base = process.env.SMOKE_URL || 'http://localhost:4173'
   }
   const built = fs.existsSync(path.join(root, 'dist', 'index.html')) ? fs.statSync(path.join(root, 'dist', 'index.html')).mtimeMs : 0
   const sources = Math.max(newest(path.join(root, 'src')), fs.statSync(path.join(root, 'public', 'wecl-worker.js')).mtimeMs, fs.statSync(path.join(root, 'index.html')).mtimeMs)
-  if (built < sources && !process.argv.includes('--allow-stale')) {
+  if (built < sources && !argv.includes('--allow-stale')) {
     console.error(`browser-smoke: dist/ is older than the sources (built ${new Date(built).toISOString()}, newest source ${new Date(sources).toISOString()}). Run \`pnpm build\` first, or pass --allow-stale.`)
     process.exit(2)
   }
 }
-const results = []
-const check = (name, ok, detail = '') => results.push(`${ok ? '✓' : '✗'} ${name}${ok || !detail ? '' : `\n    ${detail}`}`)
 
-const browser = await chromium.launch({ headless: true })
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-const errors = []
-page.on('pageerror', (e) => errors.push(String(e)))
-try {
-  await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
-  /* boot: the status bar shows the engine label once ready */
-  await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
-  check('ECL boots in the browser (status bar shows ECL 24.5 · wasm32)', true)
-  const editor = page.locator('.cm-content').first()
-  await editor.waitFor()
+/* ---- per-page tools ---- */
 
-  /* replace the whole buffer: caret to the top-left, shift-select to the
-   * end of the document, delete, then insert (bypasses key handlers) */
-  /* Replace the whole buffer through CodeMirror's own view (exposed on the
-   * content node as `cmTile` / `cmView`) — keyboard select-all chords proved flaky in
-   * headless Chromium. Dispatching a change runs the same update listener
-   * as typing, so the workspace store sees the new text. */
+/* CodeMirror ≥ 6.43 (tile renderer) exposes `cmTile.view`; older builds `cmView` */
+const VIEW = `(function(){const n=document.querySelector('.cm-content');const t=n&&(n.cmTile||n.cmView);return t&&(t.view||(t.rootView&&t.rootView.view))})()`
+
+function tools(page, check) {
+  const doc = () => page.evaluate(`${VIEW}.state.doc.toString()`)
+  /* wait until the editor document satisfies {startsWith|includes} */
+  const waitDoc = (cond, timeout = 10_000) => page.waitForFunction(`(function(){const d=${VIEW}.state.doc.toString();return ${cond.startsWith !== undefined ? `d.startsWith(${JSON.stringify(cond.startsWith)})` : `d.includes(${JSON.stringify(cond.includes)})`}${cond.caretAt !== undefined ? ` && ${VIEW}.state.selection.main.head === ${cond.caretAt}` : ''}})()`, null, { timeout })
+  /* put the caret at a character offset (a negative offset counts from the end of `needle`'s last occurrence) */
+  const setCaret = (at) => page.evaluate(`(function(){const v=${VIEW};const d=v.state.doc.toString();const at=${typeof at === 'number' ? at : `(d.lastIndexOf(${JSON.stringify(at.after)}) + ${at.plus ?? 0})`};v.dispatch({selection:{anchor:at}});v.focus()})()`)
+  /* replace the whole buffer through CodeMirror's own view: the same update listener as typing runs, so the store sees it */
   const setCode = async (code) => {
-    await editor.click()
-    await page.evaluate((text) => {
-      const node = document.querySelector('.cm-content')
-      /* CodeMirror ≥ 6.43 (tile renderer) exposes `cmTile.view`; older builds `cmView` */
-      const t = node && (node.cmTile || node.cmView)
-      const view = t && (t.view || (t.rootView && t.rootView.view))
-      if (!view) throw new Error('CodeMirror view not reachable from .cm-content')
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
-      view.focus()
-    }, code)
-    /* compare against the document model: the DOM only holds the viewport's lines for a long buffer */
-    const now = (await page.evaluate(() => {
-      const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-      const view = t.view || t.rootView.view
-      return view.state.doc.toString()
-    })).replace(/\s+/g, '')
+    await page.locator('.cm-content').first().click()
+    await page.evaluate(`(function(text){const v=${VIEW};if(!v)throw new Error('CodeMirror view not reachable');v.dispatch({changes:{from:0,to:v.state.doc.length,insert:text},selection:{anchor:text.length}});v.focus()})(${JSON.stringify(code)})`)
+    const now = (await doc()).replace(/\s+/g, '')
     const want = code.replace(/\s+/g, '')
     if (now !== want) throw new Error(`setCode: buffer is "${now.slice(0, 80)}" not "${want.slice(0, 80)}"`)
   }
-
-  /* 1. division by zero → debugger pauses, ABORT via key */
-  await setCode('(/ 1 0)')
-  await page.keyboard.press('Control+Enter')
-  await page.getByText(';; DEBUGGER — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
-  check('unhandled error pauses the cell in the debugger', true)
-  const rows = await page.locator('button:has-text("RETRY"), button:has-text("ABORT")').allTextContents()
-  check('RETRY and ABORT rows are offered', rows.some((r) => r.includes('RETRY')) && rows.some((r) => r.includes('ABORT')), rows.join(' | '))
-  await page.screenshot({ path: path.join(root, 'dist', 'smoke-1-paused.png') })
-  await page.keyboard.press('1') /* [0] RETRY, [1] ABORT */
-  await page.getByText(';; ERROR — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
-  await page.getByText(';; resolved via ABORT').waitFor({ timeout: 5_000 })
-  check('key 1 → ABORT: error reported, resolution line says ABORT', true)
-
-  /* 2. user restart-case with USE-VALUE → value input → resumed */
-  await setCode('(restart-case (/ 1 0) (use-value (v) :report "Use a value instead" (* v 2)))')
-  await page.keyboard.press('Control+Enter')
-  await page.getByText(';; DEBUGGER — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
-  await page.locator('button:has-text("USE-VALUE")').first().click()
-  const input = page.locator('input[placeholder^="a form, evaluated in"]')
-  await input.waitFor({ timeout: 5_000 })
-  check('USE-VALUE opens the value-form input', true)
-  await input.fill('21')
-  await page.keyboard.press('Enter')
-  await page.getByText(';;=>').last().waitFor({ timeout: 20_000 })
-  await page.getByText(';; resumed via USE-VALUE').waitFor({ timeout: 10_000 })
-  const valueText = await page.locator('.cc-cell').last().textContent()
-  check('USE-VALUE 21 resumes → 42 and "resumed via USE-VALUE"', /42/.test(valueText ?? ''), (valueText ?? '').slice(0, 200))
-  await page.screenshot({ path: path.join(root, 'dist', 'smoke-2-resumed.png') })
-
-  /* 3. (read-line): the cell shows an stdin prompt; typing completes the read */
-  await setCode('(progn (format t "Name? ") (list :hello (read-line)))')
-  await page.keyboard.press('Control+Enter')
-  const stdin = page.locator('input[placeholder^="the program is reading a line"]')
-  await stdin.waitFor({ timeout: 20_000 })
-  check('(read-line) blocks the cell with an stdin prompt', true)
-  await page.screenshot({ path: path.join(root, 'dist', 'smoke-3-stdin.png') })
-  await stdin.fill('Ada')
-  await page.keyboard.press('Enter')
-  await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
-  check('typed line completes the read → (:HELLO "Ada")', true)
-
-  /* 4. F12 on a symbol jumps to its defun in the buffer (fallback path) */
-  await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
-  await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    const doc = view.state.doc.toString()
-    view.dispatch({ selection: { anchor: doc.lastIndexOf('sq') + 1 } })
-    view.focus()
-  })
-  await page.keyboard.press('F12')
-  await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
-  check('F12 on `sq` jumps to (defun sq …) — status bar shows Ln 1, Col 1', true)
-
-  /* 4a (Sprint 11). the outline lists the buffer's definitions and jumps */
-  await page.keyboard.press('Control+Shift+O')
-  const outline = page.locator('[data-testid="outline-panel"]')
-  await outline.waitFor({ timeout: 5_000 })
-  await outline.getByText('use-it', { exact: true }).waitFor({ timeout: 5_000 })
-  const outlineRows = await outline.locator('button:has(span.truncate)').allInnerTexts()
-  check('Ctrl⇧O outline lists sq and use-it for the active buffer', outlineRows.some((r) => /\bsq\b/.test(r)) && outlineRows.some((r) => /use-it/.test(r)), outlineRows.join(' | '))
-  await outline.getByText('use-it', { exact: true }).click()
-  await page.getByText('Ln 4, Col 1').waitFor({ timeout: 5_000 })
-  check('clicking use-it in the outline moves the caret to its defun — Ln 4, Col 1', true)
-  await page.keyboard.press('Control+Shift+O')
-  await outline.waitFor({ state: 'detached', timeout: 5_000 })
-
-  /* 4b (Sprint 9). a definition evaluated from a buffer is a go-to-definition target from another buffer */
-  await page.keyboard.press('Control+Shift+Enter')
-  await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
-  await page.locator('button[title="New buffer (Ctrl N)"]').first().click()
-  await setCode('(sq 3)')
-  await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    view.dispatch({ selection: { anchor: 2 } })
-    view.focus()
-  })
-  await page.keyboard.press('F12')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defun sq') && view.state.selection.main.head === 0
-  }, null, { timeout: 10_000 })
-  check('F12 on `sq` in a second buffer jumps to the evaluated (defun sq …) in the first', true)
-
-  /* 4c (Sprint 9). workspace search across open buffers, click to jump */
-  await page.keyboard.press('Control+Shift+F')
-  const box = page.locator('[data-testid="search-panel"] input')
-  await box.waitFor({ timeout: 5_000 })
-  await box.fill('sq')
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  const hits = await page.locator('[data-testid="search-panel"] mark').count()
-  check('Ctrl⇧F search finds `sq` in both open buffers (defun, call, call)', hits === 3, String(hits))
-  await page.locator('[data-testid="search-panel"] mark').first().click()
-  await page.getByText('Ln 1, Col 8').waitFor({ timeout: 10_000 })
-  check('clicking a hit puts the caret on it — status bar shows Ln 1, Col 8', true)
-  await box.press('Escape')
-
-  /* 4d (Sprint 10). Shift+F12 = find references: the panel opens with the symbol, whole-symbol and code-only on */
-  await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    const doc = view.state.doc.toString()
-    view.dispatch({ selection: { anchor: doc.lastIndexOf('(sq 9)') + 2 } })
-    view.focus()
-  })
-  await page.keyboard.press('Shift+F12')
-  await page.waitForFunction(() => document.querySelector('[data-testid="search-panel"] input')?.value === 'sq', null, { timeout: 5_000 })
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  const refHits = await page.locator('[data-testid="search-panel"] mark').count()
-  const wholeOn = await page.locator('button[title="Whole symbol"][aria-pressed="true"]').count()
-  const codeOn = await page.locator('button[title^="Code only"][aria-pressed="true"]').count()
-  check('Shift+F12 on `sq` fills the search with the symbol, whole-symbol + code-only on, 3 references', refHits === 3 && wholeOn === 1 && codeOn === 1, `hits=${refHits} whole=${wholeOn} code=${codeOn}`)
-  await box.press('Escape')
-
-  /* 4e (Sprint 10). a defun typed into the session box is a go-to-definition target: F12 scrolls to and flashes its cell */
-  const sessionBox = page.locator('[data-testid="session-input"] .cm-content')
-  await sessionBox.click()
-  await page.keyboard.type('(defun from-session () 1)')
-  const typed = await sessionBox.innerText()
-  await page.keyboard.press('Enter')
-  try {
-    await page.getByText('FROM-SESSION', { exact: true }).first().waitFor({ state: 'attached', timeout: 20_000 }) /* the new cell may be off-screen under content-visibility:auto */
-  } catch (e) {
-    throw new Error(`session box did not evaluate: typed=${JSON.stringify(typed)} now=${JSON.stringify(await sessionBox.innerText())} cells=${await page.locator('.cc-cell').count()} cmContents=${await page.locator('.cm-content').count()}`)
+  const bootIde = async () => {
+    await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    await page.locator('.cm-content').first().waitFor()
   }
-  await setCode('(from-session)')
-  await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    view.dispatch({ selection: { anchor: 3 } })
-    view.focus()
-  })
-  await page.keyboard.press('F12')
-  await page.locator('.cc-cell.ring-2').first().waitFor({ timeout: 10_000 })
-  const flashed = await page.locator('.cc-cell.ring-2').first().innerText()
-  check('F12 on `from-session` (defined in the session box) flashes that cell', /from-session/.test(flashed), flashed.slice(0, 120))
-
-  /* 5. package pill follows in-package (Sprint 1) */
-  await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
-  await page.keyboard.press('Control+Shift+Enter') /* evaluate ALL forms */
-  await page.getByText('SMOKE', { exact: true }).first().waitFor({ timeout: 20_000 })
-  check('package pill follows (in-package :smoke)', true)
-
-  /* Sprint 8: session export downloads a Markdown notebook of the cells above */
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 10_000 }),
-    page.locator('button[title^="Export session as Markdown"]').click(),
-  ])
-  const mdPath = await download.path()
-  const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
-  fs.writeFileSync(path.join(root, 'dist', 'smoke-session.md'), md)
-  check('export button downloads conscell-session-….md', /^conscell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
-  check('the Markdown carries the cells: header, the resumed cell, the stdin cell', md.startsWith('# ConsCell session') && md.includes('_Resumed via `USE-VALUE`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
-
-  /* Sprint 10: import the transcript back — the cells are appended, marked imported */
-  const cellsBefore = await page.locator('.cc-cell').count()
-  const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser', { timeout: 10_000 }),
-    (async () => {
-      await page.keyboard.press('Control+k')
-      await page.keyboard.type('Import session transcript')
-      await page.keyboard.press('Enter') /* exact-prefix matches rank first in the palette */
-    })(),
-  ])
-  const accept = await chooser.element().getAttribute('accept')
-  await chooser.setFiles(mdPath)
-  const headings = (md.match(/^## Cell \d+ · /gm) || []).length
-  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length >= n, cellsBefore + 1, { timeout: 15_000 }).catch(() => {})
-  await page.waitForTimeout(500)
-  const cellsAfter = await page.locator('.cc-cell').count()
-  const importedChips = await page.getByText('imported', { exact: true }).count()
-  const toasts = await page.locator('[data-sonner-toast]').allInnerTexts()
-  check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips} accept=${accept} file=${mdPath} size=${mdPath ? fs.statSync(mdPath).size : -1} toasts=${JSON.stringify(toasts)}`)
-
-  /* Sprint 16: a session cell opens as a buffer */
-  const tabsBefore = await page.locator('[data-testid="buffer-tab"]').count()
-  await page.locator('.cc-cell').first().hover()
-  await page.locator('.cc-cell').first().locator('button[title="Open as buffer"]').click()
-  await page.waitForFunction((n) => document.querySelectorAll('[data-testid="buffer-tab"]').length === n + 1, tabsBefore, { timeout: 5_000 })
-  const openedDoc = await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString()
-  })
-  check('"Open as buffer" on the first cell adds a tab whose document is the cell input (/ 1 0)', openedDoc.trim() === '(/ 1 0)', JSON.stringify(openedDoc))
-  /* Sprint 17: the cell and the buffer are linked — re-run evaluates the buffer's current text */
-  const linkedTab = await page.locator('[data-testid="buffer-tab"][data-active="true"]').innerText()
-  await setCode('(+ 1 2)')
-  const cellsBeforeRerun = await page.locator('.cc-cell').count()
-  await page.locator('.cc-cell').first().hover()
-  await page.locator('.cc-cell').first().locator('button[title="Re-run"]').click()
-  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n + 1, cellsBeforeRerun, { timeout: 20_000 })
-  await page.locator('.cc-cell').last().getByText('3', { exact: true }).waitFor({ state: 'attached', timeout: 20_000 })
-  const rerunText = await page.locator('.cc-cell').last().evaluate((el) => el.textContent || '') /* textContent: an off-screen cell has no innerText under content-visibility:auto */
-  check('re-running the linked cell evaluates the edited buffer: new cell (+ 1 2) → 3, tab badged [1]', rerunText.includes('(+ 1 2)') && /\[1\]/.test(linkedTab), `tab=${JSON.stringify(linkedTab)} cell=${JSON.stringify(rerunText.slice(0, 80))}`)
-  /* back to the first buffer: the checks below edit and index it */
-  await page.locator('[data-testid="buffer-tab"]').nth(0).click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defpackage :smoke')
-  }, null, { timeout: 10_000 })
-
-  /* Sprint 16: import replacing the session goes through the confirm modal */
-  const [chooser2] = await Promise.all([
-    page.waitForEvent('filechooser', { timeout: 10_000 }),
-    (async () => {
-      await page.keyboard.press('Control+k')
-      await page.keyboard.type('Import transcript replacing')
-      await page.keyboard.press('Enter')
-    })(),
-  ])
-  await chooser2.setFiles(mdPath)
-  await page.getByText('Replace the session with the transcript?').waitFor({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'Replace session' }).click()
-  await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, headings, { timeout: 15_000 })
-  const chipsAfterReplace = await page.getByText('imported', { exact: true }).count()
-  check('replacing import: the confirm modal, then exactly the transcript\'s cells remain, all imported', chipsAfterReplace === headings, `cells=${headings} chips=${chipsAfterReplace}`)
-
-  /* Sprint 11/12: the definition index survives a reload, and an entry follows the defun when the buffer changes.
-   * Index path vs text-scan path differ here: the ACTIVE buffer (2) also defines sq at line 1; the index says sq was
-   * evaluated in buffer 1, where it now sits on line 3 — F12 must land in buffer 1, line 3. */
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
-  await page.locator('.cm-content').first().waitFor()
-  /* Sprint 18: the editor state survived the reload — undo reverts the edit made before it */
-  await page.waitForTimeout(500)
-  await page.locator('.cm-content').first().click()
-  await page.keyboard.press('Control+z')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(from-session)')
-  }, null, { timeout: 10_000 })
-  await page.keyboard.press('Control+y')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defpackage :smoke')
-  }, null, { timeout: 10_000 })
-  check('after a reload, Ctrl+Z undoes the edit made before it and Ctrl+Y redoes — the editor state was persisted', true)
-  await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
-  await page.keyboard.press('Control+Shift+F')
-  const box2 = page.locator('[data-testid="search-panel"] input')
-  await box2.waitFor({ timeout: 5_000 })
-  await box2.fill('sq 3')
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  await page.locator('[data-testid="search-panel"] mark').first().click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(sq 3)')
-  }, null, { timeout: 10_000 })
-  await box2.press('Escape')
-  await setCode('(defun sq (z) z)\n(sq 3)\n')
-  await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('(sq 3)') + 2 } })
-    view.focus()
-  })
-  await page.keyboard.press('F12')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defpackage :x)')
-  }, null, { timeout: 10_000 })
-  await page.getByText('Ln 3, Col 1').waitFor({ timeout: 10_000 })
-  check('after a reload, F12 on `sq` uses the persisted index and follows the defun to its new line (buffer 1, Ln 3)', true)
-
-  /* Sprint 13: replace across open buffers — active one through the editor (undoable), the other through the store */
-  await page.keyboard.press('Control+Shift+F')
-  const box3 = page.locator('[data-testid="search-panel"] input[aria-label="Search workspace"]')
-  await box3.waitFor({ timeout: 5_000 })
-  await box3.fill('sq')
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  await page.locator('[data-testid="search-panel"] button[title="Replace…"]').click()
-  const rbox = page.locator('[data-testid="search-panel"] input[aria-label="Replacement"]')
-  await rbox.waitFor({ timeout: 5_000 })
-  await rbox.fill('sq2')
-  await page.locator('[data-testid="search-panel"] button[title^="Replace all"]').click()
-  await page.locator('[data-testid="search-panel"] button[title^="Confirm"]').click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().includes('(defun sq2 (y) y)')
-  }, null, { timeout: 10_000 })
-  await box3.fill('sq2')
-  await page.waitForFunction(() => document.querySelectorAll('[data-testid="search-panel"] mark').length === 3, null, { timeout: 10_000 })
-  check('Replace all sq → sq2 rewrites both open buffers (3 hits of sq2 afterwards)', true)
-  await page.locator('.cm-content').first().click()
-  await page.keyboard.press('Control+z')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().includes('(defun sq (y) y)')
-  }, null, { timeout: 10_000 })
-  check('Ctrl+Z in the editor undoes the replacement in the active buffer', true)
-
-  /* Sprint 14: undo history stays inside a buffer — switching is not an undo step */
-  await page.keyboard.press('Control+Shift+F')
-  await box3.fill('sq2 3')
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  await page.locator('[data-testid="search-panel"] mark').first().click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
-  }, null, { timeout: 10_000 })
-  await box3.press('Escape')
-  await page.locator('.cm-content').first().click()
-  await page.keyboard.press('Control+z')
-  await page.waitForTimeout(300)
-  const docAfterUndo = await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString()
-  })
-  check('Ctrl+Z in the other buffer reverts the replace that reached it through the store — and never shows another buffer\'s text', docAfterUndo.startsWith('(defun sq (z) z)'), JSON.stringify(docAfterUndo.slice(0, 40)))
-  await page.keyboard.press('Control+y')
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
-  }, null, { timeout: 10_000 })
-  check('Ctrl+Y re-applies it', true)
-  await page.keyboard.press('Control+Shift+F')
-  await box3.fill('defpackage :x')
-  await page.locator('[data-testid="search-panel"] mark').first().waitFor({ timeout: 10_000 })
-  await page.locator('[data-testid="search-panel"] mark').first().click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().includes('(defun sq (y) y)')
-  }, null, { timeout: 10_000 })
-  await box3.press('Escape')
-  await page.locator('.cm-content').first().click()
-  await page.keyboard.press('Control+y') /* redo; Control+Shift+z would reach CodeMirror as a lowercase z and undo instead */
-  await page.waitForTimeout(300)
-  const docAfterRedo = await page.evaluate(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString()
-  })
-  check('back in the first buffer, redo restores the replacement — its history survived the switch', docAfterRedo.includes('(defun sq2 (y) y)'), JSON.stringify(docAfterRedo))
-
-  /* Sprint 15: each buffer keeps its scroll position across a switch (switching via the tab bar, which does not move the caret) */
-  await setCode(Array.from({ length: 300 }, (_, i) => `(defun line-${i} () ${i})`).join('\n') + '\n')
-  await page.evaluate(() => { document.querySelector('.cm-scroller').scrollTop = 2000 })
-  await page.waitForTimeout(250)
-  const scrollBefore = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
-  const tabs = page.locator('[data-testid="buffer-tab"]')
-  await tabs.nth(1).click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defun sq2 (z) z)')
-  }, null, { timeout: 10_000 })
-  await tabs.nth(0).click()
-  await page.waitForFunction(() => {
-    const t = document.querySelector('.cm-content').cmTile || document.querySelector('.cm-content').cmView
-    const view = t.view || t.rootView.view
-    return view.state.doc.toString().startsWith('(defun line-0 ()')
-  }, null, { timeout: 10_000 })
-  await page.waitForTimeout(300)
-  const scrollAfter = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
-  check('switching away and back through the tab bar restores the buffer\'s scroll position', scrollBefore > 500 && Math.abs(scrollAfter - scrollBefore) < 60, `before=${scrollBefore} after=${scrollAfter}`)
-
-  /* Sprint 8: the landing page is code-split and its scroll effects load on demand */
-  await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
-  await page.locator('h1').first().waitFor({ timeout: 20_000 })
-  await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /lenis-.*\.js/.test(r.name)), null, { timeout: 20_000 })
-  check('landing page renders after code-splitting and loads its lenis chunk on demand', true)
-
-  check('no uncaught page errors', errors.length === 0, errors.join(' | '))
-} catch (e) {
-  check('smoke run completed', false, e?.message ?? String(e))
-  await page.screenshot({ path: path.join(root, 'dist', 'smoke-failure.png') }).catch(() => {})
-} finally {
-  await browser.close()
+  const evalAll = () => page.keyboard.press('Control+Shift+Enter')
+  const newBuffer = () => page.locator('button[title="New buffer (Ctrl N)"]').first().click()
+  const tab = (i) => page.locator('[data-testid="buffer-tab"]').nth(i)
+  const searchBox = () => page.locator('[data-testid="search-panel"] input[aria-label="Search workspace"]')
+  const marks = () => page.locator('[data-testid="search-panel"] mark')
+  /* open the search panel, type a query and click the first hit */
+  const jumpViaSearch = async (query, expectDoc) => {
+    await page.keyboard.press('Control+Shift+F')
+    const box = searchBox()
+    await box.waitFor({ timeout: 5_000 })
+    await box.fill(query)
+    await marks().first().waitFor({ timeout: 10_000 })
+    await marks().first().click()
+    await waitDoc(expectDoc)
+    await box.press('Escape')
+  }
+  const paletteCommand = async (name) => {
+    await page.keyboard.press('Control+k')
+    await page.keyboard.type(name)
+    await page.keyboard.press('Enter') /* exact-prefix matches rank first in the palette */
+  }
+  const cells = () => page.locator('.cc-cell')
+  const shot = (name) => page.screenshot({ path: path.join(root, 'dist', `smoke-${name}.png`) }).catch(() => {})
+  return { doc, waitDoc, setCaret, setCode, bootIde, evalAll, newBuffer, tab, searchBox, marks, jumpViaSearch, paletteCommand, cells, shot, check, page }
 }
+
+/* ---- scenarios ---- */
+
+const scenarios = {
+  /* the debugger pauses on an unhandled error; restarts resume or abort */
+  async debugger({ page, check, setCode, shot, cells }) {
+    check('ECL boots in the browser (status bar shows ECL 24.5 · wasm32)', true)
+    await setCode('(/ 1 0)')
+    await page.keyboard.press('Control+Enter')
+    await page.getByText(';; DEBUGGER — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
+    check('unhandled error pauses the cell in the debugger', true)
+    const rows = await page.locator('button:has-text("RETRY"), button:has-text("ABORT")').allTextContents()
+    check('RETRY and ABORT rows are offered', rows.some((r) => r.includes('RETRY')) && rows.some((r) => r.includes('ABORT')), rows.join(' | '))
+    await shot('1-paused')
+    await page.keyboard.press('1') /* [0] RETRY, [1] ABORT */
+    await page.getByText(';; ERROR — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
+    await page.getByText(';; resolved via ABORT').waitFor({ timeout: 5_000 })
+    check('key 1 → ABORT: error reported, resolution line says ABORT', true)
+    await setCode('(restart-case (/ 1 0) (use-value (v) :report "Use a value instead" (* v 2)))')
+    await page.keyboard.press('Control+Enter')
+    await page.getByText(';; DEBUGGER — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
+    await page.locator('button:has-text("USE-VALUE")').first().click()
+    const input = page.locator('input[placeholder^="a form, evaluated in"]')
+    await input.waitFor({ timeout: 5_000 })
+    check('USE-VALUE opens the value-form input', true)
+    await input.fill('21')
+    await page.keyboard.press('Enter')
+    await page.getByText(';;=>').last().waitFor({ timeout: 20_000 })
+    await page.getByText(';; resumed via USE-VALUE').waitFor({ timeout: 10_000 })
+    const valueText = await cells().last().textContent()
+    check('USE-VALUE 21 resumes → 42 and "resumed via USE-VALUE"', /42/.test(valueText ?? ''), (valueText ?? '').slice(0, 200))
+    await shot('2-resumed')
+  },
+
+  /* (read-line) blocks the cell on a prompt; the typed line completes it */
+  async stdin({ page, check, setCode, shot }) {
+    await setCode('(progn (format t "Name? ") (list :hello (read-line)))')
+    await page.keyboard.press('Control+Enter')
+    const stdin = page.locator('input[placeholder^="the program is reading a line"]')
+    await stdin.waitFor({ timeout: 20_000 })
+    check('(read-line) blocks the cell with an stdin prompt', true)
+    await shot('3-stdin')
+    await stdin.fill('Ada')
+    await page.keyboard.press('Enter')
+    await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
+    check('typed line completes the read → (:HELLO "Ada")', true)
+  },
+
+  /* go-to-definition, the outline, workspace search, find references, session-box definitions, the package pill */
+  async definitions({ page, check, setCode, setCaret, waitDoc, evalAll, newBuffer, searchBox, marks, cells }) {
+    await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
+    await setCaret({ after: 'sq', plus: 1 })
+    await page.keyboard.press('F12')
+    await page.getByText('Ln 1, Col 1').waitFor({ timeout: 10_000 })
+    check('F12 on `sq` jumps to (defun sq …) — status bar shows Ln 1, Col 1', true)
+
+    await page.keyboard.press('Control+Shift+O')
+    const outline = page.locator('[data-testid="outline-panel"]')
+    await outline.waitFor({ timeout: 5_000 })
+    await outline.getByText('use-it', { exact: true }).waitFor({ timeout: 5_000 })
+    const outlineRows = await outline.locator('button:has(span.truncate)').allInnerTexts()
+    check('Ctrl⇧O outline lists sq and use-it for the active buffer', outlineRows.some((r) => /\bsq\b/.test(r)) && outlineRows.some((r) => /use-it/.test(r)), outlineRows.join(' | '))
+    await outline.getByText('use-it', { exact: true }).click()
+    await page.getByText('Ln 4, Col 1').waitFor({ timeout: 5_000 })
+    check('clicking use-it in the outline moves the caret to its defun — Ln 4, Col 1', true)
+    await page.keyboard.press('Control+Shift+O')
+    await outline.waitFor({ state: 'detached', timeout: 5_000 })
+
+    await evalAll()
+    await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
+    await newBuffer()
+    await setCode('(sq 3)')
+    await setCaret(2)
+    await page.keyboard.press('F12')
+    await waitDoc({ startsWith: '(defun sq', caretAt: 0 })
+    check('F12 on `sq` in a second buffer jumps to the evaluated (defun sq …) in the first', true)
+
+    await page.keyboard.press('Control+Shift+F')
+    const box = searchBox()
+    await box.waitFor({ timeout: 5_000 })
+    await box.fill('sq')
+    await marks().first().waitFor({ timeout: 10_000 })
+    const hits = await marks().count()
+    check('Ctrl⇧F search finds `sq` in both open buffers (defun, call, call)', hits === 3, String(hits))
+    await marks().first().click()
+    await page.getByText('Ln 1, Col 8').waitFor({ timeout: 10_000 })
+    check('clicking a hit puts the caret on it — status bar shows Ln 1, Col 8', true)
+    await box.press('Escape')
+
+    await setCaret({ after: '(sq 9)', plus: 2 })
+    await page.keyboard.press('Shift+F12')
+    await page.waitForFunction(() => document.querySelector('[data-testid="search-panel"] input')?.value === 'sq', null, { timeout: 5_000 })
+    await marks().first().waitFor({ timeout: 10_000 })
+    const refHits = await marks().count()
+    const wholeOn = await page.locator('button[title="Whole symbol"][aria-pressed="true"]').count()
+    const codeOn = await page.locator('button[title^="Code only"][aria-pressed="true"]').count()
+    check('Shift+F12 on `sq` fills the search with the symbol, whole-symbol + code-only on, 3 references', refHits === 3 && wholeOn === 1 && codeOn === 1, `hits=${refHits} whole=${wholeOn} code=${codeOn}`)
+    await box.press('Escape')
+
+    const sessionBox = page.locator('[data-testid="session-input"] .cm-content')
+    await sessionBox.click()
+    await page.keyboard.type('(defun from-session () 1)')
+    await page.keyboard.press('Enter')
+    await page.getByText('FROM-SESSION', { exact: true }).first().waitFor({ state: 'attached', timeout: 20_000 }) /* may be off-screen under content-visibility:auto */
+    await setCode('(from-session)')
+    await setCaret(3)
+    await page.keyboard.press('F12')
+    const flashedCell = page.locator('.cc-cell.ring-2').first()
+    await flashedCell.waitFor({ timeout: 10_000 })
+    const flashed = await flashedCell.innerText()
+    check('F12 on `from-session` (defined in the session box) flashes that cell', /from-session/.test(flashed), flashed.slice(0, 120))
+
+    await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
+    await evalAll()
+    await page.getByText('SMOKE', { exact: true }).first().waitFor({ timeout: 20_000 })
+    check('package pill follows (in-package :smoke)', true)
+  },
+
+  /* export, import (append and replace), a cell opened as a linked buffer and re-run */
+  async transcript({ page, check, setCode, doc, cells, tab, waitDoc, paletteCommand }) {
+    await setCode('(/ 1 0)')
+    await page.keyboard.press('Control+Enter')
+    await page.getByText(';; DEBUGGER — DIVISION-BY-ZERO').waitFor({ timeout: 20_000 })
+    await page.keyboard.press('1')
+    await page.getByText(';; resolved via ABORT').waitFor({ timeout: 10_000 })
+    await setCode('(list :hello "Ada")')
+    await page.keyboard.press('Control+Enter')
+    await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 10_000 }),
+      page.locator('button[title^="Export session as Markdown"]').click(),
+    ])
+    const mdPath = await download.path()
+    const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
+    fs.writeFileSync(path.join(root, 'dist', 'smoke-session.md'), md)
+    check('export button downloads conscell-session-….md', /^conscell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
+    check('the Markdown carries the cells: header, the aborted cell, the value', md.startsWith('# ConsCell session') && md.includes('_Resumed via `ABORT`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
+
+    const cellsBefore = await cells().count()
+    const headings = (md.match(/^## Cell \d+ · /gm) || []).length
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10_000 }), paletteCommand('Import session transcript')])
+    await chooser.setFiles(mdPath)
+    await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, cellsBefore * 2, { timeout: 15_000 }).catch(() => {})
+    const cellsAfter = await cells().count()
+    const importedChips = await page.getByText('imported', { exact: true }).count()
+    check('importing the exported Markdown appends every cell, each marked imported', headings === cellsBefore && cellsAfter === cellsBefore * 2 && importedChips === cellsBefore, `headings=${headings} before=${cellsBefore} after=${cellsAfter} chips=${importedChips}`)
+
+    const tabsBefore = await page.locator('[data-testid="buffer-tab"]').count()
+    await cells().first().hover()
+    await cells().first().locator('button[title="Open as buffer"]').click()
+    await page.waitForFunction((n) => document.querySelectorAll('[data-testid="buffer-tab"]').length === n + 1, tabsBefore, { timeout: 5_000 })
+    const openedDoc = await doc()
+    check('"Open as buffer" on the first cell adds a tab whose document is the cell input (/ 1 0)', openedDoc.trim() === '(/ 1 0)', JSON.stringify(openedDoc))
+    const linkedTab = await page.locator('[data-testid="buffer-tab"][data-active="true"]').innerText()
+    await setCode('(+ 1 2)')
+    const cellsBeforeRerun = await cells().count()
+    await cells().first().hover()
+    await cells().first().locator('button[title="Re-run"]').click()
+    await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n + 1, cellsBeforeRerun, { timeout: 20_000 })
+    await cells().last().getByText('3', { exact: true }).waitFor({ state: 'attached', timeout: 20_000 })
+    const rerunText = await cells().last().evaluate((el) => el.textContent || '')
+    check('re-running the linked cell evaluates the edited buffer: new cell (+ 1 2) → 3, tab badged [1]', rerunText.includes('(+ 1 2)') && /\[1\]/.test(linkedTab), `tab=${JSON.stringify(linkedTab)} cell=${JSON.stringify(rerunText.slice(0, 80))}`)
+    await tab(0).click()
+    await waitDoc({ startsWith: '(list :hello' })
+
+    const [chooser2] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10_000 }), paletteCommand('Import transcript replacing')])
+    await chooser2.setFiles(mdPath)
+    await page.getByText('Replace the session with the transcript?').waitFor({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Replace session' }).click()
+    await page.waitForFunction((n) => document.querySelectorAll('.cc-cell').length === n, headings, { timeout: 15_000 })
+    const chipsAfterReplace = await page.getByText('imported', { exact: true }).count()
+    check('replacing import: the confirm modal, then exactly the transcript\'s cells remain, all imported', chipsAfterReplace === headings, `cells=${headings} chips=${chipsAfterReplace}`)
+  },
+
+  /* the definition index and the editor state survive a reload; an index entry follows the defun */
+  async persistence({ page, check, setCode, setCaret, waitDoc, evalAll, newBuffer, tab, jumpViaSearch, bootIde }) {
+    await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
+    await evalAll()
+    await page.getByText('USE-IT', { exact: true }).first().waitFor({ timeout: 20_000 })
+    await newBuffer()
+    await setCode('(sq 3)')
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defun sq' })
+    await setCode('(from-session)')
+    await setCode('(defpackage :smoke (:use :cl))\n(in-package :smoke)')
+    await page.waitForTimeout(1200) /* both the workspace store and the editor states persist on a 500 ms debounce */
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    await page.locator('.cm-content').first().waitFor()
+    await page.waitForTimeout(500)
+    await page.locator('.cm-content').first().click()
+    await page.keyboard.press('Control+z')
+    await waitDoc({ startsWith: '(from-session)' })
+    await page.keyboard.press('Control+y')
+    await waitDoc({ startsWith: '(defpackage :smoke' })
+    check('after a reload, Ctrl+Z undoes the edit made before it and Ctrl+Y redoes — the editor state was persisted', true)
+
+    /* index path vs text-scan path differ here: the ACTIVE buffer (2) also defines sq at line 1; the index says sq was
+     * evaluated in buffer 1, where it now sits on line 3 — F12 must land in buffer 1, line 3 */
+    await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
+    await jumpViaSearch('sq 3', { startsWith: '(sq 3)' })
+    await setCode('(defun sq (z) z)\n(sq 3)\n')
+    await setCaret({ after: '(sq 3)', plus: 2 })
+    await page.keyboard.press('F12')
+    await waitDoc({ startsWith: '(defpackage :x)' })
+    await page.getByText('Ln 3, Col 1').waitFor({ timeout: 10_000 })
+    check('after a reload, F12 on `sq` uses the persisted index and follows the defun to its new line (buffer 1, Ln 3)', true)
+    void bootIde
+  },
+
+  /* replace across buffers; undo/redo stay inside a buffer; scroll position per buffer */
+  async replace({ page, check, setCode, doc, waitDoc, newBuffer, tab, searchBox, marks, jumpViaSearch }) {
+    await setCode('(defpackage :x)\n\n(defun sq (y) y)\n')
+    await newBuffer()
+    await setCode('(defun sq (z) z)\n(sq 3)\n')
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defpackage :x)' })
+
+    await page.keyboard.press('Control+Shift+F')
+    const box = searchBox()
+    await box.waitFor({ timeout: 5_000 })
+    await box.fill('sq')
+    await marks().first().waitFor({ timeout: 10_000 })
+    await page.locator('[data-testid="search-panel"] button[title="Replace…"]').click()
+    const rbox = page.locator('[data-testid="search-panel"] input[aria-label="Replacement"]')
+    await rbox.waitFor({ timeout: 5_000 })
+    await rbox.fill('sq2')
+    await page.locator('[data-testid="search-panel"] button[title^="Replace all"]').click()
+    await page.locator('[data-testid="search-panel"] button[title^="Confirm"]').click()
+    await waitDoc({ includes: '(defun sq2 (y) y)' })
+    await box.fill('sq2')
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="search-panel"] mark').length === 3, null, { timeout: 10_000 })
+    check('Replace all sq → sq2 rewrites both open buffers (3 hits of sq2 afterwards)', true)
+    await page.locator('.cm-content').first().click()
+    await page.keyboard.press('Control+z')
+    await waitDoc({ includes: '(defun sq (y) y)' })
+    check('Ctrl+Z in the editor undoes the replacement in the active buffer', true)
+
+    await jumpViaSearch('sq2 3', { startsWith: '(defun sq2 (z) z)' })
+    await page.locator('.cm-content').first().click()
+    await page.keyboard.press('Control+z')
+    await page.waitForTimeout(300)
+    const docAfterUndo = await doc()
+    check('Ctrl+Z in the other buffer reverts the replace that reached it through the store — and never shows another buffer\'s text', docAfterUndo.startsWith('(defun sq (z) z)'), JSON.stringify(docAfterUndo.slice(0, 40)))
+    await page.keyboard.press('Control+y')
+    await waitDoc({ startsWith: '(defun sq2 (z) z)' })
+    check('Ctrl+Y re-applies it', true)
+    await jumpViaSearch('defpackage :x', { includes: '(defun sq (y) y)' })
+    await page.locator('.cm-content').first().click()
+    await page.keyboard.press('Control+y') /* redo; Control+Shift+z would reach CodeMirror as a lowercase z and undo instead */
+    await page.waitForTimeout(300)
+    const docAfterRedo = await doc()
+    check('back in the first buffer, redo restores the replacement — its history survived the switch', docAfterRedo.includes('(defun sq2 (y) y)'), JSON.stringify(docAfterRedo))
+
+    await setCode(Array.from({ length: 300 }, (_, i) => `(defun line-${i} () ${i})`).join('\n') + '\n')
+    await page.evaluate(() => { document.querySelector('.cm-scroller').scrollTop = 2000 })
+    await page.waitForTimeout(250)
+    const scrollBefore = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
+    await tab(1).click()
+    await waitDoc({ startsWith: '(defun sq2 (z) z)' })
+    await tab(0).click()
+    await waitDoc({ startsWith: '(defun line-0 ()' })
+    await page.waitForTimeout(300)
+    const scrollAfter = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop)
+    check('switching away and back through the tab bar restores the buffer\'s scroll position', scrollBefore > 500 && Math.abs(scrollAfter - scrollBefore) < 60, `before=${scrollBefore} after=${scrollAfter}`)
+  },
+
+  /* the landing page is code-split and its scroll effects load on demand */
+  async landing({ page, check }) {
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
+    await page.locator('h1').first().waitFor({ timeout: 20_000 })
+    await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /lenis-.*\.js/.test(r.name)), null, { timeout: 20_000 })
+    check('landing page renders after code-splitting and loads its lenis chunk on demand', true)
+  },
+}
+/* scenarios that do not need the IDE booted first */
+const NO_BOOT = new Set(['landing'])
+
+if (argv.includes('--list')) { console.log(Object.keys(scenarios).join('\n')); process.exit(0) }
+const selected = only.length ? only : Object.keys(scenarios)
+const unknown = selected.filter((s) => !scenarios[s])
+if (unknown.length) { console.error(`unknown scenario(s): ${unknown.join(', ')} — available: ${Object.keys(scenarios).join(', ')}`); process.exit(2) }
+
+/* ---- runner ---- */
+
+const results = []
+const browser = await chromium.launch({ headless: true })
+for (const name of selected) {
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+  const page = await context.newPage()
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  const check = (label, ok, detail = '') => results.push(`${ok ? '✓' : '✗'} [${name}] ${label}${ok || !detail ? '' : `\n    ${detail}`}`)
+  const t = tools(page, check)
+  const t0 = Date.now()
+  try {
+    if (!NO_BOOT.has(name)) await t.bootIde()
+    await scenarios[name](t)
+    check('no uncaught page errors', errors.length === 0, errors.join(' | '))
+  } catch (e) {
+    check('scenario completed', false, e?.message ?? String(e))
+    await page.screenshot({ path: path.join(root, 'dist', `smoke-failure-${name}.png`) }).catch(() => {})
+  } finally {
+    console.error(`  ${name}: ${((Date.now() - t0) / 1000).toFixed(1)} s`)
+    await context.close()
+  }
+}
+await browser.close()
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length
 console.log(failed ? `\nFAIL: ${failed} check(s) failed` : `\nPASS: ${results.length} checks passed`)
