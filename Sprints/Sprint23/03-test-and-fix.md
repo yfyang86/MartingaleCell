@@ -80,4 +80,4 @@ recorded against the real image stand as its own evidence; the first
 run of `pnpm fetch:sbcl && pnpm test:sbcl` after the port is finished
 is the next check.
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/23 — pending.
