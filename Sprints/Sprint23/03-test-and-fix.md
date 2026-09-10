@@ -80,4 +80,5 @@ recorded against the real image stand as its own evidence; the first
 run of `pnpm fetch:sbcl && pnpm test:sbcl` after the port is finished
 is the next check.
 
-CI on the pull request: https://github.com/yfyang86/ConsCell/pull/23 — pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/23 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34471109278: `check` incl. the SBCL skip step in 51 s, the labelled `smoke` job in 1 min 54 s), merged as `7dd8472`.
+CI on the merge commit on `dev`: pending (recorded once it completes; this docs commit starts no run).
