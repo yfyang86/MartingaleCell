@@ -19,7 +19,7 @@
 | Real browser, all scenarios | `pnpm preview` + `pnpm smoke:browser` | 43 / 43 in 7 scenarios (4 new in `persistence`) |
 | One scenario alone | `node scripts/browser-smoke.mjs --only persistence` | 7 / 7 in 32 s |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/20 — pending.
 The `smoke` job on the labelled PR: pending.
 
 ## Fixes made along the way
