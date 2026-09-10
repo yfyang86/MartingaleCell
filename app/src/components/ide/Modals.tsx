@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useWorkspace } from '@/store/workspace'
 import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
-import { interruptEvaluation, restartRuntime, clearSession, copyText } from './actions'
+import { interruptEvaluation, restartRuntime, clearSession, copyText, pendingImportCount, applyPendingImport } from './actions'
 
 function ModalShell({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -56,6 +56,13 @@ const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => 
     confirm: 'Clear session',
     danger: true,
     run: clearSession,
+  },
+  'import-replace': {
+    title: 'Replace the session with the transcript?',
+    body: () => `${useWorkspace.getState().cells.length} current cell${useWorkspace.getState().cells.length === 1 ? '' : 's'} will be cleared, then ${pendingImportCount()} imported cell${pendingImportCount() === 1 ? '' : 's'} appended. This cannot be undone.`,
+    confirm: 'Replace session',
+    danger: true,
+    run: () => void applyPendingImport(),
   },
   'reset-workspace': {
     title: 'Reset workspace?',

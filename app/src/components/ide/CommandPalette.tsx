@@ -97,7 +97,8 @@ function PaletteBody({ close }: { close: () => void }) {
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },
       { id: 'docs', group: 'Help', name: 'Open docs', run: () => { window.location.href = '/docs' } },
-      { id: 'import-transcript', group: 'Workspace', name: 'Import session transcript (.md / .lisp)', desc: 'append the cells of a Markdown transcript, or open a .lisp one as a buffer', run: importTranscriptFile },
+      { id: 'import-transcript', group: 'Workspace', name: 'Import session transcript (.md / .lisp)', desc: 'append the cells of a Markdown transcript, or open a .lisp one as a buffer', run: () => importTranscriptFile('append') },
+      { id: 'import-transcript-replace', group: 'Workspace', name: 'Import transcript replacing the session', desc: 'clear the session (after a confirm), then import the cells', run: () => importTranscriptFile('replace') },
       { id: 'export-md', group: 'Workspace', name: 'Export session as Markdown (.md)', desc: 'values, warnings, errors and plots inline', run: () => void exportSession('md') },
       { id: 'export-lisp', group: 'Workspace', name: 'Export session as Lisp transcript (.lisp)', desc: 'results as comments — the file evaluates as is', run: () => void exportSession('lisp') },
       { id: 'export-ws', group: 'Workspace', name: 'Export workspace (.json)', run: () => {

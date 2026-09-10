@@ -14,7 +14,7 @@ function saveSearchOpts(o: SearchOptions): SearchOptions {
   return o
 }
 
-export type ConfirmKind = 'restart' | 'interrupt' | 'clear-session' | 'reset-workspace' | null
+export type ConfirmKind = 'restart' | 'interrupt' | 'clear-session' | 'reset-workspace' | 'import-replace' | null
 
 interface UiState {
   paletteOpen: boolean
