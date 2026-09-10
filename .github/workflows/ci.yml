@@ -72,3 +72,9 @@ jobs:
 
       - name: performance floor (fast setjmp trampolines)
         run: node scripts/perf-test.mjs
+
+      # SBCL/wasm second engine — skips (exit 0) when public/sbcl/ artifacts
+      # are absent (they are ~112 MB, gitignored, copied in by
+      # scripts/fetch-sbcl.mjs from a local sbcl wasm-dev build)
+      - name: SBCL/wasm engine test (skips without artifacts)
+        run: node scripts/sbcl-test.mjs --timeout-ms 180000

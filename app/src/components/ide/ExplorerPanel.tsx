@@ -225,7 +225,7 @@ export default function ExplorerPanel() {
   const setSearchOpen = useUi((s) => s.setSearchOpen)
   const outlineOpen = useUi((s) => s.outlineOpen)
   const toggleOutline = useUi((s) => s.toggleOutline)
-  const engineReady = engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
+  const engineReady = engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
 
   const [menu, setMenu] = useState<{ x: number; y: number; node: ProjectNode } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null)

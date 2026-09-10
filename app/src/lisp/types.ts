@@ -5,11 +5,12 @@ import type { PlotAttachment } from '@/plot/gnuplot'
 export type EngineStatus =
   | 'booting'
   | 'ready-ecl'
+  | 'ready-sbcl'
   | 'ready-jscl'
   | 'ready-mock'
   | 'error'
 
-export type EngineKind = 'ecl' | 'jscl' | 'mock' | null
+export type EngineKind = 'ecl' | 'sbcl' | 'jscl' | 'mock' | null
 
 export interface EvalResult {
   stdout: string

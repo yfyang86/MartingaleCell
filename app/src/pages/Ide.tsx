@@ -103,6 +103,7 @@ export default function Ide() {
           const names: Record<string, string> = {
             'booting': 'starting runtime…',
             'ready-ecl': 'ECL (ANSI Common Lisp → WebAssembly) ready',
+            'ready-sbcl': 'SBCL (wasm32-wasip1) ready',
             'ready-jscl': 'JSCL fallback ready (pure JS — CL subset)',
             'ready-mock': 'mock interpreter engaged (demo)',
             'error': 'runtime fault',
@@ -120,14 +121,14 @@ export default function Ide() {
        * image forgets it) and whenever the slider moves */
       let lastPrintLength: number | null = null
       const applyPrintLength = (n: number) => {
-        if (runtime.engine !== 'ecl') return
+        if (runtime.engine !== 'ecl' && runtime.engine !== 'sbcl') return
         lastPrintLength = n
         void runtime.setPrintLength(n).then((r) => {
           if (r.error) useWorkspace.getState().addLog('WARN', 'RUNTIME', `print length: ${r.error}`)
         })
       }
       runtime.subscribeStatus(() => {
-        if (runtime.status === 'ready-ecl') applyPrintLength(useWorkspace.getState().settings.printLength)
+        if (runtime.status === 'ready-ecl' || runtime.status === 'ready-sbcl') applyPrintLength(useWorkspace.getState().settings.printLength)
       })
       useWorkspace.subscribe((s, prev) => {
         const n = s.settings.printLength

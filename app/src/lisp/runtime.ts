@@ -15,11 +15,24 @@ import { loadJsclEngine } from './jscl-engine'
 import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplot'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 
-const BOOT_TIMEOUT_MS = 30_000
+const BOOT_TIMEOUT_MS = 120_000 /* sbcl boots ~112 MB of artifacts; wecl is well under the old 30 s */
 const MODULES_IDB_KEY = 'conscell-modules-v1'
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
+/** Settings-drawer engine preference ('auto' | 'sbcl'); SBCL is tried first when set. */
+const ENGINE_PREF_KEY = 'conscell-engine-pref'
+
+export function getEnginePref(): 'auto' | 'sbcl' {
+  try { return localStorage.getItem(ENGINE_PREF_KEY) === 'sbcl' ? 'sbcl' : 'auto' } catch { return 'auto' }
+}
+export function setEnginePref(p: 'auto' | 'sbcl') {
+  try { localStorage.setItem(ENGINE_PREF_KEY, p) } catch { /* private mode */ }
+}
+
+/* the sbcl worker's shared-buffer layout (public/sbcl-worker.js) */
+const SBCL_MAILBOX_OFF = 8192
+const SBCL_MAILBOX_MAX = 8 << 20
 
 /** One file of the persisted /modules tree (registry + package sources). */
 export interface ModuleFile {
@@ -174,6 +187,8 @@ class LispRuntime {
   /** Reader package of the live image (follows every ;;PACKAGE: marker; CL-USER after a (re)boot). */
   currentPackage = 'CL-USER'
   private worker: Worker | null = null
+  /** the SBCL worker's request channel (set by the 'sbcl-sab' message) */
+  private sbclSab: SharedArrayBuffer | null = null
   private jobs = new Map<number, Job>()
   private queue: Promise<void> = Promise.resolve()
   private nextId = 1
@@ -207,7 +222,7 @@ class LispRuntime {
    */
   setPackage(name: string): Promise<EvalResult> {
     const clean = name.trim().toUpperCase()
-    if (this.engine !== 'ecl') {
+    if (this.engine !== 'ecl' && this.engine !== 'sbcl') {
       /* jscl / mock have no real package system — track the label only */
       this.currentPackage = clean || 'CL-USER'
       return Promise.resolve({ stdout: '', values: [], warnings: [], durationMs: 0, package: this.currentPackage })
@@ -222,7 +237,7 @@ class LispRuntime {
    * no session cell; nil (unlimited) when n is 0 or not finite.
    */
   setPrintLength(n: number): Promise<EvalResult> {
-    if (this.engine !== 'ecl') {
+    if (this.engine !== 'ecl' && this.engine !== 'sbcl') {
       return Promise.resolve({ stdout: '', values: [], warnings: [], durationMs: 0 })
     }
     const v = Number.isFinite(n) && n > 0 ? Math.floor(n) : 'nil'
@@ -233,7 +248,20 @@ class LispRuntime {
   init(): Promise<void> {
     if (this.bootPromise) return this.bootPromise
     this.setStatus('booting', null, '')
-    this.bootPromise = this.bootEcl()
+    this.bootPromise = (async () => {
+      if (getEnginePref() === 'sbcl') {
+        try {
+          await this.bootSbcl()
+        } catch (e) {
+          this.emitBoot(`SBCL/wasm boot failed: ${(e as Error)?.message ?? e} — falling back to ECL`)
+          this.killWorker()
+          this.sbclSab = null
+          await this.bootEcl()
+        }
+      } else {
+        await this.bootEcl()
+      }
+    })()
       .then(() => {
         /* worker FS is per-session — bring the persisted module tree back */
         void this.restoreModules()
@@ -241,6 +269,7 @@ class LispRuntime {
       .catch(async (e) => {
         this.emitBoot(`ECL/WASM boot failed: ${e?.message ?? e}`)
         this.killWorker()
+        this.sbclSab = null
         try {
           this.jsclEval = await loadJsclEngine((l) => this.emitBoot(l))
           this.setStatus('ready-jscl', 'jscl', 'JSCL 0.9.0 · js')
@@ -265,27 +294,52 @@ class LispRuntime {
   }
 
   private bootEcl(): Promise<void> {
+    return this.spawnWorker('/wecl-worker.js', 'ecl', 'ECL 24.5 · wasm32')
+  }
+
+  /** The SBCL/wasm engine (public/sbcl-worker.js, artifacts at /sbcl/). */
+  private async bootSbcl(): Promise<void> {
+    const present = await fetch('/sbcl/sbcl.wasm', { method: 'HEAD' })
+      .then((r) => r.ok)
+      .catch(() => false)
+    if (!present) throw new Error('/sbcl/sbcl.wasm not found (copy the artifacts with scripts/fetch-sbcl.mjs)')
+    /* a deep-enough native stack so runaway Lisp recursion reports a Lisp
+     * storage-condition rather than an engine RangeError (SBCL-Handoff 4.5) */
+    return this.spawnWorker('/sbcl-worker.js', 'sbcl', 'SBCL 2.4.8 · wasm32-wasip1', {
+      resourceLimits: { stackSizeMb: 256 },
+    })
+  }
+
+  /** Spawn a runtime worker and settle on its ready/bootfail message.
+   * Used for the ECL worker and the SBCL worker alike — both speak the
+   * same WorkerOutMessage protocol; the SBCL one additionally posts its
+   * request channel ('sbcl-sab') before ready. */
+  private spawnWorker(url: string, engine: Exclude<EngineKind, null>, label: string, opts?: { resourceLimits?: { stackSizeMb?: number } }): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false
       const timer = setTimeout(() => {
-        if (!settled) { settled = true; reject(new Error('WASM boot timed out (30s)')) }
+        if (!settled) { settled = true; reject(new Error(`WASM boot timed out (${BOOT_TIMEOUT_MS / 1000}s)`)) }
       }, BOOT_TIMEOUT_MS)
       let worker: Worker
       try {
-        worker = new Worker('/wecl-worker.js')
+        worker = new Worker(url, opts?.resourceLimits ? { type: 'classic', resourceLimits: opts.resourceLimits } as WorkerOptions : undefined)
       } catch (e) {
         clearTimeout(timer)
         reject(e as Error)
         return
       }
       this.worker = worker
-      this.emitBoot('λ conscell boot — spawning runtime worker')
+      this.emitBoot(`λ conscell boot — spawning runtime worker (${engine})`)
       worker.onerror = (ev) => {
         if (!settled) { settled = true; clearTimeout(timer); reject(new Error(ev.message || 'worker error')) }
         else this.onCrash('worker error: ' + (ev.message || 'unknown'))
       }
-      worker.onmessage = (ev: MessageEvent<WorkerOutMessage>) => {
+      worker.onmessage = (ev: MessageEvent<WorkerOutMessage | { type: 'sbcl-sab'; sab: SharedArrayBuffer }>) => {
         const m = ev.data
+        if (m.type === 'sbcl-sab') {
+          this.sbclSab = m.sab
+          return
+        }
         switch (m.type) {
           case 'boot':
             this.emitBoot(m.line)
@@ -294,7 +348,7 @@ class LispRuntime {
             if (!settled) {
               settled = true
               clearTimeout(timer)
-              this.setStatus('ready-ecl', 'ecl', 'ECL 24.5 · wasm32')
+              this.setStatus(`ready-${engine}` as EngineStatus, engine, label)
               resolve()
             }
             break
@@ -455,7 +509,7 @@ class LispRuntime {
     const chosen = job.debugRestarts.find((r) => r.index === index)
     job.restartUsed = index < 0 ? 'DECLINE' : (chosen?.name ?? `#${index}`)
     const msg: WorkerInMessage = { type: 'restart', id: jobId, index, ...(value != null && value.trim() ? { value: value.trim() } : {}) }
-    this.worker.postMessage(msg)
+    this.send(msg)
     return true
   }
 
@@ -464,7 +518,7 @@ class LispRuntime {
     const job = this.jobs.get(jobId)
     if (!job || !job.awaitingInput || !this.worker) return false
     job.awaitingInput = false
-    this.worker.postMessage({ type: 'input', id: jobId, text } satisfies WorkerInMessage)
+    this.send({ type: 'input', id: jobId, text } satisfies WorkerInMessage)
     return true
   }
 
@@ -518,6 +572,40 @@ class LispRuntime {
 
   private killWorker() {
     if (this.worker) { this.worker.terminate(); this.worker = null }
+    this.sbclSab = null
+  }
+
+  /** Send a request to the live worker: postMessage for the ECL worker,
+   * a mailbox write into the shared buffer for the SBCL worker (its
+   * thread sits inside wasm and never processes onmessage). */
+  private send(msg: WorkerInMessage): void {
+    if (!this.worker) return
+    if (this.engine === 'sbcl' && this.sbclSab) {
+      void this.sbclSubmit(msg).catch((e) => this.onCrash('sbcl submit failed: ' + String(e?.message ?? e)))
+    } else {
+      this.worker.postMessage(msg)
+    }
+  }
+
+  /** Write one JSON request into the SBCL worker's shared-buffer mailbox
+   * and wake it. Requests are serialized by the eval queue; the worker
+   * drains the flag at its next WASI call, so a busy mailbox just means
+   * the image is still running the previous request. */
+  private async sbclSubmit(msg: WorkerInMessage): Promise<void> {
+    if (!this.sbclSab) throw new Error('sbcl channel not ready')
+    const i32 = new Int32Array(this.sbclSab)
+    const u8 = new Uint8Array(this.sbclSab)
+    const bytes = new TextEncoder().encode(JSON.stringify(msg))
+    if (bytes.length + 1 > SBCL_MAILBOX_MAX) throw new Error(`request too large for the sbcl mailbox (${bytes.length} bytes)`)
+    const t0 = performance.now()
+    while (Atomics.load(i32, 4) === 1) {
+      if (performance.now() - t0 > 30_000) throw new Error('sbcl runtime did not drain its mailbox')
+      await new Promise((r) => setTimeout(r, 15))
+    }
+    u8.set(bytes, SBCL_MAILBOX_OFF)
+    u8[SBCL_MAILBOX_OFF + bytes.length] = 0
+    Atomics.store(i32, 4, 1)
+    Atomics.notify(i32, 4)
   }
 
   /** Evaluate code. Always resolves with an EvalResult (never rejects on Lisp errors). */
@@ -548,7 +636,7 @@ class LispRuntime {
           resolve({ ...r, durationMs: performance.now() - t0 })
           return
         }
-        if (this.engine === 'ecl' && this.worker) {
+        if ((this.engine === 'ecl' || this.engine === 'sbcl') && this.worker) {
           const id = this.nextId++
           const job: Job = {
             id, code, callbacks, stdout: [], stderr: [],
@@ -556,7 +644,7 @@ class LispRuntime {
             lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
           }
           this.jobs.set(id, job)
-          this.worker.postMessage({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug, ...(opts.path ? { path: opts.path } : {}) } satisfies WorkerInMessage)
+          this.send({ type: 'eval', id, code, compile: !!opts.compile, debug: !!opts.debug, ...(opts.path ? { path: opts.path } : {}) } satisfies WorkerInMessage)
           return
         }
         reject(new Error('runtime not ready'))
@@ -571,7 +659,8 @@ class LispRuntime {
    * On non-ECL engines falls back to evaluating each file in order.
    */
   loadProject(files: ProjectFilePayload[], callbacks: LoadCallbacks = {}, opts: EvalOptions = {}): Promise<EvalResult> {
-    if (this.engine !== 'ecl' || !this.worker) {
+    const isWorkerEngine = (this.engine === 'ecl' || this.engine === 'sbcl') && !!this.worker
+    if (!isWorkerEngine) {
       /* jscl / mock: evaluate files sequentially (package files first) */
       return (async () => {
         callbacks.onStart?.()
@@ -615,7 +704,7 @@ class LispRuntime {
           lastFrames: [], lastDetails: [], debugRestarts: [], paused: false, awaitingInput: false,
         }
         this.jobs.set(id, job)
-        this.worker!.postMessage({ type: 'load-project', id, files, debug: !!opts.debug } satisfies WorkerInMessage)
+        this.send({ type: 'load-project', id, files, debug: !!opts.debug } satisfies WorkerInMessage)
       }
       this.queue = this.queue.then(run, run)
     })
@@ -630,7 +719,7 @@ class LispRuntime {
       if (!this.worker) { reject(new Error('runtime worker not running')); return }
       const id = this.nextModuleOpId++
       this.moduleOps.set(id, { resolve, reject })
-      this.worker.postMessage({ ...msg, id } as WorkerInMessage)
+      this.send({ ...msg, id } as WorkerInMessage)
       setTimeout(() => {
         if (this.moduleOps.has(id)) {
           this.moduleOps.delete(id)
@@ -642,7 +731,7 @@ class LispRuntime {
 
   /** Snapshot /modules from the worker and store it in IndexedDB (best-effort). */
   async persistModules(): Promise<void> {
-    if (this.engine !== 'ecl' || !this.worker) return
+    if ((this.engine !== 'ecl' && this.engine !== 'sbcl') || !this.worker) return
     try {
       const files = await this.workerOp({ type: 'modules-snapshot' })
       if (files) await idbSet(MODULES_IDB_KEY, files)
@@ -651,14 +740,21 @@ class LispRuntime {
 
   /** Rewrite /modules from the IndexedDB copy and reload the CL registry. */
   async restoreModules(): Promise<void> {
-    if (this.engine !== 'ecl' || !this.worker) return
+    if ((this.engine !== 'ecl' && this.engine !== 'sbcl') || !this.worker) return
     try {
       const files = await idbGet<ModuleFile[]>(MODULES_IDB_KEY)
       if (files && files.length > 0) await this.workerOp({ type: 'modules-restore', files })
     } catch { /* restore is best-effort */ }
   }
 
-  /** Interrupt = restart the worker (wasm cannot be preempted). */  async interrupt(): Promise<void> {
+  /** Interrupt: SBCL takes the interrupt-pending word (Ctrl-C equivalent,
+   * serviced at the next clock read / safe point); ECL has no preemption,
+   * so its worker is respawned instead. */
+  async interrupt(): Promise<void> {
+    if (this.engine === 'sbcl' && this.sbclSab) {
+      Atomics.store(new Int32Array(this.sbclSab), 5, 1)
+      return
+    }
     if (this.engine !== 'ecl' || !this.worker) return
     for (const job of this.jobs.values()) {
       job.resolve({
