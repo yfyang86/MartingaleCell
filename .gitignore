@@ -44,4 +44,4 @@ backend/dump.rdb
 Research/qiang-dict-notes/
 
 # SBCL/wasm engine artifacts (~112 MB; copied in by scripts/fetch-sbcl.mjs)
-app/public/sbcl/
+# app/public/sbcl/
