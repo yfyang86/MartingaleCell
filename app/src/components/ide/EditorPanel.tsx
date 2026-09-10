@@ -15,11 +15,12 @@ import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
   startCompletion, completionStatus,
 } from '@codemirror/autocomplete'
-import { indentService, indentUnit } from '@codemirror/language'
+import { foldGutter, foldKeymap, foldState, indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON, type SerializeCache } from '@/editor/buffer-states'
+import { lispFoldService } from '@/editor/fold'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { useEditorMeta } from '@/store/editor-meta'
 import { clSyntaxExtension, clEditorTheme } from './cl-language'
@@ -85,6 +86,8 @@ const lispIndent = indentService.of((context, pos) => {
 /* -------- context menu -------- */
 
 const EDITOR_STATES_KEY = 'conscell-editor-states-v1'
+/** state fields serialised per buffer: undo history (Sprint 18) and folds (Sprint 20) */
+const PERSISTED_FIELDS = { history: historyField, fold: foldState }
 
 interface MenuState { x: number; y: number }
 
@@ -265,7 +268,7 @@ function EditorSurface() {
       const v = viewRef.current
       const shown = shownBufferRef.current
       const live = v && shown ? { id: shown, state: v.state, scrollTop: v.scrollDOM.scrollTop } : null
-      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, { history: historyField }, live, serializeCache.current)).catch(() => {})
+      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, PERSISTED_FIELDS, live, serializeCache.current)).catch(() => {})
     }
     if (immediate) run(); else persistTimer.current = setTimeout(run, 500)
   }, [])
@@ -312,6 +315,9 @@ function EditorSurface() {
 
     const extensions: Extension[] = [
       lineNumbers(),
+      /* Sprint 20: fold the outermost form opening on a line; the fold state is part of the persisted per-buffer state */
+      lispFoldService,
+      foldGutter({ openText: '▾', closedText: '▸' }),
       highlightActiveLine(),
       highlightActiveLineGutter(),
       history(),
@@ -378,6 +384,7 @@ function EditorSurface() {
         ...completionKeymap,
         ...searchKeymap,
         ...historyKeymap,
+        ...foldKeymap,
         ...defaultKeymap,
       ]),
       /* Ctrl/⌘+click on a symbol → go to definition */
@@ -424,7 +431,7 @@ function EditorSurface() {
     void idbGet(EDITOR_STATES_KEY).then((json) => {
       if (viewRef.current !== view || typingWelcomeRef.current) return
       const ws = useWorkspace.getState()
-      const restored = statesFromJSON(json, extensions, { history: historyField }, ws.buffers.map((b) => b.id))
+      const restored = statesFromJSON(json, extensions, PERSISTED_FIELDS, ws.buffers.map((b) => b.id))
       if (restored.size === 0) return
       const shown = shownBufferRef.current
       let shownEntry: { state: EditorState; scrollTop: number } | undefined

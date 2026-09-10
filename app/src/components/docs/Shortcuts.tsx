@@ -50,6 +50,7 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
       { keys: ['F12'], action: 'Go to definition of the symbol at point (Ctrl+click too)' },
       { keys: ['Shift', 'F12'], action: 'Find references of the symbol at point (workspace search, whole symbol, code only)' },
       { keys: ['Alt', '↑ / ↓'], action: 'Move between top-level forms' },
+      { keys: ['Ctrl', 'Shift', '[ / ]'], action: 'Fold / unfold the outermost form opening on the caret line (Ctrl+Alt+[ / ] for all forms); folds persist per buffer' },
     ],
   },
   {
