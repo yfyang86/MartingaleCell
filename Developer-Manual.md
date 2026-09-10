@@ -5,7 +5,7 @@ engines, the worker protocol, tests, artifacts and the release process.
 For the user-facing story start with [README.md](README.md). The
 sprint-by-sprint history lives in `Sprints/SprintN/` (goal →
 implementation → test log → next-sprint proposal); this manual is the
-stable cross-section of it.
+stable cross-section of it. 中文版：[Developer-Manual.zh-CN.md](Developer-Manual.zh-CN.md).
 
 ## Repository layout
 

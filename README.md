@@ -8,6 +8,8 @@ leaves your machine.
 (mapcar (lambda (n) (* n n)) '(1 2 3 4))   ; ⇒ (1 4 9 16)
 ```
 
+中文版文档：[README.zh-CN.md](README.zh-CN.md)
+
 ## What you get
 
 - **Two real Lisp engines**, switchable in Settings:
