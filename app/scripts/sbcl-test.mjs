@@ -115,14 +115,19 @@ worker.on('error', (e) => finish(false, 'worker thread error: ' + (e?.stack || e
 
 /* ---- the exercise: one eval, one error, a package switch, a project load ---- */
 let exercising = false
+let stepTimer = null
+const stepTimeout = (msg, ms) => { clearTimeout(stepTimer); stepTimer = setTimeout(() => finish(false, msg), ms) }
 let stdinAnswered = false
+let debugAnswered = null /* null = not paused yet, false = answered a pause */
+let interruptRequested = false
+let snapshotFiles = null
 const out = (id) => messages.filter((m) => (m.type === 'stdout' || m.type === 'stderr') && m.id === id).map((m) => m.text)
 const step = { expectDone: new Set([100, 101, 102, 103]) }
 
 function startExercise() {
   exercising = true
   submit({ type: 'eval', id: 100, code: '(+ 2 3) (format t "hello ~a" :world)' })
-  setTimeout(() => finish(false, 'eval job 100 did not finish'), 30_000)
+  stepTimeout('eval job 100 did not finish', 30_000)
 }
 
 function onExerciseMessage(m) {
@@ -132,21 +137,21 @@ function onExerciseMessage(m) {
     if (!l.some((x) => x === 'hello WORLD')) problems.push('job 100: no printed output line "hello WORLD" — got: ' + l.join(' | ').slice(0, 200))
     if (!l.some((x) => x.startsWith(';;PACKAGE: CL-USER'))) problems.push('job 100: no ;;PACKAGE: CL-USER marker')
     submit({ type: 'eval', id: 101, code: '(/ 1 0)' })
-    setTimeout(() => finish(false, 'error job 101 did not finish'), 30_000)
+    stepTimeout('error job 101 did not finish', 30_000)
   }
   if (m.type === 'done' && m.id === 101) {
     const l = out(101)
     if (!l.some((x) => x.startsWith(';;ERROR:'))) problems.push('job 101: no ;;ERROR: marker — got: ' + l.join(' | ').slice(0, 200))
     if (!l.some((x) => x.startsWith(';;ERRTYPE: DIVISION-BY-ZERO'))) problems.push('job 101: no ;;ERRTYPE: DIVISION-BY-ZERO — got: ' + l.filter((x) => x.startsWith(';;ERRTYPE')).join(' | '))
     submit({ type: 'eval', id: 102, code: '(defpackage :cc-tst (:use :cl) (:export #:greet))\n(in-package :cc-tst)\n(defun greet () :hi)' })
-    setTimeout(() => finish(false, 'defpackage job 102 did not finish'), 30_000)
+    stepTimeout('defpackage job 102 did not finish', 30_000)
   }
   if (m.type === 'done' && m.id === 102) {
     const l = out(102)
     if (!l.some((x) => x.startsWith(';;PACKAGE: CC-TST'))) problems.push('job 102: package did not switch (no ;;PACKAGE: CC-TST) — got: ' + l.filter((x) => x.startsWith(';;PACKAGE')).join(' | '))
     /* package persists across jobs AND the defun really happened */
     submit({ type: 'eval', id: 103, code: '(cc-tst:greet)' })
-    setTimeout(() => finish(false, 'cross-job eval 103 did not finish'), 30_000)
+    stepTimeout('cross-job eval 103 did not finish', 30_000)
   }
   if (m.type === 'done' && m.id === 103) {
     const l = out(103)
@@ -159,7 +164,7 @@ function onExerciseMessage(m) {
         { path: 'main.lisp', content: '(in-package :cl-user)\n(defun cc-main () (cc-util))' },
       ],
     })
-    setTimeout(() => finish(false, 'load-project 104 did not finish'), 60_000)
+    stepTimeout('load-project 104 did not finish', 60_000)
   }
   if (m.type === 'done' && m.id === 104) {
     const l = out(104)
@@ -172,14 +177,14 @@ function onExerciseMessage(m) {
     /* post-load acceptance: the system's function works in a fresh job
      * (back in CL-USER — the package pill persists, exactly like a REPL) */
     submit({ type: 'eval', id: 105, code: '(in-package :cl-user)\n(cc-main)' })
-    setTimeout(() => finish(false, 'post-load eval 105 did not finish'), 30_000)
+    stepTimeout('post-load eval 105 did not finish', 30_000)
   }
   if (m.type === 'done' && m.id === 105) {
     const l = out(105)
     if (!l.some((x) => x.startsWith(';;=> 42'))) problems.push('job 105: (cc-main) did not return 42 — got: ' + l.join(' | ').slice(0, 200))
     /* stdin: (read-line) must block with ;;READ-WAIT and consume the answer */
     submit({ type: 'eval', id: 106, code: '(read-line)' })
-    setTimeout(() => finish(false, 'stdin job 106 did not finish'), 30_000)
+    stepTimeout('stdin job 106 did not finish', 30_000)
   }
   if ((m.type === 'stdout' || m.type === 'stderr') && m.id === 106) {
     if (m.text.trim() === ';;READ-WAIT' && !stdinAnswered) {
@@ -193,9 +198,84 @@ function onExerciseMessage(m) {
     if (!l.some((x) => x.startsWith(';;=> "hello stdin"'))) {
       problems.push('job 106: (read-line) did not return "hello stdin" — got: ' + l.join(' | ').slice(0, 200))
     }
+    /* Sprint 25 AV: timers — with-timeout through set_timer + the
+     * interrupt-pending word's timer bit */
+    submit({ type: 'eval', id: 107, code: '(handler-case (sb-ext:with-timeout 0.3 (sleep 3) :no) (sb-ext:timeout () :timeout))' })
+    stepTimeout('with-timeout job 107 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 107) {
+    const l = out(107)
+    if (!l.some((x) => x.startsWith(';;=> :TIMEOUT'))) problems.push('job 107: with-timeout did not fire — got: ' + l.join(' | ').slice(0, 200))
+    /* Sprint 25 AV: the debugger pause + a decline answer */
+    submit({ type: 'eval', id: 108, code: '(/ 1 0)', debug: true })
+    stepTimeout('debug-pause job 108 did not finish', 30_000)
+  }
+  if ((m.type === 'stdout' || m.type === 'stderr') && m.id === 108) {
+    if (m.text.trim() === ';;DEBUG-WAIT' && debugAnswered == null) {
+      debugAnswered = false
+      submit({ type: 'restart', id: 108, index: -1 })
+    }
+  }
+  if (m.type === 'done' && m.id === 108) {
+    const l = out(108)
+    if (debugAnswered !== false) problems.push('job 108: no ;;DEBUG-WAIT pause seen (debug pause did not engage)')
+    if (!l.some((x) => x.startsWith(';;DEBUG:'))) problems.push('job 108: no ;;DEBUG: marker — got: ' + l.join(' | ').slice(0, 200))
+    if (!l.some((x) => x.startsWith(';;RESTART:'))) problems.push('job 108: no restart list')
+    if (!l.some((x) => x.startsWith(';;ERROR:'))) problems.push('job 108: decline did not fall through to ;;ERROR:')
+    /* Sprint 25 AV: runaway recursion is a Lisp storage-condition, not an
+     * engine crash */
+    submit({ type: 'eval', id: 109, code: '(defun cc-rec (n) (1+ (cc-rec n)))\n(cc-rec 0)' })
+    stepTimeout('recursion job 109 did not finish (storage-condition expected)', 120_000)
+  }
+  if (m.type === 'done' && m.id === 109) {
+    const l = out(109)
+    if (!l.some((x) => /;;ERRTYPE: .*STORAGE-CONDITION|;;ERRTYPE: CONTROL-STACK-EXHAUSTED/.test(x))) {
+      problems.push('job 109: runaway recursion did not report a storage-condition — got: ' + l.join(' | ').slice(0, 250))
+    }
+    /* Sprint 25 AV: the interrupt bit (Ctrl-C). The PORT acknowledges the
+     * request at a safe point but Lisp delivery is not implemented yet
+     * (wasm-arch.c prints "; interrupt request seen"); the page's
+     * interrupt() therefore respawns the image, like ECL. Assert the
+     * request plumbing end to end: the flag is consumed and the port's
+     * acknowledgment appears. */
+    submit({ type: 'eval', id: 110, code: '(sleep 1)' })
+    Atomics.store(i32, 5, 1)
+    interruptRequested = true
+    stepTimeout('interrupt job 110 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 110) {
+    const l = out(110)
+    if (!l.some((x) => /interrupt request seen/.test(x))) {
+      problems.push('job 110: the port did not acknowledge the interrupt request — got: ' + l.join(' | ').slice(0, 250))
+    }
+    /* Sprint 25 AV: modules snapshot/restore round trip */
+    submit({ type: 'eval', id: 111, code: '(in-package :cl-user)\n(package-install "cc-demo")' })
+    stepTimeout('package-install job 111 did not finish', 60_000)
+  }
+  if (m.type === 'done' && m.id === 111) {
+    const l = out(111)
+    if (!l.some((x) => x.startsWith(';;MODULES-CHANGED'))) problems.push('job 111: no ;;MODULES-CHANGED — got: ' + l.join(' | ').slice(0, 250))
+    submit({ type: 'modules-snapshot', id: 1_000_000 })
+    stepTimeout('modules-snapshot did not finish', 30_000)
+  }
+  if (m.type === 'modules-data' && m.id === 1_000_000) {
+    snapshotFiles = m.files
+    if (!m.files.some((f) => f.path === 'registry.sexp')) problems.push('snapshot: no registry.sexp — got: ' + m.files.map((f) => f.path).join(','))
+    if (!m.files.some((f) => f.path.includes('util.lisp'))) problems.push('snapshot: no module sources')
+    submit({ type: 'modules-restore', id: 1_000_001, files: m.files })
+    stepTimeout('modules-restore did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 1_000_001) {
+    /* the restored registry is live: package-list sees the module */
+    submit({ type: 'eval', id: 112, code: '(package-list)' })
+    stepTimeout('package-list job 112 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 112) {
+    const l = out(112)
+    if (!l.some((x) => /cc-demo/.test(x))) problems.push('job 112: restored registry lost cc-demo — got: ' + l.join(' | ').slice(0, 250))
     /* clean shutdown */
     submit({ type: 'quit' })
-    setTimeout(() => finish(false, 'image did not exit after quit'), 30_000)
+    stepTimeout('image did not exit after quit', 30_000)
   }
   if (m.type === 'crash' && exercising) {
     if (/SBCL image exited \(code 0\)}/.test(m.message) || /exited \(code 0\)/.test(m.message)) {

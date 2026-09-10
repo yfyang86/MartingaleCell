@@ -9,6 +9,19 @@ export default defineConfig({
   plugins: [inspectAttr(), react()],
   server: {
     port: 3000,
+    /* crossOriginIsolated: the SBCL engine's worker shares a
+     * SharedArrayBuffer with the page (its thread sits inside wasm; the
+     * imports are the only door in). ECL/JSCL/mock don't need it. */
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
   },
   resolve: {
     alias: {
