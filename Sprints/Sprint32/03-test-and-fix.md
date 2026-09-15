@@ -10,7 +10,8 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 71 / 71 in 11 scenarios (the `offline` scenario registers `sw.js?v=1.0.0-beta.0`) |
 | Stale-wording sweep | `grep -rn alpha` outside `Sprints/` | only JSCL's own package version in its CDN URL |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/32 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34987151690: `check` in 55 s, the labelled `smoke` job in 2 min 31 s), merged as `845a7eb`.
+CI on the merge commit on `dev`: pending.
 
 ## Fixes made along the way
 
