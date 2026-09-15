@@ -128,6 +128,14 @@ let stdinAnswered = false
 let debugAnswered = null /* null = not paused yet, false = answered a pause */
 let interruptRequested = false
 let snapshotFiles = null
+/* Sprint 29: a gnuplot script whose plot line names two data files (a quoted
+ * title sits between them and must not be taken for a path) */
+const TWO_SERIES_CODE = String.raw`(progn
+  (with-open-file (o "/tmp/cc-two-a.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 2~%2 4~%"))
+  (with-open-file (o "/tmp/cc-two-b.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 20~%2 40~%"))
+  (with-open-file (o "/tmp/cc-two.sh" :direction :output :if-exists :overwrite :if-does-not-exist :create)
+    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points~%EOF~%"))
+  (ext:shell "bash /tmp/cc-two.sh"))`
 const out = (id) => messages.filter((m) => (m.type === 'stdout' || m.type === 'stderr') && m.id === id).map((m) => m.text)
 const step = { expectDone: new Set([100, 101, 102, 103]) }
 
@@ -318,6 +326,20 @@ function onExerciseMessage(m) {
   if (m.type === 'done' && m.id === 114) {
     const l = out(114)
     if (!l.some((x) => /;;=> #<FIGURE/i.test(x))) problems.push('cl-plot: (make-instance \'figure) did not return a FIGURE — got: ' + l.join(' | ').slice(0, 200))
+    /* job 116 (Sprint 29): a two-series plot line ships both data files */
+    submit({ type: 'eval', id: 116, code: TWO_SERIES_CODE })
+    stepTimeout('two-series plot check 116 did not finish', 30_000)
+  }
+  if (m.type === 'done' && m.id === 116) {
+    const marker = out(116).find((x) => x.startsWith(';;PLOT64 '))
+    if (!marker) problems.push('job 116: no ;;PLOT64 capture for the two-series script — got: ' + out(116).join(' | ').slice(0, 200))
+    else {
+      const payload = Buffer.from(marker.slice(';;PLOT64 '.length).trim(), 'base64').toString('utf8')
+      for (const want of ['"/tmp/cc-two-a.dat"', '"1 2\n2 4\n"', '"/tmp/cc-two-b.dat"', '"1 20\n2 40\n"']) {
+        if (!payload.includes(want)) problems.push(`job 116: payload lacks ${want} (both series' data files must ship)`)
+      }
+      if (payload.includes('\n"a"\n') || payload.includes('\n"b"\n')) problems.push('job 116: a series title was shipped as a data file')
+    }
     /* clean shutdown */
     submit({ type: 'quit' })
     stepTimeout('image did not exit after quit', 30_000)

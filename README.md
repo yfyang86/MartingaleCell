@@ -13,8 +13,9 @@ leaves your machine.
 ## What you get
 
 - **Two real Lisp engines**, switchable in Settings:
-  - **SBCL** compiled to `wasm32-wasip1` — the default engine (MIT+BSD
-    licensed, and the base of our own WebAssembly work).
+  - **SBCL** compiled to `wasm32-wasip1` — the default engine (public
+    domain with MIT/BSD-style parts, and the base of our own WebAssembly
+    work).
   - **ECL** (Embeddable Common Lisp, ANSI CL) compiled to WebAssembly —
     the automatic fallback when SBCL cannot boot (artifacts missing, or
     a host without isolation headers), and selectable any time. Same
@@ -67,7 +68,7 @@ Switching takes effect on the next runtime restart (toolbar ↻).
 |  | SBCL (default) | ECL (fallback) |
 |---|---|---|
 | standard | SBCL 2.4.8 via wasm32-wasip1 | ANSI CL via WECL/wasm |
-| licence | MIT + BSD (per upstream SBCL) | LGPL-2.1+ (cited, not the core engine) |
+| licence | public domain + MIT/BSD-style parts (upstream `COPYING`) | LGPL-2.1+ (shipped unmodified as the fallback) |
 | boot time | ~4–5 s (19 MB of .gz artifacts) | ~1 s |
 | projects, cells, packages, debugger, stdin | ✓ | ✓ |
 | gnuplot plots (cl-plot) | ✓ captured to SVG | ✓ captured to SVG (Sprint 28) |
@@ -108,14 +109,22 @@ explorer · `Ctrl+R` input history · `Ctrl+Shift+F` search ·
 
 ## Licence notes
 
-- **ConsCell's own code** — MIT (the licence for the WebAssembly work;
-  the LICENSE file lands with the alpha tag).
-- **SBCL** (the default engine) — MIT + BSD-style, per the upstream
-  SBCL project; the wasm port of it used here is our own re-work.
-- **ECL / WECL** — LGPL-2.1+ (Daniel Kochmański's wasm build). Cited
-  with thanks and shipped as the fallback engine; ConsCell does not
-  depend on it as its core engine.
-- **cl-plot** (bundled sample) — MIT, © Martin Kersner.
+- **ConsCell's own code** — MIT; see [LICENSE](LICENSE). This covers
+  the IDE, the workers and the WebAssembly port work in this repository.
+- **SBCL** (the default engine) — mostly public domain, with some parts
+  under MIT-style and BSD-style licences; the authoritative text is the
+  `COPYING` file in the SBCL source tree. The `wasm32-wasip1` port used
+  here is our own re-work of that source
+  ([yfyang86/sbcl](https://github.com/yfyang86/sbcl)); the `.gz`
+  artifacts under `app/public/sbcl/` are built from it.
+- **ECL / WECL** — LGPL-2.1+ (Daniel Kochmański's WebAssembly build of
+  Embeddable Common Lisp). ConsCell ships the WECL binary unmodified as
+  the fallback engine, keeps its licence notice, and does not link
+  against it: the IDE talks to it through a worker message protocol. The
+  source is available from the ECL project; ConsCell does not depend on
+  it as its core engine.
+- **cl-plot** (bundled sample) — MIT, © Martin Kersner (its LICENSE
+  file is inside the sample zip).
 
 ---
 
