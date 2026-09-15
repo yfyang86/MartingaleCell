@@ -12,7 +12,8 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 63 / 63 in 10 scenarios; SBCL boot 5.3 s |
 | Boot-cache spike | scratch Playwright script, 3 boots | numbers in `02-implementation.md`; decision: no cache |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/29 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34979248658 on the second commit: `check` in 1 min 15 s, the labelled `smoke` job in 2 min 32 s; run 122 on the first commit had only the smoke job, see the fix below), merged as `2815826`.
+CI on the merge commit on `dev`: pending.
 
 ## Fixes made along the way
 
