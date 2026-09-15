@@ -1900,7 +1900,10 @@ function boot() {
       } catch (e) {
         if (e && e.__ccProcExit !== undefined) exitCode = e.__ccProcExit
         else {
-          failBoot('image exited during bootstrap: ' + String(e && (e.stack || e.message) || e))
+          /* a trap after ready is a crash (runtime.ts resolves live jobs),
+           * during bootstrap it is a bootfail (fallback ladder) */
+          if (phase === 'run') self.postMessage({ type: 'crash', message: String(e && e.message || e) })
+          else failBoot('image exited during bootstrap: ' + String(e && (e.stack || e.message) || e))
           return
         }
       }
