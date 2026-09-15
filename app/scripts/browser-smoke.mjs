@@ -445,17 +445,27 @@ const scenarios = {
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
     const registered = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.active !== null)).catch(() => false)
     check('the production build registers a service worker and it becomes active', registered === true, String(registered))
-    /* second load: the page is controlled, so the artifacts pass through the worker into its cache */
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
-    const controlled = await page.evaluate(() => navigator.serviceWorker.controller !== null)
-    check('after a reload the page is controlled by the worker', controlled === true, String(controlled))
+    /* Sprint 34: no second online load — after ready the page asks the worker to warm the
+     * cache with the engine's artifacts, and the document carries data-sw-warmed */
+    await page.waitForFunction(() => document.documentElement.dataset.swWarmed !== undefined, null, { timeout: 120_000 })
+    const warmed = await page.evaluate(() => document.documentElement.dataset.swWarmed)
+    /* every chunk the page has loaded so far ends up cached (late chunks are warmed as they appear, so wait, do not snapshot) */
+    const coverage = async () => {
+      const names = await caches.keys()
+      const c = await caches.open(names.find((n) => n.startsWith('conscell-')) ?? '')
+      const scripts = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.startsWith(location.origin) && /\/assets\/.*\.js$/.test(n))
+      const hits = await Promise.all(['/wecl/wecl.wasm', '/wecl-worker.js'].map((u) => new URL(u, location.href).href).concat(scripts).map((u) => c.match(u, { ignoreVary: true })))
+      return { engine: hits.slice(0, 2).every(Boolean), chunks: scripts.length, chunksCached: hits.slice(2).filter(Boolean).length }
+    }
+    const covered = await page.waitForFunction(`(${coverage.toString()})().then((r) => r.engine && r.chunks > 0 && r.chunksCached === r.chunks)`, null, { timeout: 20_000 }).then(() => true).catch(() => false)
+    const cached = await page.evaluate(`(${coverage.toString()})()`)
+    check(`after the first boot the worker warmed its cache with the engine's artifacts and the page's own chunks (data-sw-warmed=${warmed}, ${cached.chunksCached}/${cached.chunks} chunks)`, warmed === 'ecl' && covered, JSON.stringify({ warmed, ...cached }))
     await context.setOffline(true)
     try {
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
       await page.locator('.cm-content').first().waitFor()
-      check('offline: the IDE loads from the cache and ECL boots', true)
+      check('offline: the IDE loads from the cache on the very next load and ECL boots', true)
       const isolated = await page.evaluate(() => crossOriginIsolated)
       check('offline: crossOriginIsolated still holds (the cached navigation kept its COOP/COEP headers)', isolated === true, String(isolated))
       await setCode('(list :offline (+ 40 2))')

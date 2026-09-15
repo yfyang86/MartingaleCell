@@ -21,6 +21,7 @@ const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
 import { getEnginePref, setEnginePref, type EnginePref } from './engine-pref'
+import { warmEngineArtifacts } from './sw-warm'
 export { getEnginePref, setEnginePref, type EnginePref }
 
 /* the sbcl worker's shared-buffer layout (public/sbcl-worker.js) */
@@ -367,6 +368,8 @@ class LispRuntime {
               clearTimeout(timer)
               this.setStatus(`ready-${engine}` as EngineStatus, engine, label)
               resolve()
+              /* Sprint 34: make this visit enough for offline use (no-op without a service worker) */
+              if (engine === 'ecl' || engine === 'sbcl') void warmEngineArtifacts(engine)
             }
             break
           case 'bootfail':

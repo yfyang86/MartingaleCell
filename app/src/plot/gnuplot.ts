@@ -22,6 +22,9 @@ export interface PlotPoint {
   y: number
 }
 
+import type { PlotDefs } from './expr'
+export type { PlotDefs }
+
 export type PlotStyle = 'lines' | 'points' | 'linespoints' | 'dots' | 'boxes' | 'impulses'
 
 export interface PlotSeries {
@@ -50,6 +53,8 @@ export interface PlotArrow {
 }
 
 export interface PlotSpec {
+  /** Sprint 34: user-defined functions and variables from the script (`f(x) = …`, `a = …`) */
+  defs?: PlotDefs
   title?: string
   xlabel?: string
   ylabel?: string
@@ -306,6 +311,18 @@ export function parseGnuplot(script: string, files: PlotDataFile[]): PlotSpec {
     const line = rawLine.trim()
     if (!line || line === 'EOF' || /^cat\s*<</.test(line) || line.startsWith('#')) continue
     let m: RegExpMatchArray | null
+
+    /* Sprint 34: user definitions — `f(x, y) = body` and `a = body` (not `set …`, not `==`) */
+    if ((m = line.match(/^([a-zA-Z_]\w*)\s*\(\s*([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\s*\)\s*=(?!=)\s*(.+)$/))) {
+      const defs = (spec.defs ??= {})
+      ;(defs.functions ??= {})[m[1]] = { params: m[2].split(',').map((p) => p.trim()), body: m[3].trim() }
+      continue
+    }
+    if ((m = line.match(/^([a-zA-Z_]\w*)\s*=(?!=)\s*(.+)$/)) && !/^(?:set|unset|show|plot|splot|replot)\b/.test(line)) {
+      const defs = (spec.defs ??= {})
+      ;(defs.variables ??= {})[m[1]] = m[2].trim()
+      continue
+    }
 
     if (/^set\s+nokey\b/.test(line)) { spec.legend = false; continue }
     if (/^set\s+key\b/.test(line)) { spec.legend = true; continue }

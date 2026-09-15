@@ -111,6 +111,9 @@ jobs:
       - name: gnuplot subset parser + SVG builder test (function and no-data series)
         run: node scripts/plot-test.mjs
 
+      - name: service worker test (install, activate, offline navigation, cache-first, warm)
+        run: node scripts/sw-test.mjs
+
   smoke:
     name: browser smoke (label `smoke`, and pushes to dev)
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke'))
