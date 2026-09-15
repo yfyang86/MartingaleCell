@@ -1,11 +1,12 @@
 # ConsCell
 
 A notebook-style Common Lisp IDE that runs entirely in the browser, with
-**two real engines**: **ECL** (ANSI CL, compiled to WebAssembly as
-[WECL](https://turtleware.eu/)) by default, and **SBCL** (compiled to
-`wasm32-wasip1`) as a switchable second choice. ConsCell wraps either in a
-CodeMirror editor, Jupyter-like result cells, a log console, a project
-explorer and an in-runtime package manager. Nothing leaves the browser.
+**two real engines**: **SBCL** (compiled to `wasm32-wasip1`) boots by
+default, and **ECL** (ANSI CL, compiled to WebAssembly as
+[WECL](https://turtleware.eu/)) takes over when SBCL cannot boot or when
+chosen in Settings. ConsCell wraps either in a CodeMirror editor,
+Jupyter-like result cells, a log console, a project explorer and an
+in-runtime package manager. Nothing leaves the browser.
 
 User-facing documentation: [`../README.md`](../README.md). Architecture,
 worker protocol, artifacts and the release process:

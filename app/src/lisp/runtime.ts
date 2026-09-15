@@ -309,6 +309,11 @@ class LispRuntime {
 
   /** The SBCL/wasm engine (public/sbcl-worker.js, artifacts at /sbcl/). */
   private async bootSbcl(): Promise<void> {
+    /* the worker needs a SharedArrayBuffer, which needs a crossOriginIsolated page (COOP + COEP headers);
+     * say so once and let the ladder move on to ECL instead of spawning a worker that can only bootfail (Sprint 28) */
+    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
+      throw new Error('this page is not crossOriginIsolated — serve it with Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: credentialless to boot SBCL')
+    }
     const head = (url: string) => fetch(url, { method: 'HEAD' }).then((r) => r.ok && !/text\/html/i.test(r.headers.get('content-type') ?? '')).catch(() => false)
     const present = (await head('/sbcl/sbcl.wasm')) || (await head('/sbcl/sbcl.wasm.gz')) /* plain or gzip'd (Sprint 24) */
     if (!present) throw new Error('/sbcl/sbcl.wasm not found (copy the artifacts with scripts/fetch-sbcl.mjs)')

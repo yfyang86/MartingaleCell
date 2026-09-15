@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
+import { loadSampleProject } from './lib/sample-project.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
@@ -102,17 +103,8 @@ worker = new Worker(prelude + workerSrc, {
   eval: true, stdout: true, stderr: true,
   resourceLimits: { maxOldGenerationSizeMb: 8192, stackSizeMb: 512 },
 })
-/* the bundled cl-plot sample, extracted on demand (like the ECL harness) */
-function extractSample() {
-  const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master'
-  try {
-    const names = fs.readdirSync(base).filter((n) => /\.(lisp|asd)$/i.test(n))
-    if (!names.length) return null
-    return names.map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
-  } catch {
-    return null
-  }
-}
+/* the bundled cl-plot sample: SAMPLE_PROJECT_DIR, /tmp/clplot, or the zip read in memory (Sprint 28) */
+const sampleProject = await loadSampleProject()
 
 worker.on('message', (m) => {
   log(m)
@@ -291,7 +283,7 @@ function onExerciseMessage(m) {
     /* the bundled cl-plot sample (ECL-targeted, with ext-compat.lisp):
      * loads on SBCL too — compat shim first, asd-ordered components, and
      * (show …) reports the wasi-p1 subprocess limitation cleanly */
-    const sample = extractSample()
+    const sample = sampleProject
     if (!sample) {
       console.log('(cl-plot sample not present — skipping the sample exercise)')
       submit({ type: 'quit' })

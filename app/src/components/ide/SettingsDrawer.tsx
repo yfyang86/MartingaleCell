@@ -187,7 +187,7 @@ export default function SettingsDrawer() {
                   />
                 </Row>
                 <p className="mt-1 font-mono text-[10.5px] text-muted">
-                  auto: ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
+                  auto: SBCL, then ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
                 </p>
                 <Row label="Log verbosity">
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />

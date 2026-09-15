@@ -11,8 +11,10 @@ import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
+import { loadSampleProject } from './lib/sample-project.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sampleProject = process.argv.includes('--exercise') ? await loadSampleProject() : null
 const publicDir = path.join(root, 'public')
 const timeoutIdx = process.argv.indexOf('--timeout-ms')
 const timeoutMs = timeoutIdx >= 0 ? Number(process.argv[timeoutIdx + 1]) || 90_000 : 90_000
@@ -136,17 +138,10 @@ function exercise() {
     if ((m.type === 'stdout' || m.type === 'stderr') && m.id === 104) shellErrLines.push(m.text)
     if (m.type === 'stdout' && m.text.startsWith(';;PLOT64 ')) plotMsgs.push({ id: m.id, text: m.text })
     if (m.type === 'done' && m.id === 100) {
-      // load the bundled sample project (public/sample-projects/cl-plot.zip,
-      // extracted on demand; override with SAMPLE_PROJECT_DIR)
-      const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master'
-      let files = []
-      try {
-        files = fs.readdirSync(base)
-          .filter((n) => /\.(lisp|asd)$/i.test(n))
-          .map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
-      } catch { /* sample not extracted */ }
+      // load the bundled sample project: SAMPLE_PROJECT_DIR, /tmp/clplot, or the zip read in memory (Sprint 28)
+      const files = sampleProject ?? []
       if (!files.length) {
-        console.log('(sample project not extracted — skipping load-project exercise)')
+        console.log('(sample project not available — skipping load-project exercise)')
         finish(true, 'boot ready + eval job done')
         return
       }

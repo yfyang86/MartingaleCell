@@ -571,10 +571,17 @@ const scenarios = {
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>"ECL"'))`, null, { timeout: 30_000 })
     check('choosing ecl and Restart Lisp image brings ECL up: (lisp-implementation-type) → "ECL"', true)
 
+    /* Sprint 28: the manual switch back to SBCL from an ECL session */
+    await choose('sbcl')
+    await restart()
+    const barProgress = await page.waitForFunction(`(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('MB')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    check('choosing sbcl from an ECL session and Restart Lisp image boots SBCL; the status bar shows the download while it restarts', barProgress)
+
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
     const prefAfterReload = await page.evaluate(`localStorage.getItem('conscell-engine-pref')`)
-    check('the choice survives a reload (ECL boots, preference still ecl)', prefAfterReload === 'ecl', String(prefAfterReload))
+    check('the choice survives a reload (SBCL boots, preference still sbcl)', prefAfterReload === 'sbcl', String(prefAfterReload))
 
     await page.locator('button[title="Settings"]').click()
     await page.getByRole('button', { name: 'Reset workspace' }).click()

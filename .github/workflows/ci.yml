@@ -77,8 +77,8 @@ jobs:
       - name: cell lineage (re-run history) test
         run: node scripts/lineage-test.mjs
 
-      - name: Boot the ECL image (real worker + wasm, Node harness)
-        run: node scripts/boot-harness.mjs --timeout-ms 120000
+      - name: Boot the ECL image + load the bundled cl-plot sample (real worker + wasm, Node harness)
+        run: node scripts/boot-harness.mjs --exercise --timeout-ms 120000
 
       - name: in-package persistence regression test
         run: node scripts/package-test.mjs
