@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: 'Does it work offline?',
-    a: 'Often, not by guarantee: after a first load the browser\u2019s HTTP cache usually serves the app shell and the engine artifacts, but there is no service worker yet, so a cleared cache means a download on the next visit.',
+    a: 'Yes, after the first load. A service worker keeps the app shell and the engine artifacts of the version you loaded, so the IDE opens and boots without a network; a new version downloads its artifacts once and replaces the old cache.',
   },
   {
     q: 'Which browsers?',

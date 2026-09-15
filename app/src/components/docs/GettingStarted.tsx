@@ -5,7 +5,7 @@ import { EASE_OUT } from './motion'
 const STEPS = [
   {
     title: 'Boot',
-    copy: 'Watch the boot log — the .gz artifacts download and inflate, the runtime instantiates, the image comes up. Return visits are quicker only because the browser keeps the compressed artifacts in its HTTP cache.',
+    copy: 'Watch the boot log — the .gz artifacts download and inflate, the runtime instantiates, the image comes up. A service worker keeps the compressed artifacts, so return visits skip the download and work offline.',
   },
   {
     title: 'Write',
@@ -36,7 +36,7 @@ export default function GettingStarted() {
     <section id="getting-started" className="scroll-mt-20">
       <SectionHeading
         title="From zero to REPL in a few seconds."
-        lead="There is nothing to install. Open the IDE; the SBCL WebAssembly artifacts (about 19 MB, gzip-compressed) download, inflate in a Web Worker and boot a full ANSI Common Lisp. ECL, cross-compiled to wasm32 by the WECL project, takes over when SBCL cannot boot or when you choose it in Settings → Lisp implementation."
+        lead="There is nothing to install. Open the IDE; the SBCL WebAssembly artifacts (about 19 MB, gzip-compressed) download once, inflate in a Web Worker and boot a full ANSI Common Lisp. ECL, cross-compiled to wasm32 by the WECL project, takes over when SBCL cannot boot or when you choose it in Settings → Lisp implementation."
       />
 
       <ol className="mt-12 space-y-5">

@@ -7,7 +7,7 @@ const CARDS = [
   {
     Icon: HardDrive,
     title: 'Local first',
-    body: 'Buffers, cells, settings and project files live in IndexedDB. The engine artifacts come through the browser\u2019s ordinary HTTP cache; nothing else is stored.',
+    body: 'Buffers, cells, settings and project files live in IndexedDB. A service worker keeps the app and the engine artifacts of the version you loaded, so the IDE opens offline.',
   },
   {
     Icon: Link2,

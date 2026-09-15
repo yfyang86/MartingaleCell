@@ -434,7 +434,37 @@ const scenarios = {
     const sidebarHasEngines = await page.locator('nav[aria-label="Documentation sections"] button', { hasText: /^Engines$/ }).count()
     const docsText = await page.evaluate(() => document.body.innerText)
     check(`/docs has the Engines section (${engineRows} comparison rows) and a sidebar entry for it`, engineRows >= 5 && sidebarHasEngines >= 1, `rows=${engineRows} sidebar=${sidebarHasEngines}`)
-    check('/docs no longer claims a Cache API image or a service worker', !/Cache API/.test(docsText) && !/service worker keeps/.test(docsText))
+    check('/docs no longer claims a Cache API image, and says the IDE opens offline through the service worker', !/Cache API/.test(docsText) && /opens offline/.test(docsText))
+  },
+
+  /* Sprint 31: the service worker makes the IDE usable offline after its first load */
+  async offline({ page, check, setCode }) {
+    const context = page.context()
+    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'ecl') } catch { /* private mode */ } })
+    await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    const registered = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.active !== null)).catch(() => false)
+    check('the production build registers a service worker and it becomes active', registered === true, String(registered))
+    /* second load: the page is controlled, so the artifacts pass through the worker into its cache */
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+    const controlled = await page.evaluate(() => navigator.serviceWorker.controller !== null)
+    check('after a reload the page is controlled by the worker', controlled === true, String(controlled))
+    await context.setOffline(true)
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
+      await page.locator('.cm-content').first().waitFor()
+      check('offline: the IDE loads from the cache and ECL boots', true)
+      const isolated = await page.evaluate(() => crossOriginIsolated)
+      check('offline: crossOriginIsolated still holds (the cached navigation kept its COOP/COEP headers)', isolated === true, String(isolated))
+      await setCode('(list :offline (+ 40 2))')
+      await page.keyboard.press('Control+Enter')
+      await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:OFFLINE42)'))`, null, { timeout: 60_000 })
+      check('offline: a cell evaluates — (:OFFLINE 42)', true)
+    } finally {
+      await context.setOffline(false)
+    }
   },
 
   /* re-run history side by side (Sprint 21) and Ctrl+R history search in the session box */
@@ -521,12 +551,16 @@ const scenarios = {
     await page.keyboard.press('Control+r')
     const searchBox = page.locator('[data-testid="session-history-search"] input')
     await searchBox.waitFor({ timeout: 5_000 })
-    const listed = await page.locator('[data-testid="session-history-search"] li').count()
+    /* Sprint 31: the list carries every distinct cell input newest first, with its cell number, then box-only history */
+    const listedTexts = await page.locator('[data-testid="session-history-search"] [data-testid="history-entry"]').allTextContents()
+    const listedCells = await page.locator('[data-testid="session-history-search"] [data-testid="history-cell"]').allTextContents()
     await searchBox.type('remem')
-    const filtered = await page.locator('[data-testid="session-history-search"] li').allTextContents()
+    const filtered = await page.locator('[data-testid="session-history-search"] [data-testid="history-entry"]').allTextContents()
     await searchBox.press('Enter')
     await page.waitForFunction(`document.querySelector('[data-testid="session-input"] .cm-content').textContent.trim() === '(list :remembered 42)'`, null, { timeout: 5_000 })
-    check('Ctrl+R lists the history newest first, a substring filters it, Enter recalls the entry into the box', listed === 2 && filtered.join('|') === '(list :remembered 42)' && (await searchBox.count()) === 0, `listed=${listed} filtered=${filtered.join('|')}`)
+    check('Ctrl+R lists the session newest first — the two box forms, then the buffer-evaluated cells with In [n] chips; a substring filters it, Enter recalls the entry into the box',
+      listedTexts[0] === '(+ 40 2)' && listedTexts[1] === '(list :remembered 42)' && listedTexts.some((t) => t.startsWith('(incf *runs*')) && listedCells.length === listedTexts.length && /^In \[\d+\]$/.test(listedCells[0]) && filtered.join('|') === '(list :remembered 42)' && (await searchBox.count()) === 0,
+      `listed=${listedTexts.join('|')} cells=${listedCells.join('|')} filtered=${filtered.join('|')}`)
   },
 
   /* Sprint 24: the SBCL/wasm engine, when its artifacts are in public/sbcl/ (plain or .gz) — skipped otherwise */
@@ -601,7 +635,7 @@ const scenarios = {
 }
 
 /* scenarios that do not need the IDE booted first (sbcl and engine boot their own way) */
-const NO_BOOT = new Set(['landing', 'sbcl', 'engine'])
+const NO_BOOT = new Set(['landing', 'sbcl', 'engine', 'offline'])
 
 if (argv.includes('--list')) { console.log(Object.keys(scenarios).join('\n')); process.exit(0) }
 const selected = only.length ? only : Object.keys(scenarios)

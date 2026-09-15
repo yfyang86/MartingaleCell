@@ -401,10 +401,11 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
           const shape = twoSpec.series.map((sr) => `${sr.title}:${sr.missing ?? sr.style}:${sr.points.length}`).join(' ')
           if (shape !== 'a:lines:2 b:points:2 s:function:0') problems.push(`parser: series shape ${JSON.stringify(shape)} (want "a:lines:2 b:points:2 s:function:0")`)
           else if (twoSpec.series[1].points[1].y !== 40) problems.push('parser: second series did not read its own file')
-          /* Sprint 30: the function series is named in the SVG, not dropped */
+          /* Sprint 31: the function series sin(x) is drawn (sampled over the data range), no footnote */
           const twoSvg = mod.buildSvg(twoSpec)
-          if (!/not drawn: s \(function\)/.test(twoSvg)) problems.push('buildSvg: the function series sin(x) is not named in the footnote')
-          if (!/s \(not drawn\)/.test(twoSvg)) problems.push('buildSvg: the function series has no "(not drawn)" legend entry')
+          if (/not drawn/.test(twoSvg)) problems.push('buildSvg: sin(x) should be drawn since Sprint 31, but the SVG still says not drawn: ' + (twoSvg.match(/not drawn:[^<]*/)?.[0] ?? ''))
+          if ((twoSvg.match(/<polyline /g) ?? []).length < 2) problems.push('buildSvg: expected the lines series a and the sampled sin(x) as polylines')
+          if (!/>s<\/text>/.test(twoSvg)) problems.push('buildSvg: the function series has no plain legend entry "s"')
         }
       }
       /* 13. the real renderer emits an <svg> with the 6 points */
@@ -418,7 +419,7 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
         console.log('  ✓ data file captured with all 6 example points')
         console.log('  ✓ eval job 103 attributed its own plot (fresh figure show)')
         console.log('  ✓ parseGnuplot + buildSvg (real modules, esbuild-bundled) → <svg> polyline with 6 points')
-        console.log('  ✓ two-series plot line ships both data files, the function series ships nothing; parser sees a:lines:2 b:points:2 s:function:0, SVG names sin(x) as not drawn (Sprints 29–30)')
+        console.log('  ✓ two-series plot line ships both data files, the function series ships nothing; parser sees a:lines:2 b:points:2 s:function:0, SVG draws sin(x) over the data range (Sprints 29–31)')
       }
     }
   }
