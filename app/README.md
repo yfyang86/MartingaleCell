@@ -118,6 +118,8 @@ sprint, and lands on `dev` through a pull request that must be green in CI.
 
 ## Licence notes
 
-ConsCell's own code is MIT. The default engine is SBCL (MIT + BSD-style);
-ECL / WECL (LGPL-2.1+) ship as the cited fallback engine. The bundled
-sample project cl-plot is MIT (© Martin Kersner).
+ConsCell's own code is MIT (root `LICENSE`). The default engine is SBCL
+(mostly public domain, with MIT-style and BSD-style parts — see SBCL's
+`COPYING`); ECL / WECL (LGPL-2.1+) ships unmodified as the fallback
+engine with its notice kept. The bundled sample project cl-plot is MIT
+(© Martin Kersner). The root README's licence notes have the details.

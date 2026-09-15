@@ -12,8 +12,8 @@
 ## 你能得到什么
 
 - **两个真实的 Lisp 引擎**，可在 Settings 中切换：
-  - **SBCL**，编译为 `wasm32-wasip1` —— 默认引擎（MIT + BSD 授权，
-    也是我们自己的 WebAssembly 工作的基础）。
+  - **SBCL**，编译为 `wasm32-wasip1` —— 默认引擎（公有领域，部分为
+    MIT/BSD 式授权；也是我们自己的 WebAssembly 工作的基础）。
   - **ECL**（Embeddable Common Lisp，ANSI CL）编译为 WebAssembly ——
     当 SBCL 无法启动时（artifacts 缺失，或托管站点缺少 isolation
     headers）自动接管作为 fallback，也可随时手动选择。两种引擎下编辑
@@ -60,7 +60,7 @@ Settings → **Lisp implementation**：`auto`（默认 —— SBCL 优先；SBCL
 |  | SBCL（默认） | ECL（fallback） |
 |---|---|---|
 | 标准 | SBCL 2.4.8，wasm32-wasip1 | ANSI CL，WECL/wasm |
-| 授权 | MIT + BSD（随上游 SBCL） | LGPL-2.1+（致谢引用，非核心引擎） |
+| 授权 | 公有领域 + MIT/BSD 式部分（见上游 `COPYING`） | LGPL-2.1+（原样分发的 fallback） |
 | 启动时间 | 约 4–5 秒（19 MB 的 .gz artifacts） | 约 1 秒 |
 | 项目、cell、包、调试器、stdin | ✓ | ✓ |
 | gnuplot 绘图（cl-plot） | ✓ 捕获并渲染为 SVG | ✓ 捕获并渲染为 SVG |
@@ -99,13 +99,19 @@ IDE 会在 boot log 中说明原因并退回 ECL。
 
 ## 授权说明
 
-- **ConsCell 自身代码** —— MIT（WebAssembly 工作即按此授权；LICENSE
-  文件随 alpha tag 提供）。
-- **SBCL**（默认引擎）—— 随上游 SBCL 项目为 MIT + BSD 式授权；此处
-  使用的 wasm port 为我们自己的重新实现。
-- **ECL / WECL** —— LGPL-2.1+（Daniel Kochmański 的 wasm 构建）。致
-  谢引用并作为 fallback 引擎分发；ConsCell 不以它为核心依赖。
-- **cl-plot**（内置示例）—— MIT，© Martin Kersner。
+- **ConsCell 自身代码** —— MIT，见 [LICENSE](LICENSE)。覆盖 IDE、
+  worker 以及本仓库中的 WebAssembly 移植工作。
+- **SBCL**（默认引擎）—— 主体为公有领域，部分文件为 MIT 式与 BSD 式
+  授权；以 SBCL 源码树中的 `COPYING` 为准。此处使用的 `wasm32-wasip1`
+  port 是我们对该源码的重新实现
+  （[yfyang86/sbcl](https://github.com/yfyang86/sbcl)）；
+  `app/public/sbcl/` 下的 `.gz` 构件由它构建。
+- **ECL / WECL** —— LGPL-2.1+（Daniel Kochmański 的 Embeddable Common
+  Lisp WebAssembly 构建）。ConsCell 原样分发 WECL 二进制作为 fallback
+  引擎，保留其授权声明，且不与之链接：IDE 通过 worker 消息协议与其
+  通信。源码可从 ECL 项目获得；ConsCell 不以它为核心依赖。
+- **cl-plot**（内置示例）—— MIT，© Martin Kersner（其 LICENSE 文件在
+  示例 zip 内）。
 
 ---
 
