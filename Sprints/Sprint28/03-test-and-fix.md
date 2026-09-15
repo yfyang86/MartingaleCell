@@ -11,7 +11,7 @@
 | All Node suites (16) | `pnpm test` | all pass |
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 63 / 63 in 10 scenarios; `engine` 6 checks incl. the restored sbcl step |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/28 — pending.
 
 ## Fixes made along the way
 
