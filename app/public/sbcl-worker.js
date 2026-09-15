@@ -747,7 +747,11 @@ var SBCL_HELPER_SRC = [
    * string after the keyword and each one that follows a comma (a quoted
    * title "..." inside a series is skipped), mirroring the browser parser */
   '(defun %plot-line-paths (line)',
-  '  (let ((paths nil) (i 0) (n (length line)) (expect t))',
+  '  ;; scan after the plot/replot keyword; a series starts at the line start',
+  '  ;; or after a comma, and is a data file only when its first non-blank',
+  '  ;; character is a quote (Sprint 30: `sin(x) title "s"` ships no file)',
+  '  (let* ((paths nil) (n (length line)) (expect t)',
+  '         (i (let ((sp (position #\\Space line))) (if sp (1+ sp) n))))',
   '    (loop while (< i n) do',
   '      (let ((ch (char line i)))',
   '        (cond ((char= ch #\\")',
@@ -757,7 +761,8 @@ var SBCL_HELPER_SRC = [
   '                   (pushnew (subseq line (1+ i) q2) paths :test (function string=)))',
   '                 (setf expect nil i (1+ q2))))',
   '              ((char= ch #\\,) (setf expect t) (incf i))',
-  '              (t (incf i)))))',
+  '              ((member ch (quote (#\\Space #\\Tab))) (incf i))',
+  '              (t (setf expect nil) (incf i)))))',
   '    (nreverse paths)))',
   '(defun %plot-data-paths (script)',
   '  (let ((paths nil) (start 0) (n (length script)))',

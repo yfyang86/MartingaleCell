@@ -129,12 +129,13 @@ let debugAnswered = null /* null = not paused yet, false = answered a pause */
 let interruptRequested = false
 let snapshotFiles = null
 /* Sprint 29: a gnuplot script whose plot line names two data files (a quoted
- * title sits between them and must not be taken for a path) */
+ * title sits between them and must not be taken for a path); Sprint 30 adds a
+ * third, function series whose quoted title must not ship as a file */
 const TWO_SERIES_CODE = String.raw`(progn
   (with-open-file (o "/tmp/cc-two-a.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 2~%2 4~%"))
   (with-open-file (o "/tmp/cc-two-b.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 20~%2 40~%"))
   (with-open-file (o "/tmp/cc-two.sh" :direction :output :if-exists :overwrite :if-does-not-exist :create)
-    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points~%EOF~%"))
+    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points, sin(x) title \"s\" with lines~%EOF~%"))
   (ext:shell "bash /tmp/cc-two.sh"))`
 const out = (id) => messages.filter((m) => (m.type === 'stdout' || m.type === 'stderr') && m.id === id).map((m) => m.text)
 const step = { expectDone: new Set([100, 101, 102, 103]) }
@@ -338,7 +339,8 @@ function onExerciseMessage(m) {
       for (const want of ['"/tmp/cc-two-a.dat"', '"1 2\n2 4\n"', '"/tmp/cc-two-b.dat"', '"1 20\n2 40\n"']) {
         if (!payload.includes(want)) problems.push(`job 116: payload lacks ${want} (both series' data files must ship)`)
       }
-      if (payload.includes('\n"a"\n') || payload.includes('\n"b"\n')) problems.push('job 116: a series title was shipped as a data file')
+      if (payload.includes('\n"a"\n') || payload.includes('\n"b"\n') || payload.includes('\n"s"\n')) problems.push('job 116: a series title was shipped as a data file')
+      if (payload.includes('sin(x)"\n"')) problems.push('job 116: the function series shipped as a data file')
     }
     /* clean shutdown */
     submit({ type: 'quit' })

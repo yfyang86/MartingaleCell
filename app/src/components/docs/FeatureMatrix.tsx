@@ -25,7 +25,7 @@ const ROWS: Row[] = [
   { area: 'Gray streams', status: 'partial', notes: 'Core protocol; *standard-input* is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)' },
   { area: 'Pathnames & files', status: 'partial', notes: 'In-memory FS persisted to IndexedDB; no host filesystem access' },
   { area: 'FFI / foreign calls', status: 'planned', notes: 'Not meaningful under WASM; WASI experiments planned' },
-  { area: 'Threads (bordeaux-threads)', status: 'planned', notes: 'Blocked on WASM threads + shared-memory COOP/COEP headers' },
+  { area: 'Threads (bordeaux-threads)', status: 'planned', notes: 'No sb-thread in the SBCL wasm image and none in ECL/wasm; the COOP/COEP isolation headers are already served for the SBCL worker' },
 ]
 
 const PILL: Record<Status, { label: string; className: string; Icon: typeof CheckCircle2 }> = {
@@ -85,7 +85,7 @@ export default function FeatureMatrix() {
     <section id="features" className="scroll-mt-20">
       <SectionHeading
         title="ANSI Common Lisp, feature by feature."
-        lead="What the ECL→WASM build supports today. Updated per release; target: full ANSI conformance."
+        lead="What the WebAssembly builds support today — SBCL by default, ECL as the fallback; the rows hold for both unless noted. Updated per release; target: full ANSI conformance."
       />
 
       {/* Coverage banner */}
@@ -167,7 +167,7 @@ export default function FeatureMatrix() {
         <code className="font-mono text-[11.5px]">
           <ClCode code="(lisp-implementation-version)" />
         </code>{' '}
-        in the IDE for the exact ECL build.
+        in the IDE for the exact build — SBCL 2.4.8 or the ECL fallback.
       </p>
     </section>
   )

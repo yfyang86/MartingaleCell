@@ -97,7 +97,7 @@ export default function Examples() {
           transition={{ delay: 0.25, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="mt-4 max-w-2xl text-[17px] leading-relaxed text-secondary"
         >
-          Every example runs in the browser ECL runtime — ANSI Common Lisp
+          Every example runs in the browser Lisp engine (SBCL or ECL) — ANSI Common Lisp
           compiled to WebAssembly. Pick one, and it
           opens in the IDE with the session ready — just press{' '}
           <kbd className="cc-kbd">Ctrl</kbd>{' '}
