@@ -12,7 +12,8 @@
 | All Node suites (18) | `pnpm test` | all pass |
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 71 / 71 in 11 scenarios; `offline` 6 / 6 with the cache warmed after the first boot (10 / 10 chunks), SBCL boot 5.7 s |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/34 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34997766124: `check` in 1 min 0 s with the new `sw-test` step, the labelled `smoke` job in 2 min 29 s), merged as `bc0412d`.
+CI on the merge commit on `dev`: pending.
 
 ## Fixes made along the way
 
