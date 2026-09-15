@@ -35,7 +35,7 @@ export default function GettingStarted() {
     <section id="getting-started" className="scroll-mt-20">
       <SectionHeading
         title="From zero to REPL in four seconds."
-        lead="There is nothing to install. Open the IDE; the ECL WebAssembly image downloads once, caches itself, and boots. ECL — Embeddable Common Lisp — is a full ANSI Common Lisp, cross-compiled to wasm32 by the WECL project and self-hosted in a Web Worker. An SBCL/wasm engine can be selected in Settings where its artifacts are served."
+        lead="There is nothing to install. Open the IDE; the SBCL WebAssembly image (about 19 MB, compressed) downloads, caches itself, and boots — a full ANSI Common Lisp in a Web Worker. ECL, cross-compiled to wasm32 by the WECL project, takes over when SBCL cannot boot or when you choose it in Settings → Lisp implementation."
       />
 
       <ol className="mt-12 space-y-5">
