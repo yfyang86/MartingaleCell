@@ -19,8 +19,8 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     icon: Cpu,
-    title: 'Real ECL, compiled to WASM',
-    copy: 'Not a toy interpreter. ECL — a full ANSI Common Lisp — with its compiler and condition system, running at near-native speed in a Web Worker.',
+    title: 'Real SBCL and ECL, compiled to WASM',
+    copy: 'Not a toy interpreter. SBCL by default, ECL as the fallback — full ANSI Common Lisp with a compiler and condition system, running in a Web Worker.',
   },
   {
     icon: LayoutPanelLeft,

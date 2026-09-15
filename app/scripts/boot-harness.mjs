@@ -124,12 +124,13 @@ sandbox.postMessage = (m) => {
  * plot-example's (show *fig*)), the script + referenced data file check out,
  * and a fresh (show …) in a later eval job attributes the plot to THAT job. */
 /* Sprint 29: a gnuplot script whose plot line names two data files (with a
- * quoted title in between, which must not be mistaken for a path) */
+ * quoted title in between, which must not be mistaken for a path); Sprint 30
+ * adds a third, function series whose quoted title must not ship as a file */
 const TWO_SERIES_CODE = String.raw`(progn
   (with-open-file (o "/tmp/cc-two-a.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 2~%2 4~%"))
   (with-open-file (o "/tmp/cc-two-b.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 20~%2 40~%"))
   (with-open-file (o "/tmp/cc-two.sh" :direction :output :if-exists :overwrite :if-does-not-exist :create)
-    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points~%EOF~%"))
+    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points, sin(x) title \"s\" with lines~%EOF~%"))
   (ext:shell "bash /tmp/cc-two.sh"))`
 
 function exercise() {
@@ -397,9 +398,13 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
           const b = two.files.find((f) => f.path === '/tmp/cc-two-b.dat')
           if (b && !/1 20\n2 40/.test(b.content)) problems.push('two-series payload: second data file content wrong: ' + JSON.stringify(b.content))
           const twoSpec = mod.parseGnuplot(two.script, two.files)
-          const shape = twoSpec.series.map((sr) => `${sr.title}:${sr.style}:${sr.points.length}`).join(' ')
-          if (shape !== 'a:lines:2 b:points:2') problems.push(`parser: two-series shape ${JSON.stringify(shape)} (want "a:lines:2 b:points:2")`)
+          const shape = twoSpec.series.map((sr) => `${sr.title}:${sr.missing ?? sr.style}:${sr.points.length}`).join(' ')
+          if (shape !== 'a:lines:2 b:points:2 s:function:0') problems.push(`parser: series shape ${JSON.stringify(shape)} (want "a:lines:2 b:points:2 s:function:0")`)
           else if (twoSpec.series[1].points[1].y !== 40) problems.push('parser: second series did not read its own file')
+          /* Sprint 30: the function series is named in the SVG, not dropped */
+          const twoSvg = mod.buildSvg(twoSpec)
+          if (!/not drawn: s \(function\)/.test(twoSvg)) problems.push('buildSvg: the function series sin(x) is not named in the footnote')
+          if (!/s \(not drawn\)/.test(twoSvg)) problems.push('buildSvg: the function series has no "(not drawn)" legend entry')
         }
       }
       /* 13. the real renderer emits an <svg> with the 6 points */
@@ -413,7 +418,7 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
         console.log('  ✓ data file captured with all 6 example points')
         console.log('  ✓ eval job 103 attributed its own plot (fresh figure show)')
         console.log('  ✓ parseGnuplot + buildSvg (real modules, esbuild-bundled) → <svg> polyline with 6 points')
-        console.log('  ✓ two-series plot line ships both data files; parser sees a:lines:2 b:points:2 (Sprint 29)')
+        console.log('  ✓ two-series plot line ships both data files, the function series ships nothing; parser sees a:lines:2 b:points:2 s:function:0, SVG names sin(x) as not drawn (Sprints 29–30)')
       }
     }
   }

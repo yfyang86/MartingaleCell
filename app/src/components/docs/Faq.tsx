@@ -11,11 +11,11 @@ import { EASE_OUT } from './motion'
 const FAQS = [
   {
     q: 'Is this real Common Lisp?',
-    a: 'Yes — the runtime is ECL (Embeddable Common Lisp), a full ANSI Common Lisp implementation, cross-compiled to WebAssembly by the WECL project and self-hosted in a Web Worker. If the WASM image ever fails to load, ConsCell falls back to JSCL, then to a small mock evaluator — both speak the same session protocol.',
+    a: 'Yes — two full ANSI Common Lisp implementations compiled to WebAssembly and self-hosted in a Web Worker: SBCL (the default, wasm32-wasip1) and ECL (cross-compiled by the WECL project, the fallback). If neither wasm image loads, ConsCell falls back to JSCL, then to a small demo evaluator — every engine speaks the same session protocol.',
   },
   {
     q: 'How big is the download?',
-    a: '≈25 MB on first visit, cached aggressively afterwards. Boots in ~1s warm.',
+    a: 'SBCL: about 19 MB of gzip-compressed artifacts, inflated to ~125 MB in memory, a REPL in 4–6 s. ECL: about 9.5 MB, up in about a second. Return visits are quicker because the browser keeps the compressed files in its HTTP cache.',
   },
   {
     q: 'Can I load Quicklisp libraries?',
@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: 'Does it work offline?',
-    a: 'Fully, after first load. A service worker keeps the runtime and app shell available.',
+    a: 'Often, not by guarantee: after a first load the browser\u2019s HTTP cache usually serves the app shell and the engine artifacts, but there is no service worker yet, so a cleared cache means a download on the next visit.',
   },
   {
     q: 'Which browsers?',

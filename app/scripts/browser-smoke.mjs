@@ -427,6 +427,14 @@ const scenarios = {
     await page.locator('h1').first().waitFor({ timeout: 20_000 })
     await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /lenis-.*\.js/.test(r.name)), null, { timeout: 20_000 })
     check('landing page renders after code-splitting and loads its lenis chunk on demand', true)
+    /* Sprint 30: the docs site has the Engines section, reachable from the sidebar, and no ECL-only story left */
+    await page.goto(`${base}/docs`, { waitUntil: 'domcontentloaded' })
+    await page.locator('[data-testid="engine-table"]').waitFor({ timeout: 20_000 })
+    const engineRows = await page.locator('[data-testid="engine-table"] tbody tr').count()
+    const sidebarHasEngines = await page.locator('nav[aria-label="Documentation sections"] button', { hasText: /^Engines$/ }).count()
+    const docsText = await page.evaluate(() => document.body.innerText)
+    check(`/docs has the Engines section (${engineRows} comparison rows) and a sidebar entry for it`, engineRows >= 5 && sidebarHasEngines >= 1, `rows=${engineRows} sidebar=${sidebarHasEngines}`)
+    check('/docs no longer claims a Cache API image or a service worker', !/Cache API/.test(docsText) && !/service worker keeps/.test(docsText))
   },
 
   /* re-run history side by side (Sprint 21) and Ctrl+R history search in the session box */

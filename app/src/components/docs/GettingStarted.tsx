@@ -5,7 +5,7 @@ import { EASE_OUT } from './motion'
 const STEPS = [
   {
     title: 'Boot',
-    copy: 'Watch the boot log — fetch, instantiate, map core, warm-up. Cached on return visits.',
+    copy: 'Watch the boot log — the .gz artifacts download and inflate, the runtime instantiates, the image comes up. Return visits are quicker only because the browser keeps the compressed artifacts in its HTTP cache.',
   },
   {
     title: 'Write',
@@ -21,21 +21,22 @@ const STEPS = [
   },
 ]
 
+/* what the SBCL worker actually prints (public/sbcl-worker.js), figures from a laptop boot */
 const BOOT_LINES: { ok: boolean; text: string }[] = [
-  { ok: false, text: ';; ConsCell runtime boot — ECL (ANSI Common Lisp) compiled to WebAssembly · project WECL' },
-  { ok: true, text: 'fetch      ecl.wasm ................ 24.7 MB (Cache API)' },
-  { ok: true, text: 'instantiate wasm module ............ 412 ms' },
-  { ok: true, text: 'map core image ..................... 208 ms' },
-  { ok: true, text: 'warm-up eval ....................... 96 ms' },
-  { ok: false, text: ';; ready in 0.9s — self-hosted runtime, no server round-trips' },
+  { ok: false, text: 'SBCL/wasm host boot — fetching /sbcl/{sbcl.wasm,sbcl.core,sbcl-core.wasm} (.gz copies first, ~19 MB; ~124 MB inflated)' },
+  { ok: true, text: '  sbcl.wasm: 1.4 MB inflated, 0.0 s so far' },
+  { ok: true, text: '  sbcl.core: 78.8 MB inflated, 1.0 s so far' },
+  { ok: true, text: '  sbcl-core.wasm: 44.4 MB inflated, 1.2 s so far' },
+  { ok: true, text: 'artifacts loaded (124.7 MB in 1.2 s) — instantiating the runtime' },
+  { ok: false, text: 'ready — happy hacking (SBCL, wasm32-wasip1)   ;; about 4–6 s from the click, ~1 s on ECL' },
 ]
 
 export default function GettingStarted() {
   return (
     <section id="getting-started" className="scroll-mt-20">
       <SectionHeading
-        title="From zero to REPL in four seconds."
-        lead="There is nothing to install. Open the IDE; the SBCL WebAssembly image (about 19 MB, compressed) downloads, caches itself, and boots — a full ANSI Common Lisp in a Web Worker. ECL, cross-compiled to wasm32 by the WECL project, takes over when SBCL cannot boot or when you choose it in Settings → Lisp implementation."
+        title="From zero to REPL in a few seconds."
+        lead="There is nothing to install. Open the IDE; the SBCL WebAssembly artifacts (about 19 MB, gzip-compressed) download, inflate in a Web Worker and boot a full ANSI Common Lisp. ECL, cross-compiled to wasm32 by the WECL project, takes over when SBCL cannot boot or when you choose it in Settings → Lisp implementation."
       />
 
       <ol className="mt-12 space-y-5">

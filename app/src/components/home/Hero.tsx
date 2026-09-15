@@ -106,7 +106,7 @@ export default function Hero() {
       {/* Content */}
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
         <span className="hero-eyebrow rounded-full border border-hairline bg-panel/60 px-3 py-1 font-mono text-[11px] tracking-wider text-steel opacity-0">
-          ECL · WebAssembly · zero install
+          SBCL & ECL · WebAssembly · zero install
         </span>
 
         <h1
@@ -128,7 +128,7 @@ export default function Hero() {
         </h1>
 
         <p className="hero-subhead mt-6 max-w-2xl text-[18px] leading-[1.65] text-secondary opacity-0">
-          ConsCell compiles ECL (Embeddable Common Lisp) to WebAssembly and wraps it in a notebook-style IDE —
+          ConsCell runs SBCL (and ECL as a fallback) compiled to WebAssembly and wraps it in a notebook-style IDE —
           syntax-highlighted editor, persistent result cells, a real condition system with
           restarts. No servers. No setup. Your code never leaves the tab.
         </p>

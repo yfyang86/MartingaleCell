@@ -164,9 +164,9 @@ export function buildSvg(spec: PlotSpec): string {
   })
 
   /* legend (unless set nokey) */
-  const legendItems = spec.legend ? spec.series.filter((s) => s.title) : []
+  const legendItems = spec.legend ? spec.series.filter((s) => s.title || s.missing) : []
   if (spec.legend && legendItems.length > 0) {
-    const lw = Math.max(...legendItems.map((s) => (s.title ?? '').length)) * 6.5 + 30
+    const lw = Math.max(...legendItems.map((s) => ((s.title ?? s.label ?? '') + (s.missing ? ' (not drawn)' : '')).length)) * 6.5 + 30
     const lh = legendItems.length * 16 + 8
     const lx = ml + pw - lw - 6
     const ly = mt + 6
@@ -175,8 +175,17 @@ export function buildSvg(spec: PlotSpec): string {
       const color = SERIES_COLORS[spec.series.indexOf(s) % SERIES_COLORS.length]
       const y = ly + 14 + i * 16
       el.push(`<line x1="${n(lx + 6)}" y1="${y - 3}" x2="${n(lx + 22)}" y2="${y - 3}" stroke="${color}" stroke-width="2"/>`)
-      el.push(`<text x="${n(lx + 26)}" y="${y}" fill="${C.label}" font-family="${FONT}" font-size="10">${esc(s.title ?? '')}</text>`)
+      el.push(`<text x="${n(lx + 26)}" y="${y}" fill="${C.label}" font-family="${FONT}" font-size="10">${esc((s.title ?? s.label ?? '') + (s.missing ? ' (not drawn)' : ''))}</text>`)
     })
+  }
+
+  /* Sprint 30: series the renderer cannot draw are named, not dropped */
+  const missing = spec.series.filter((s) => s.missing)
+  if (missing.length > 0) {
+    const what = missing
+      .map((s) => `${s.title ?? s.label ?? '?'} (${s.missing === 'function' ? 'function' : 'no data'})`)
+      .join(', ')
+    el.push(`<text x="${ml + 6}" y="${mt + ph - 6}" fill="${C.tick}" font-family="${FONT}" font-size="10" data-plot-missing="${missing.length}">${esc('not drawn: ' + what)}</text>`)
   }
 
   /* labels + title */
