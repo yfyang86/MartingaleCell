@@ -6,6 +6,11 @@ uses [Semantic Versioning](https://semver.org/). Work lands in sprints
 (`Sprints/SprintN/`), each with a goal, implementation notes, a
 test-and-fix log and a proposal for the next one.
 
+## [Unreleased]
+
+`dev` carries version `1.0.0-beta.1` since the release, so builds after
+it install their own service-worker cache.
+
 ## [1.0.0-beta.0] — 2026-09-15
 
 The first tagged release. `1.0.0-alpha.0` was the working version of
@@ -141,4 +146,5 @@ the sprints below and was never tagged.
 | 31 | Function series drawn; Ctrl+R over cell inputs; service worker for offline use |
 | 32 | Code cut: version `1.0.0-beta.0`, this changelog, documents pass, release checklist |
 
+[Unreleased]: https://github.com/yfyang86/ConsCell/compare/v1.0.0-beta.0...dev
 [1.0.0-beta.0]: https://github.com/yfyang86/ConsCell/releases/tag/v1.0.0-beta.0
