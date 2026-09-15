@@ -1,5 +1,5 @@
 /* The engine preference (Settings → Lisp implementation), Sprint 27.
- * As of the 1.0 alpha SBCL (MIT+BSD) is the core engine and the default:
+ * Since 1.0 SBCL (public domain with MIT/BSD-style parts) is the core engine and the default:
  * 'auto'  — SBCL first (the default); ECL when the artifacts are missing
  *           or the boot fails, then JSCL, then the mock
  * 'ecl'   — ECL only: a failure stays a failure (Retry on the boot screen)

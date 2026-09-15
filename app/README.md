@@ -22,18 +22,20 @@ pnpm build        # production bundle in dist/
 pnpm preview      # serve dist/
 ```
 
-Node 22 and pnpm 10 are what CI uses. The wasm image is self-hosted under
-`public/wecl/` and must be served same-origin.
+Node 22 and pnpm 10 are what CI uses. Both engines are self-hosted — ECL under
+`public/wecl/`, the SBCL artifacts as `.gz` copies under `public/sbcl/` — and must
+be served same-origin; the SBCL engine also needs the COOP/COEP headers (`vite dev`
+and `vite preview` send them; a static host must too, see `../RELEASE.md`).
 
 ## Check it
 
 ```sh
 pnpm lint            # ESLint, zero warnings expected
 pnpm build           # tsc -b + vite build
-pnpm test            # every harness: transcript/search/outline/editor-state/
-                     # history/fold/lineage (pure TS) + boot/package/settings/
-                     # debugger/stdin/perf (real ECL image) + sbcl + sbcl-artifacts
-                     # + smoke-summary
+pnpm test            # all 17 suites: transcript/search/outline/editor-state/
+                     # history/fold/lineage/plot/smoke-summary/sbcl-artifacts (pure
+                     # Node) + boot/package/settings/debugger/stdin/perf (real ECL
+                     # image) + sbcl (real SBCL image)
 pnpm test:sbcl       # the SBCL engine against the real image (skips without artifacts)
 pnpm test:modules    # package manager + module persistence (needs SAMPLE_PROJECT_DIR)
 pnpm smoke:browser   # real Chromium via Playwright against `pnpm preview` (--only name, --list); refuses a dist/ older than the sources (--allow-stale); --json writes a report
@@ -51,17 +53,17 @@ marker protocol agree. `test:modules` and `boot-harness.mjs --exercise`
 load the bundled sample project; point `SAMPLE_PROJECT_DIR` at an unzipped
 `public/sample-projects/cl-plot.zip`.
 
-`.github/workflows/ci.yml` runs lint, build, the seven pure-TS tests and the six wasm tests on every
+`.github/workflows/ci.yml` runs lint, build, the ten pure-Node tests and the seven wasm tests on every
 pull request and on pushes to `dev` (docs-only pushes under `Sprints/` start no run). A second job,
 `smoke`, runs the browser scenarios (Playwright + Chromium against `pnpm preview`) on pull requests
 that carry the `smoke` label — add the label to opt a PR in — and on every push to `dev`, as a report
 on the merge commit; on failure the scenario screenshots are attached as a workflow artifact.
 Superseded runs are cancelled on pull requests only, so a `dev` run always completes.
 
-## SBCL engine (experimental)
+## SBCL engine
 
-Sprint 23 added the SBCL WebAssembly port (github.com/yfyang86/sbcl, branch `wasm-dev`) as a
-second engine, next to ECL. Its artifacts are tracked as gzip'd copies only (`public/sbcl/*.gz`,
+The SBCL WebAssembly port (github.com/yfyang86/sbcl, branch `wasm-dev`) is the default
+engine, next to ECL. Its artifacts are tracked as gzip'd copies only (`public/sbcl/*.gz`,
 ~19 MB); the plain files (~124 MB) are gitignored and optional:
 
 ```sh
@@ -71,19 +73,19 @@ pnpm test:sbcl-artifacts                          # the gzip loader on synthetic
 node scripts/browser-smoke.mjs --only sbcl        # the browser scenario: boots SBCL from the .gz copies (reported as skipped without them)
 ```
 
-In the IDE, Settings → "Lisp implementation" offers `auto` (ECL, then JSCL, then the demo
-interpreter), `ecl` (ECL only — a boot failure stays a failure with Retry) and `sbcl` (SBCL/wasm,
-ECL if its artifacts are missing or it cannot boot). The choice is part of the workspace settings
-(reset with the workspace) and takes effect on Restart Lisp image; the boot screen shows each
-artifact's download progress.
+In the IDE, Settings → "Lisp implementation" offers `auto` (SBCL, then ECL, then JSCL, then the
+demo interpreter — the default), `ecl` (ECL only — a boot failure stays a failure with Retry) and
+`sbcl` (SBCL/wasm, ECL if its artifacts are missing or it cannot boot). The choice is part of the
+workspace settings (reset with the workspace) and takes effect on Restart Lisp image; the boot
+screen shows each artifact's download progress.
 
 ## How it is put together
 
 | Layer | Where | What |
 |---|---|---|
-| Runtime image | `public/wecl/` | Third-party: `boot.js`, Emscripten glue `wecl.js`, `wecl.wasm` (9 MB). Asyncify build; `wecl_eval` is async. |
+| Runtime images | `public/wecl/`, `public/sbcl/` | ECL: third-party `boot.js`, Emscripten glue `wecl.js`, `wecl.wasm` (9 MB), Asyncify build with async `wecl_eval`. SBCL: `sbcl.wasm`, `sbcl.core`, `sbcl-core.wasm` as `.gz` copies (19 MB, ~125 MB inflated) from our wasm32-wasip1 port. |
 | Worker | `public/wecl-worker.js` | Hand-written classic Web Worker. Half of it is a Common Lisp helper library (package `cc`) embedded as a string: the eval loop, the project loader (parses `.asd` itself — the image has no ASDF), `ext:shell` polyfill with gnuplot capture, and the `package-install` family. It also swaps Emscripten's `invoke_*` setjmp trampolines for lean ones at instantiation — the interpreter runs ~30× faster for it (see `Sprints/Sprint7`). |
-| Runtime client | `src/lisp/` | `runtime.ts` owns the fallback ladder (ECL worker → JSCL from CDN → built-in mock), serialises jobs, parses markers. `symbols.ts` feeds completion and doc popovers. |
+| Runtime client | `src/lisp/` | `runtime.ts` owns the engine ladder (`engine-pref.ts`: SBCL worker → ECL worker → JSCL from CDN → built-in mock, or the chosen engine), serialises jobs, parses markers. `symbols.ts` feeds completion and doc popovers. |
 | Stores | `src/store/` | Zustand: `workspace` (buffers, cells, logs, settings; persisted to IndexedDB), `evaluate` (cell orchestration), `project` (local folder via File System Access API or virtual ZIP project), `ui`, `editor-meta`. |
 | Service worker | `public/sw.js` | Registered by `main.tsx` on production builds as `./sw.js?v=<version>`. Navigations network-first with the cached `index.html` offline; every other same-origin GET (assets, workers, engine artifacts, sample zip) cache-first. The cache is named after the app version, so a new build drops the old one. |
 | Project loading, plots | `src/project/`, `src/plot/` | Streams per-file load status into a cell; parses the gnuplot subset cl-plot emits and renders SVG. A `plot` line may name several data files (all are shipped); function expressions and data files that did not ship are listed in the plot as "not drawn" rather than dropped. |
