@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: 'Does it work offline?',
-    a: 'Yes, after the first load. A service worker keeps the app shell and the engine artifacts of the version you loaded, so the IDE opens and boots without a network; a new version downloads its artifacts once and replaces the old cache.',
+    a: 'Yes, after the first load. A service worker keeps the app shell and, once an engine has booted, that engine\u2019s artifacts, so the IDE opens and boots without a network from the very next visit; a new version downloads its artifacts once and replaces the old cache.',
   },
   {
     q: 'Which browsers?',

@@ -24,6 +24,7 @@ const ROWS: Row[] = [
   { area: 'MOP', status: 'partial', notes: 'slot-value-using-class etc.; ensure-generic-function edge cases pending' },
   { area: 'Gray streams', status: 'partial', notes: 'Core protocol; *standard-input* is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)' },
   { area: 'Pathnames & files', status: 'partial', notes: 'In-memory FS persisted to IndexedDB; no host filesystem access' },
+  { area: 'gnuplot plots (cl-plot)', status: 'partial', notes: 'ext:shell capture rendered as SVG: data series, multi-file plots, function expressions with gnuplot\u2019s operators, user-defined functions and variables, integer arithmetic; no ternaries, strings or 3-D' },
   { area: 'FFI / foreign calls', status: 'planned', notes: 'Not meaningful under WASM; WASI experiments planned' },
   { area: 'Threads (bordeaux-threads)', status: 'planned', notes: 'No sb-thread in the SBCL wasm image and none in ECL/wasm; the COOP/COEP isolation headers are already served for the SBCL worker' },
 ]
