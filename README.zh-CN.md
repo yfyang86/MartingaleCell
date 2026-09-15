@@ -35,7 +35,9 @@
 - **运行时内的包管理**：把项目作为模块安装 / 列出 / 加载 / 卸载
   （`(package-install "name")`），通过 IndexedDB 在页面刷新后保留。
 - **一切皆本地**：项目、编辑器状态与模块都保存在你的浏览器里，求值发
-  生在 Web Worker 中。无遥测、无后端、无需账号。
+  生在 Web Worker 中。无遥测、无后端、无需账号 —— 首次加载之后，IDE
+  可以离线打开并启动（service worker 会保留所加载版本的应用与引擎
+  artifacts）。
 
 ## 运行
 
@@ -61,7 +63,7 @@ Settings → **Lisp implementation**：`auto`（默认 —— SBCL 优先；SBCL
 |---|---|---|
 | 标准 | SBCL 2.4.8，wasm32-wasip1 | ANSI CL，WECL/wasm |
 | 授权 | 公有领域 + MIT/BSD 式部分（见上游 `COPYING`） | LGPL-2.1+（原样分发的 fallback） |
-| 启动时间 | 约 4–5 秒（19 MB 的 .gz artifacts） | 约 1 秒 |
+| 启动时间 | 约 4–6 秒（19 MB 的 .gz artifacts，只下载一次） | 约 1 秒 |
 | 项目、cell、包、调试器、stdin | ✓ | ✓ |
 | gnuplot 绘图（cl-plot） | ✓ 捕获并渲染为 SVG | ✓ 捕获并渲染为 SVG |
 | 中断（Ctrl+.） | 重启 image（该 port 尚无法把 Ctrl-C 送入 Lisp） | 重启 image |
@@ -75,7 +77,8 @@ IDE 会在 boot log 中说明原因并退回 ECL。
 
 ## 一分钟上手
 
-1. 打开 IDE，状态栏显示 `SBCL · WASM`。
+1. 打开 IDE，状态栏显示 `SBCL · WASM`（SBCL 无法启动或你选择了 ECL
+   时显示 `ECL · WASM`）。
 2. 输入 `(defun hello () (format t "hi ~a" :world))`，按 `Ctrl+Enter`。
 3. 换行输入 `(hello)` —— cell 里出现打印输出和返回值。
 4. `Ctrl+K` → *Open sample project: cl-plot* → *Load Project into
@@ -85,10 +88,10 @@ IDE 会在 boot log 中说明原因并退回 ECL。
    *pause on error* 后，你会看到实时 restart 列表而不是单纯报错。
 
 常用快捷键：`Ctrl+Enter` 求值 · `Ctrl+Shift+Enter` 求值整个 buffer ·
-`Ctrl+.` 中断 · `Ctrl+K` 命令面板 · `Ctrl+B` 项目面板 · `Ctrl+R` 输入
-历史 · `Ctrl+Shift+F` 搜索 · `Ctrl+Shift+O` 大纲 · `Ctrl+S` 保存。
+`Ctrl+.` 中断 · `Ctrl+K` 命令面板 · `Ctrl+B` 项目面板 · `Ctrl+R` 搜索本
+会话求值过的一切 · `Ctrl+Shift+F` 搜索 · `Ctrl+Shift+O` 大纲 · `Ctrl+S` 保存。
 
-## Alpha 阶段的限制
+## Beta 阶段的限制
 
 - 每个标签页一个 Lisp image；image 单线程（无 `sb-thread`）。
 - Lisp 内无网络（WASI/Emscripten 没有 socket）、无子进程 ——
@@ -115,5 +118,6 @@ IDE 会在 boot log 中说明原因并退回 ECL。
 
 ---
 
-状态：**alpha**（v1.0.0-alpha）。参与开发请参阅
-[Developer-Manual.zh-CN.md](Developer-Manual.zh-CN.md)。
+状态：**beta**（v1.0.0-beta.0）—— 变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+参与开发请参阅 [Developer-Manual.zh-CN.md](Developer-Manual.zh-CN.md)；
+发布步骤见 [RELEASE.md](RELEASE.md)。

@@ -18,16 +18,20 @@ app/                      the IDE (Vite + React + TypeScript)
     components/ide/       Toolbar, StatusBar, ExplorerPanel, SettingsDrawer,
                           Cell, SessionPanel, CommandPalette, …
     project/              project loading, zip import/export, examples
-    plot/                 ;;PLOT64 payload → gnuplot parse → SVG render
+    plot/                 ;;PLOT64 payload → gnuplot parse (+ expression
+                          evaluator for function series) → SVG render
     session/              cells, transcripts, history/lineage
   public/
     wecl/ + wecl-worker.js   the ECL engine (WECL image + hand-written worker)
     sbcl/*.gz + sbcl-worker.js  the SBCL engine (wasm32-wasip1 artifacts +
                              hand-written browser host worker)
     sample-projects/cl-plot.zip
+    sw.js                 service worker: offline after the first load,
+                          cache named after the app version
   scripts/                Node harnesses (the whole test suite), the
                           browser smoke, artifact fetch, smoke summary
 Sprints/                  sprint records (Sprint 1 … current)
+CHANGELOG.md · RELEASE.md what shipped, and how to cut a release
 .github/workflows/ci.yml  lint · build · all harnesses (PRs + dev)
 ```
 
@@ -71,7 +75,7 @@ step when changing marker semantics.
 ### The engine ladder
 
 `LispRuntime.init()` boots the preference's engine (`src/lisp/engine-pref.ts`):
-the default (`auto`, the alpha default) is **SBCL first** — ECL takes
+the default (`auto`) is **SBCL first** — ECL takes
 over when SBCL cannot boot (artifacts missing, page not
 crossOriginIsolated) — then JSCL (CDN, CL subset) → a built-in mock;
 `ecl` is ECL-only with no fallback. Status surfaces as `ready-sbcl` /
@@ -129,21 +133,26 @@ All harnesses are plain Node scripts in `app/scripts/` — no test
 framework, deterministic, each exits 0/1. `pnpm test` chains them all;
 CI runs lint → build → every harness.
 
-- Pure-TS: transcript, search, outline, editor-state, session-history,
-  fold, lineage.
-- Real ECL image: `boot-harness.mjs` (boots the actual worker + wasm in
-  a `vm` sandbox; `--exercise` loads the cl-plot sample end-to-end
-  incl. the SVG render), package/settings/debugger/stdin/perf harnesses
-  reuse the pattern.
-- Real SBCL image: `sbcl-test.mjs` boots `sbcl-worker.js` in a real
+- Pure-TS (10): transcript, search, outline, editor-state,
+  session-history (incl. the Ctrl+R merge), fold, lineage, plot (gnuplot
+  subset parser, expression evaluator, SVG builder), smoke-summary,
+  sbcl-artifacts (the gzip loader on synthetic data).
+- Real ECL image (6): `boot-harness.mjs` (boots the actual worker + wasm
+  in a `vm` sandbox; `--exercise` loads the cl-plot sample end-to-end
+  incl. the SVG render and a multi-series plot), package, settings,
+  debugger, stdin and perf harnesses reuse the pattern.
+- Real SBCL image (1): `sbcl-test.mjs` boots `sbcl-worker.js` in a real
   `worker_threads` thread (so SAB/Atomics behave as in the browser) and
   exercises eval, errors, packages, project load, stdin, timers, the
   debugger pause, runaway recursion, the interrupt ack, module
-  persistence and the cl-plot sample. Skips (exit 0) when the artifacts
-  are absent. `test:sbcl-artifacts` checks the tracked `.gz` copies.
+  persistence, the cl-plot sample and a multi-series plot. Skips (exit
+  0) when the artifacts are absent.
 - Browser: `smoke:browser` (Playwright/Chromium, `--only name`,
-  `--list`, `--json report`) — scenario `sbcl` boots the SBCL engine and
-  evaluates a cell. Refuses a stale `dist/` unless `--allow-stale`.
+  `--list`, `--json report`) — 11 scenarios: debugger, stdin,
+  definitions, transcript, persistence, replace, landing (+ the docs
+  site), history, sbcl, engine, offline (service worker). Refuses a
+  stale `dist/` unless `--allow-stale`. In CI the `smoke` job runs on
+  pull requests labelled `smoke` and on every push to `dev`.
 
 When you touch the worker or the helper, run at minimum:
 
@@ -178,18 +187,22 @@ After syncing artifacts, run `pnpm test:sbcl` before committing.
 - Match the existing style: TS strict, plain-JS hand-written workers
   (`/* eslint-disable */`, ES5-ish idioms), marker protocol first.
 
-## Release process (alpha)
+## Release process
 
-1. `pnpm check` green (lint + build + all harnesses) on `dev`.
-2. `pnpm smoke:browser` (all scenarios) against a fresh `pnpm build`.
-3. Bump `version` in `app/package.json` and the two hard-coded version
-   strings (`Toolbar.tsx` About line, `BootScreen.tsx`), keeping all
-   three in sync.
-4. `pnpm build`; the static site is `app/dist/` (deploy behind headers
-   `Cross-Origin-Opener-Policy: same-origin` and
-   `Cross-Origin-Embedder-Policy: credentialless` — required for the
-   SBCL engine; ECL works either way).
-5. Tag and build notes from the latest `Sprints/*/03-test-and-fix.md`.
+The checklist is [RELEASE.md](RELEASE.md); in short:
+
+1. `pnpm check` green (lint + build + all harnesses) on `dev`, and
+   `pnpm smoke:browser` (all scenarios) against a fresh `pnpm build`.
+2. The version lives in `app/package.json` only: `vite.config.ts`
+   defines `__APP_VERSION__` from it for the boot screen, About and the
+   service-worker registration (`./sw.js?v=<version>`, which names the
+   cache — a new version drops the old cache on activate).
+3. Pull request `dev` → `main`, merged when green; tag `v<version>` on
+   the merge commit; GitHub release with the `CHANGELOG.md` entry.
+4. Deploy `app/dist/` behind `Cross-Origin-Opener-Policy: same-origin`
+   and `Cross-Origin-Embedder-Policy: credentialless` (required for the
+   SBCL engine; ECL works either way), with `sw.js` at the site root and
+   not long-cached, and every SPA route serving `index.html`.
 
 ## Known open ends
 

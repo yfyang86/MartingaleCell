@@ -42,7 +42,9 @@ leaves your machine.
   persist across reloads via IndexedDB.
 - **Everything local**: projects, editor state and modules are stored in
   your browser. Evaluation happens in a Web Worker. No telemetry, no
-  backend, no account.
+  backend, no account — and after the first load the IDE opens and
+  boots offline (a service worker keeps the app and the engine
+  artifacts of the version you loaded).
 
 ## Run it
 
@@ -69,19 +71,20 @@ Switching takes effect on the next runtime restart (toolbar ↻).
 |---|---|---|
 | standard | SBCL 2.4.8 via wasm32-wasip1 | ANSI CL via WECL/wasm |
 | licence | public domain + MIT/BSD-style parts (upstream `COPYING`) | LGPL-2.1+ (shipped unmodified as the fallback) |
-| boot time | ~4–5 s (19 MB of .gz artifacts) | ~1 s |
+| boot time | ~4–6 s (19 MB of .gz artifacts, downloaded once) | ~1 s |
 | projects, cells, packages, debugger, stdin | ✓ | ✓ |
-| gnuplot plots (cl-plot) | ✓ captured to SVG | ✓ captured to SVG (Sprint 28) |
-| interrupt (Ctrl+.) | restarts the image | restarts the image (the port cannot deliver Ctrl-C to Lisp yet) |
-| hosting requirement | none | page must be crossOriginIsolated (COOP/COEP headers — vite dev/preview send them) |
-| quirks | — | no `(directory …)` enumeration; 30-bit fixnums |
+| gnuplot plots (cl-plot) | ✓ captured to SVG | ✓ captured to SVG |
+| interrupt (Ctrl+.) | restarts the image (the port cannot deliver Ctrl-C to Lisp yet) | restarts the image |
+| hosting requirement | page must be crossOriginIsolated (COOP/COEP headers — vite dev/preview send them; see RELEASE.md) | none |
+| quirks | no `(directory …)` enumeration; 30-bit fixnums | — |
 
 If SBCL cannot boot (artifacts missing, or a host without the isolation
 headers) the IDE says so in the boot log and falls back to ECL.
 
 ## A one-minute tour
 
-1. Open the IDE; the status bar shows `ECL · WASM`.
+1. Open the IDE; the status bar shows `SBCL · WASM` (or `ECL · WASM`
+   when SBCL cannot boot or you chose ECL).
 2. Type `(defun hello () (format t "hi ~a" :world))` and press
    `Ctrl+Enter`.
 3. New line, `(hello)` — the cell shows the printed output and the value.
@@ -93,10 +96,10 @@ headers) the IDE says so in the boot log and falls back to ECL.
 
 Useful shortcuts: `Ctrl+Enter` evaluate · `Ctrl+Shift+Enter` evaluate
 buffer · `Ctrl+.` interrupt · `Ctrl+K` command palette · `Ctrl+B` project
-explorer · `Ctrl+R` input history · `Ctrl+Shift+F` search ·
+explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` search ·
 `Ctrl+Shift+O` outline · `Ctrl+S` save.
 
-## Limitations (alpha)
+## Limitations (beta)
 
 - One Lisp image per tab; the image is single-threaded (no `sb-thread`).
 - No networking from Lisp (no sockets in WASI/Emscripten); no
@@ -128,5 +131,6 @@ explorer · `Ctrl+R` input history · `Ctrl+Shift+F` search ·
 
 ---
 
-Status: **alpha** (v1.0.0-alpha). For hacking on ConsCell itself, see
-[Developer-Manual.md](Developer-Manual.md).
+Status: **beta** (v1.0.0-beta.0) — see [CHANGELOG.md](CHANGELOG.md).
+For hacking on ConsCell itself, see [Developer-Manual.md](Developer-Manual.md);
+for cutting a release, [RELEASE.md](RELEASE.md).

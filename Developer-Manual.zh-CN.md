@@ -18,16 +18,20 @@ app/                      IDE 本体（Vite + React + TypeScript）
                           SettingsDrawer、Cell、SessionPanel、
                           CommandPalette 等
     project/              项目加载、zip 导入/导出、示例
-    plot/                 ;;PLOT64 payload → gnuplot 解析 → SVG 渲染
+    plot/                 ;;PLOT64 payload → gnuplot 解析（含函数曲线的
+                          表达式求值器）→ SVG 渲染
     session/              cells、transcript、历史/lineage
   public/
     wecl/ + wecl-worker.js      ECL 引擎（WECL image + 手写 worker）
     sbcl/*.gz + sbcl-worker.js  SBCL 引擎（wasm32-wasip1 artifacts +
                                 手写的浏览器宿主 worker）
     sample-projects/cl-plot.zip
+    sw.js                 service worker：首次加载后可离线，缓存以应用
+                          版本命名
   scripts/                Node harness（整个测试套件）、浏览器 smoke、
                           artifact 抓取、smoke 摘要
 Sprints/                  sprint 记录（Sprint 1 …… 至今）
+CHANGELOG.md · RELEASE.md 已发布内容，以及如何发布
 .github/workflows/ci.yml  lint · build · 全部 harness（PR 与 dev）
 ```
 
@@ -69,7 +73,7 @@ SBCL 移植版。两者都是纯 CL 源码字符串；修改 marker 语义时两
 ### 引擎阶梯
 
 `LispRuntime.init()` 按 preference 启动引擎（`src/lisp/engine-pref.ts`）：
-默认值（`auto`，alpha 起的默认）**SBCL 优先** —— SBCL 无法启动时
+默认值（`auto`）**SBCL 优先** —— SBCL 无法启动时
 （artifacts 缺失、页面非 crossOriginIsolated）由 ECL 接管 —— 之后是
 JSCL（CDN，CL 子集）→ 内置 mock；`ecl` 表示仅 ECL、不 fallback。状态
 呈现为 `ready-sbcl` / `ready-ecl` / `ready-jscl` / `ready-mock`。smoke
@@ -123,19 +127,23 @@ trampoline 补丁（Sprint 7）、对 `ext:shell` 的 gnuplot 拦截、dummy-ASD
 定性、各自以 0/1 退出。`pnpm test` 串起全部；CI 跑 lint → build → 每
 个 harness。
 
-- 纯 TS：transcript、search、outline、editor-state、session-history、
-  fold、lineage。
-- 真实 ECL image：`boot-harness.mjs`（在 `vm` 沙箱里启动真实 worker +
-  wasm；`--exercise` 端到端加载 cl-plot 示例，含 SVG 渲染），
-  package/settings/debugger/stdin/perf 等 harness 复用同一模式。
-- 真实 SBCL image：`sbcl-test.mjs` 在真实 `worker_threads` 线程里启动
+- 纯 TS（10 个）：transcript、search、outline、editor-state、
+  session-history（含 Ctrl+R 的合并列表）、fold、lineage、plot（gnuplot
+  子集解析、表达式求值、SVG 构建）、smoke-summary、sbcl-artifacts
+  （用合成数据测 gzip 加载器）。
+- 真实 ECL image（6 个）：`boot-harness.mjs`（在 `vm` 沙箱里启动真实
+  worker + wasm；`--exercise` 端到端加载 cl-plot 示例，含 SVG 渲染与多
+  序列绘图），package、settings、debugger、stdin、perf 复用同一模式。
+- 真实 SBCL image（1 个）：`sbcl-test.mjs` 在真实 `worker_threads` 线程里启动
   `sbcl-worker.js`（SAB/Atomics 行为与浏览器一致），覆盖求值、错误、
   package、项目加载、stdin、timer、调试器暂停、无限递归、中断确认、
-  模块持久化与 cl-plot 示例。artifacts 缺失时跳过（exit 0）。
-  `test:sbcl-artifacts` 校验纳入 git 的 `.gz` 副本。
+  模块持久化、cl-plot 示例与多序列绘图。artifacts 缺失时跳过（exit 0）。
 - 浏览器：`smoke:browser`（Playwright/Chromium，`--only name`、
-  `--list`、`--json report`）—— `sbcl` scenario 启动 SBCL 引擎并求值
-  一个 cell。`dist/` 过旧时拒绝运行（除非 `--allow-stale`）。
+  `--list`、`--json report`）—— 11 个 scenario：debugger、stdin、
+  definitions、transcript、persistence、replace、landing（含文档站）、
+  history、sbcl、engine、offline（service worker）。`dist/` 过旧时拒绝
+  运行（除非 `--allow-stale`）。CI 的 `smoke` job 在带 `smoke` 标签的
+  PR 与每次推送到 `dev` 时运行。
 
 改动 worker 或 helper 时，至少运行：
 
@@ -170,17 +178,22 @@ module 必须出自同一次构建（port 的 sprint 之间 ABI 会变）。work
 - 遵循现有风格：TS strict；worker 为手写纯 JS（`/* eslint-disable */`、
   偏 ES5 写法）；marker 协议优先。
 
-## 发布流程（alpha）
+## 发布流程
 
-1. 在 `dev` 上 `pnpm check` 全绿（lint + build + 全部 harness）。
-2. 对新构建的 `pnpm build` 跑全量 `pnpm smoke:browser`。
-3. 更新 `app/package.json` 的 `version` 与两处硬编码版本号
-   （`Toolbar.tsx` 的 About 行、`BootScreen.tsx`），三处保持一致。
-4. `pnpm build`；静态站点为 `app/dist/`（部署时务必带上 headers
-   `Cross-Origin-Opener-Policy: same-origin` 与
-   `Cross-Origin-Embedder-Policy: credentialless` —— SBCL 引擎需要；
-   ECL 无此要求）。
-5. 打 tag，发布说明取自最近的 `Sprints/*/03-test-and-fix.md`。
+完整清单见 [RELEASE.md](RELEASE.md)；简述：
+
+1. 在 `dev` 上 `pnpm check` 全绿（lint + build + 全部 harness），并对
+   新构建的 `pnpm build` 跑全量 `pnpm smoke:browser`。
+2. 版本号只存在于 `app/package.json`：`vite.config.ts` 由它定义
+   `__APP_VERSION__`，供 boot 界面、About 与 service worker 注册
+   （`./sw.js?v=<version>`，它同时命名缓存 —— 新版本激活时丢弃旧缓存）
+   使用。
+3. PR `dev` → `main`，CI 绿后合并；在合并提交上打 `v<version>` tag；
+   GitHub release 的说明取自 `CHANGELOG.md` 对应条目。
+4. 部署 `app/dist/`，务必带上 `Cross-Origin-Opener-Policy: same-origin`
+   与 `Cross-Origin-Embedder-Policy: credentialless`（SBCL 引擎需要；
+   ECL 无此要求）；`sw.js` 放在站点根目录且不要长期缓存；每个 SPA 路由
+   都返回 `index.html`。
 
 ## 已知的未尽事项
 

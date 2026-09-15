@@ -63,7 +63,7 @@ function tools(page, check) {
   }
   const bootIde = async () => {
     /* pin ECL for the general scenarios — the app default is SBCL-first
-     * since the alpha; scenarios that want SBCL set their own pref */
+     * since 1.0; scenarios that want SBCL set their own pref */
     await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'ecl') } catch { /* private mode */ } })
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
@@ -584,7 +584,7 @@ const scenarios = {
   /* Sprint 27: Settings → Lisp implementation switches engines through Restart, ECL comes back, the choice survives a reload and resets with the workspace */
   async engine({ page, check, setCode }) {
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
-    /* the alpha default: SBCL (MIT+BSD core engine) boots with no preference set */
+    /* the 1.0 default: SBCL (the core engine) boots with no preference set */
     const sbclProgress = await page.waitForFunction(`(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('MB')`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
     await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
     await page.locator('.cm-content').first().waitFor()
