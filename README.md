@@ -81,6 +81,14 @@ Switching takes effect on the next runtime restart (toolbar ↻).
 If SBCL cannot boot (artifacts missing, or a host without the isolation
 headers) the IDE says so in the boot log and falls back to ECL.
 
+> **Browser note (alpha, tracked upstream):** in **Chrome**, a V8
+> WebAssembly bug can intermittently misfire calls to functions defined
+> by earlier cells (e.g. the *Fractal plots* example) — the image reports
+> `UNDEFINED-FUNCTION` for a function that is defined, and later calls
+> can wedge. **Firefox runs the same workload flawlessly**, and so does
+> the Node harness. Switch to ECL (Settings) or Firefox on Chrome until
+> the port/V8 issue is fixed.
+
 ## A one-minute tour
 
 1. Open the IDE; the status bar shows `SBCL · WASM` (or `ECL · WASM`

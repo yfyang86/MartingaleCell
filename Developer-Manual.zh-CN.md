@@ -197,6 +197,18 @@ module 必须出自同一次构建（port 的 sprint 之间 ABI 会变）。work
 
 ## 已知的未尽事项
 
+- **Chrome/V8 对跨 cell 调用的误触发（alpha，上游问题）：** 在 Chrome
+  中，调用早先编译模块定义的函数会间歇性落入 undefined-function
+  trampoline —— 定义可证明仍在（事后 `fboundp` 能取到该函数）—— 之后的
+  调用可能卡死。Firefox 与 Node harness（其 V8 是带 flag 的 exnref 而
+  非默认开启版本）均无法复现；Sprint 13 与 master-sync 两代 artifacts
+  都会复现，因此不是近期的 port 回归。复现步骤：加载 cl-plot 示例后逐
+  cell 运行 *Fractal plots* 示例（开启 pause-on-error）。`debugOnError`
+  默认开启时，每次误触发都会暂停调试器并阻塞串行队列 —— 这正是它看起
+  来像整个加载失败的原因。疑点在 V8 已发布的 exnref（try_table/throw）
+  或其分层编译与 port 编译调用的交互；需在 port/V8 侧排查，而非
+  ConsCell。
+
 - 向 Lisp 投递 Ctrl-C 在 sbcl port 侧尚未实现（`wasm-arch.c`）——
   `interrupt()` 以重启 SBCL image 代替；待某次 port 构建支持后移除重
   启逻辑。
