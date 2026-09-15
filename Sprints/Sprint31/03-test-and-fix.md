@@ -14,7 +14,7 @@
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 71 / 71 in 11 scenarios; `offline` 6 / 6 on its first run (ECL boots from the worker's cache, `crossOriginIsolated` true, a cell evaluates) |
 
 CI on the pull request: https://github.com/yfyang86/ConsCell/pull/31 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34982832501: `check` in 1 min 18 s, the labelled `smoke` job in 3 min 10 s with the new `offline` scenario), merged as `09bb13e`.
-CI on the merge commit on `dev`: pending.
+CI on the merge commit on `dev`: https://github.com/yfyang86/ConsCell/actions/runs/34983290760 — completed, both jobs green in 2 min 21 s wall time.
 
 ## Fixes made along the way
 
