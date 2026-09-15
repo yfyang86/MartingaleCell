@@ -28,7 +28,8 @@ concurrency:
 jobs:
   check:
     name: lint · build · wasm tests
-    if: github.event_name != 'pull_request' || github.event.action != 'labeled'
+    # runs on every event, the `labeled` one included: with cancel-in-progress a label added seconds
+    # after opening supersedes the opened run, and the PR head would otherwise have no check result (Sprint 29)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

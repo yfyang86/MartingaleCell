@@ -16,10 +16,18 @@ CI on the pull request: pending.
 
 ## Fixes made along the way
 
-None: every check passed on its first run after the changes. The
-harness jobs were written to fail on the old helper (the SBCL payload
-check requires the `"/tmp/cc-two-b.dat"` string, which the
-first-quoted-path rule never shipped).
+- **The PR head had no `check` result.** The `check` job skipped on
+  `labeled` events (`if: … action != 'labeled'`), and the `smoke` label
+  added seconds after opening started a run that, through
+  `cancel-in-progress`, cancelled the opened run before its `check` job
+  began. Run 121 (opened) was cancelled, run 122 (labeled) ran only the
+  smoke job. The `if` is gone: the labelled run supersedes the opened
+  one and carries both jobs, so nothing is lost by the cancel. Pushed
+  as the second commit on this PR.
+- Everything else passed on its first run. The harness jobs were
+  written to fail on the old helper (the SBCL payload check requires
+  the `"/tmp/cc-two-b.dat"` string, which the first-quoted-path rule
+  never shipped).
 
 ## Noticed, not changed
 
