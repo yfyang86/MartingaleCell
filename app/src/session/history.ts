@@ -61,3 +61,53 @@ export function filterHistory(history: readonly string[], query: string, cap = 8
   }
   return out
 }
+
+/* ---- Sprint 31: Ctrl+R over everything evaluated in the session ---- */
+
+export interface HistoryEntry {
+  text: string
+  /** the number of the newest cell that evaluated this input; absent for a box-only entry */
+  cell?: number
+}
+
+export interface HistoryCell {
+  n: number
+  input: string
+  kind?: string
+}
+
+/** The Ctrl+R list: the session's cell inputs newest first (one entry per
+ * distinct input, carrying the number of its newest run), then the box's
+ * own history entries that no cell carries any more. Project-load cells
+ * have no input to recall. */
+export function historyEntries(history: readonly string[], cells: readonly HistoryCell[]): HistoryEntry[] {
+  const out: HistoryEntry[] = []
+  const seen = new Set<string>()
+  for (let i = cells.length - 1; i >= 0; i--) {
+    const c = cells[i]
+    if (c.kind === 'project') continue
+    const t = c.input.trim()
+    if (!t || seen.has(t)) continue
+    seen.add(t)
+    out.push({ text: t, cell: c.n })
+  }
+  for (const h of history) {
+    const t = h.trim()
+    if (!t || seen.has(t)) continue
+    seen.add(t)
+    out.push({ text: t })
+  }
+  return out
+}
+
+/** entries containing `query` (case-insensitive substring), in list order, capped — an empty query lists the first entries */
+export function filterEntries(entries: readonly HistoryEntry[], query: string, cap = 8): HistoryEntry[] {
+  const q = query.trim().toLowerCase()
+  const out: HistoryEntry[] = []
+  for (const e of entries) {
+    if (q && !e.text.toLowerCase().includes(q)) continue
+    out.push(e)
+    if (out.length >= cap) break
+  }
+  return out
+}

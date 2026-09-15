@@ -259,9 +259,10 @@ function parsePlotCommand(rest: string, dataByPath: Map<string, string>, spec: P
       const expr = (kw === -1 ? seg : seg.slice(0, kw)).trim()
       const fopts = kw === -1 ? '' : seg.slice(kw)
       const ftitle = fopts.match(/title\s+"((?:[^"\\]|\\.)*)"/)
+      const fwith = fopts.match(/with\s+([a-zA-Z]+)/)?.[1]
       spec.series.push({
         points: [],
-        style: parseStyle(fopts.match(/with\s+([a-zA-Z]+)/)?.[1]),
+        style: fwith ? parseStyle(fwith) : 'lines' /* gnuplot draws functions as lines by default */,
         title: ftitle ? unescapeGnuplot(ftitle[1]) : undefined,
         missing: 'function',
         label: expr,

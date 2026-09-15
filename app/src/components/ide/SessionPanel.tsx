@@ -9,7 +9,7 @@ import { autocompletion, completionKeymap, completionStatus, closeCompletion, st
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
-import { recallStep, filterHistory } from '@/session/history'
+import { recallStep, filterEntries, historyEntries } from '@/session/history'
 import { runIndexAll } from '@/session/lineage'
 import { CellView } from './Cell'
 import { copyText, pasteIntoEditor, exportSession } from './actions'
@@ -45,7 +45,10 @@ function ReplInput() {
   /* Ctrl+R: search the persisted history (Sprint 21) */
   const [search, setSearch] = useState<{ query: string; sel: number } | null>(null)
   const sessionHistory = useWorkspace((s) => s.sessionHistory)
-  const matches = useMemo(() => (search ? filterHistory(sessionHistory, search.query) : []), [search, sessionHistory])
+  const sessionCells = useWorkspace((s) => s.cells)
+  /* Sprint 31: the list also carries the session's cell inputs, with their cell numbers */
+  const entries = useMemo(() => historyEntries(sessionHistory, sessionCells), [sessionHistory, sessionCells])
+  const matches = useMemo(() => (search ? filterEntries(entries, search.query) : []), [search, entries])
   const closeSearch = useCallback((recall?: string) => {
     setSearch(null)
     const v = viewRef.current
@@ -138,7 +141,7 @@ function ReplInput() {
     const move = (d: number) => setSearch({ ...search, sel: matches.length ? (search.sel + d + matches.length) % matches.length : 0 })
     if (e.key === 'ArrowDown' || (e.key === 'r' && e.ctrlKey)) { e.preventDefault(); move(1) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
-    else if (e.key === 'Enter') { e.preventDefault(); closeSearch(matches[search.sel]) }
+    else if (e.key === 'Enter') { e.preventDefault(); closeSearch(matches[search.sel]?.text) }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch() }
   }
 
@@ -160,18 +163,21 @@ function ReplInput() {
             />
           </div>
           {matches.length === 0 ? (
-            <div className="px-1 py-1 font-mono text-[11px] text-muted">{sessionHistory.length ? 'no match' : 'no history yet'}</div>
+            <div className="px-1 py-1 font-mono text-[11px] text-muted">{entries.length ? 'no match' : 'no history yet'}</div>
           ) : (
             <ul className="max-h-48 overflow-y-auto">
               {matches.map((m, i) => (
-                <li key={`${i}-${m}`}>
+                <li key={`${i}-${m.text}`}>
                   <button
                     type="button"
-                    className={`block w-full truncate rounded-sm px-1.5 py-0.5 text-left font-mono text-[11.5px] ${i === search.sel ? 'bg-steel-dim text-primary' : 'text-secondary hover:text-primary'}`}
-                    onMouseDown={(e) => { e.preventDefault(); closeSearch(m) }}
-                    title={m}
+                    className={`flex w-full items-center gap-2 rounded-sm px-1.5 py-0.5 text-left font-mono text-[11.5px] ${i === search.sel ? 'bg-steel-dim text-primary' : 'text-secondary hover:text-primary'}`}
+                    onMouseDown={(e) => { e.preventDefault(); closeSearch(m.text) }}
+                    title={m.text}
                   >
-                    {m.split('\n')[0]}{m.includes('\n') ? ' …' : ''}
+                    <span data-testid="history-entry" className="min-w-0 flex-1 truncate">{m.text.split('\n')[0]}{m.text.includes('\n') ? ' …' : ''}</span>
+                    {m.cell !== undefined && (
+                      <span data-testid="history-cell" className="shrink-0 rounded-sm border border-hairline px-1 text-[10px] text-muted">In [{m.cell}]</span>
+                    )}
                   </button>
                 </li>
               ))}

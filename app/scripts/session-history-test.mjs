@@ -16,7 +16,7 @@ const built = await esbuild.build({
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') }, logLevel: 'silent',
 })
-const { pushHistory, recallStep, sanitizeHistory, filterHistory, HISTORY_CAP } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { pushHistory, recallStep, sanitizeHistory, filterHistory, historyEntries, filterEntries, HISTORY_CAP } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 /* push */
 let h = pushHistory([], '(+ 1 2)')
@@ -59,6 +59,23 @@ check('filterHistory: substring, case-insensitive, newest first', JSON.stringify
 check('filterHistory: an empty query lists the newest entries', JSON.stringify(filterHistory(hist, '  ')) === JSON.stringify(hist))
 check('filterHistory: capped', filterHistory(hist, '', 2).length === 2 && filterHistory(hist, '(', 3).length === 3)
 check('filterHistory: no match → empty', filterHistory(hist, 'zzz').length === 0)
+
+/* Sprint 31: Ctrl+R over cell inputs */
+const cellsFx = [
+  { n: 1, input: '(defvar *runs* 0)', kind: 'eval' },
+  { n: 2, input: '(incf *runs*)' },
+  { n: 3, input: '(incf *runs*)' },
+  { n: 4, input: '', kind: 'project' },
+  { n: 5, input: '(+ 40 2)' },
+]
+const ents = historyEntries(['(+ 40 2)', '(list :remembered 42)'], cellsFx)
+check('entries: cells newest first, one per distinct input with the newest cell number, then box-only history',
+  ents.map((e) => `${e.text}${e.cell !== undefined ? '@' + e.cell : ''}`).join('|') === '(+ 40 2)@5|(incf *runs*)@3|(defvar *runs* 0)@1|(list :remembered 42)',
+  JSON.stringify(ents))
+check('project cells and blank inputs are skipped', !ents.some((e) => e.cell === 4))
+check('filterEntries keeps list order and the cell numbers', filterEntries(ents, 'runs').map((e) => e.cell).join(',') === '3,1')
+check('filterEntries with an empty query lists the first entries, capped', filterEntries(ents, '', 2).length === 2 && filterEntries(ents, '', 2)[0].cell === 5)
+check('no cells: entries are the history alone', historyEntries(['(a)', '(b)'], []).map((e) => e.text).join('|') === '(a)|(b)')
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

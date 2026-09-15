@@ -8,7 +8,7 @@ const CARDS = [
   {
     Icon: Cpu,
     title: 'SBCL — the default',
-    body: 'Steel Bank Common Lisp 2.4.8 compiled to wasm32-wasip1. About 19 MB of gzip-compressed artifacts, inflated to ~125 MB in the worker; a REPL in 4–6 s on a laptop.',
+    body: 'Steel Bank Common Lisp 2.4.8 compiled to wasm32-wasip1. About 19 MB of gzip-compressed artifacts, downloaded once and kept by the service worker, inflated to ~125 MB in the worker; a REPL in 4–6 s on a laptop.',
   },
   {
     Icon: LifeBuoy,

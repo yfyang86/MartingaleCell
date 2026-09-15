@@ -2,7 +2,8 @@
  * tokens. No DOM/React so the node harness can smoke-test it, and "Download
  * SVG" is just this function's output wrapped in a Blob. */
 
-import type { PlotSpec, PlotSeries } from './gnuplot'
+import type { PlotSpec, PlotSeries, PlotPoint } from './gnuplot'
+import { compileExpression, sampleFunction } from './expr'
 
 /* design tokens (src/index.css) */
 const C = {
@@ -112,6 +113,33 @@ function seriesElements(
   return out.join('')
 }
 
+/* Sprint 31: a function series (`plot sin(x)`) drawn from its samples; one
+ * polyline per segment so asymptotes and domain gaps are not bridged */
+function functionElements(segments: PlotPoint[][], s: PlotSeries, color: string, sx: (x: number) => number, sy: (y: number) => number): string {
+  const width = s.lt ? 0.75 + s.lt * 0.75 : 1.75
+  const asPoints = s.style === 'points' || s.style === 'dots'
+  const out: string[] = []
+  for (const seg of segments) {
+    if (asPoints) {
+      const rr = s.style === 'dots' ? 1.4 : 1.5 + 1.2 * (s.ps ?? 2)
+      for (const p of seg) out.push(`<circle cx="${n(sx(p.x))}" cy="${n(sy(p.y))}" r="${n(rr)}" fill="${color}"/>`)
+    } else if (seg.length === 1) {
+      out.push(`<circle cx="${n(sx(seg[0].x))}" cy="${n(sy(seg[0].y))}" r="1.4" fill="${color}"/>`)
+    } else {
+      const attr = seg.map((p) => `${n(sx(p.x))},${n(sy(p.y))}`).join(' ')
+      out.push(`<polyline points="${attr}" fill="none" stroke="${color}" stroke-width="${n(width)}" stroke-linejoin="round" stroke-linecap="round"/>`)
+    }
+  }
+  return out.join('')
+}
+
+/** The x-range the plot will show: the data's, an explicit `set xrange`, or
+ * gnuplot's default [-10:10] when there is nothing else (a function-only plot). */
+export function plotXRange(spec: PlotSpec): [number, number] {
+  const dataX = spec.series.flatMap((s) => s.points.map((p) => p.x)).concat(spec.arrows.flatMap((a) => [a.x1, a.x2]))
+  return resolveRange(dataX.length > 0 ? autoRange(dataX) : [-10, 10], spec.xrange)
+}
+
 /** Build a standalone dark-themed SVG for a parsed gnuplot spec. */
 export function buildSvg(spec: PlotSpec): string {
   const { w: W, h: H } = svgSize(spec)
@@ -122,11 +150,20 @@ export function buildSvg(spec: PlotSpec): string {
   const pw = Math.max(10, W - ml - mr)
   const ph = Math.max(10, H - mt - mb)
 
-  const allX = spec.series.flatMap((s) => s.points.map((p) => p.x))
-    .concat(spec.arrows.flatMap((a) => [a.x1, a.x2]))
+  const [xmin, xmax] = plotXRange(spec)
+  /* function series that compile are sampled over that x-range and take part in the y-range */
+  const drawnFns = new Map<PlotSeries, PlotPoint[][]>()
+  for (const s of spec.series) {
+    if (s.missing !== 'function' || !s.label) continue
+    const fn = compileExpression(s.label)
+    if (!fn) continue
+    const segments = sampleFunction(fn, xmin, xmax)
+    if (segments.length > 0) drawnFns.set(s, segments)
+  }
+  const notDrawn = (s: PlotSeries) => s.missing !== undefined && !drawnFns.has(s)
   const allY = spec.series.flatMap((s) => s.points.map((p) => p.y))
     .concat(spec.arrows.flatMap((a) => [a.y1, a.y2]))
-  const [xmin, xmax] = resolveRange(autoRange(allX), spec.xrange)
+    .concat([...drawnFns.values()].flat(2).map((p) => p.y))
   const [ymin, ymax] = resolveRange(autoRange(allY), spec.yrange)
   const sx = (x: number) => ml + ((x - xmin) / (xmax - xmin)) * pw
   const sy = (y: number) => mt + ph - ((y - ymin) / (ymax - ymin)) * ph
@@ -160,13 +197,15 @@ export function buildSvg(spec: PlotSpec): string {
 
   /* series */
   spec.series.forEach((s, i) => {
-    el.push(seriesElements(s, SERIES_COLORS[i % SERIES_COLORS.length], sx, sy, baselineY))
+    const color = SERIES_COLORS[i % SERIES_COLORS.length]
+    const segments = drawnFns.get(s)
+    el.push(segments ? functionElements(segments, s, color, sx, sy) : seriesElements(s, color, sx, sy, baselineY))
   })
 
   /* legend (unless set nokey) */
   const legendItems = spec.legend ? spec.series.filter((s) => s.title || s.missing) : []
   if (spec.legend && legendItems.length > 0) {
-    const lw = Math.max(...legendItems.map((s) => ((s.title ?? s.label ?? '') + (s.missing ? ' (not drawn)' : '')).length)) * 6.5 + 30
+    const lw = Math.max(...legendItems.map((s) => ((s.title ?? s.label ?? '') + (notDrawn(s) ? ' (not drawn)' : '')).length)) * 6.5 + 30
     const lh = legendItems.length * 16 + 8
     const lx = ml + pw - lw - 6
     const ly = mt + 6
@@ -175,12 +214,12 @@ export function buildSvg(spec: PlotSpec): string {
       const color = SERIES_COLORS[spec.series.indexOf(s) % SERIES_COLORS.length]
       const y = ly + 14 + i * 16
       el.push(`<line x1="${n(lx + 6)}" y1="${y - 3}" x2="${n(lx + 22)}" y2="${y - 3}" stroke="${color}" stroke-width="2"/>`)
-      el.push(`<text x="${n(lx + 26)}" y="${y}" fill="${C.label}" font-family="${FONT}" font-size="10">${esc((s.title ?? s.label ?? '') + (s.missing ? ' (not drawn)' : ''))}</text>`)
+      el.push(`<text x="${n(lx + 26)}" y="${y}" fill="${C.label}" font-family="${FONT}" font-size="10">${esc((s.title ?? s.label ?? '') + (notDrawn(s) ? ' (not drawn)' : ''))}</text>`)
     })
   }
 
   /* Sprint 30: series the renderer cannot draw are named, not dropped */
-  const missing = spec.series.filter((s) => s.missing)
+  const missing = spec.series.filter(notDrawn)
   if (missing.length > 0) {
     const what = missing
       .map((s) => `${s.title ?? s.label ?? '?'} (${s.missing === 'function' ? 'function' : 'no data'})`)
