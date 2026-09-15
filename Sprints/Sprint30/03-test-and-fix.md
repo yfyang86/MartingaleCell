@@ -12,7 +12,8 @@
 | All Node suites (17) | `pnpm test` | all pass |
 | Real browser, all scenarios | `pnpm preview` + `browser-smoke.mjs --json` | 64 / 65 on the first run (see below), then `--only landing` 4 / 4 after the fix; 65 checks in 10 scenarios |
 
-CI on the pull request: pending.
+CI on the pull request: https://github.com/yfyang86/ConsCell/pull/30 — green (run https://github.com/yfyang86/ConsCell/actions/runs/34980562637: `check` in 1 min 17 s with the new `plot-test` step, the labelled `smoke` job in 2 min 29 s with the docs checks), merged as `f051cae`. Both jobs ran on the labelled run, as the Sprint 29 workflow fix intended.
+CI on the merge commit on `dev`: pending.
 
 ## Fixes made along the way
 
