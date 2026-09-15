@@ -1,12 +1,13 @@
 import { motion } from 'framer-motion'
 import { HardDrive, Link2, EyeOff } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 const CARDS = [
   {
     Icon: HardDrive,
     title: 'Local first',
-    body: 'Buffers, cells, settings, and the WASM image live in IndexedDB & the Cache API.',
+    body: 'Buffers, cells, settings and project files live in IndexedDB. A service worker keeps the app and the engine artifacts of the version you loaded, so the IDE opens offline.',
   },
   {
     Icon: Link2,
@@ -25,7 +26,7 @@ export default function Persistence() {
     <section id="persistence" className="scroll-mt-20">
       <SectionHeading
         title="Your code never leaves the tab."
-        lead="ConsCell runs 100% client-side. The ECL runtime executes in a Web Worker inside your browser; evaluation, compilation, and persistence are all local."
+        lead="ConsCell runs 100% client-side. The Lisp engine — SBCL or ECL — executes in a Web Worker inside your browser; evaluation, compilation, and persistence are all local."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-3">

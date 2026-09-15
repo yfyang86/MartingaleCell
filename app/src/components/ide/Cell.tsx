@@ -1,17 +1,18 @@
 /* A single session cell: input echo, streamed OUT block, values, warnings,
  * error mini-debugger with restarts, running/queued states. */
 
-import { memo, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2 } from 'lucide-react'
+import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2, FilePlus2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
+import { useUi } from '@/store/ui'
+import { lineageOf } from '@/session/lineage'
 import { LispCode } from './LispCode'
-import { copyText, getEditor } from './actions'
-import { evaluateCode } from '@/store/evaluate'
-import { jumpToPosition } from './EditorPanel'
+import { copyText, getEditor, jumpToPosition, chooseRestart, provideInput, openCellAsBuffer, rerunCell } from './actions'
+import type { ConditionDetail, DebugRestart } from '@/lisp/types'
 import { findSymbolPosition } from './lisp-utils'
 import { firstSymbol, stripOutMarkers } from '@/store/evaluate'
 import { ProjectLoadBody } from './ProjectLoadCell'
@@ -93,20 +94,221 @@ function WarningRow({ msg, bufferName, input, onDismiss }: { msg: string; buffer
   )
 }
 
-const RESTARTS = [
-  { name: 'ABORT', desc: 'Return to top level', available: true },
-  { name: 'RETRY', desc: 'Retry the evaluation', available: true },
-  { name: 'USE-VALUE', desc: 'Enter a value to use instead', available: false },
-  { name: 'CONTINUE', desc: 'Ignore and continue', available: false },
-]
+/** Frames captured at signal time (innermost first) — ECL only. */
+/** "↗ cell-7.lisp" when the cell was opened as a buffer that still exists (Sprint 17) */
+function LinkedBufferChip({ bufferId }: { bufferId: string }) {
+  const name = useWorkspace((s) => s.buffers.find((b) => b.id === bufferId)?.name)
+  const setActiveBuffer = useWorkspace((s) => s.setActiveBuffer)
+  if (!name) return null
+  return (
+    <button type="button" className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-primary" title={`Linked buffer — re-run evaluates its current text (${name})`} onClick={() => setActiveBuffer(bufferId)}>
+      ↗ {name}
+    </button>
+  )
+}
 
-function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
+function FramesDetails({ frames, tone }: { frames: string[]; tone: 'error' | 'warning' }) {
+  if (frames.length === 0) return null
+  return (
+    <details className={cn('px-3 py-1', tone === 'error' ? 'border-t border-error/15' : 'border-t border-warning/20')}>
+      <summary className="cursor-pointer select-none font-mono text-[11px] text-muted transition-colors hover:text-secondary">
+        frames ({frames.length})
+      </summary>
+      <ol className="mt-1 space-y-0.5 pb-1 font-mono text-[11.5px]">
+        {frames.map((f, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="w-5 shrink-0 text-right text-muted">{i}</span>
+            <span className={i === 0 ? (tone === 'error' ? 'text-error' : 'text-warning') : 'text-secondary'}>{f}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
+/** Condition slots (datum / expected / name / operands …) captured at signal time. */
+function DetailsList({ details }: { details: ConditionDetail[] }) {
+  if (details.length === 0) return null
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 pb-1.5 font-mono text-[11.5px]">
+      {details.map((d, i) => (
+        <Fragment key={i}>
+          <dt className="text-muted">{d.key}</dt>
+          <dd className="min-w-0 break-all text-secondary">{d.value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
+/** Restarts that take an argument get a value-form input before they fire. */
+function restartNeedsValue(r: DebugRestart): boolean {
+  if (/^(RETRY|ABORT|CONTINUE|MUFFLE-WARNING)$/i.test(r.name)) return false
+  return /USE-VALUE|STORE-VALUE|DEFINE-FUNCTION/i.test(r.name) || /\bvalue\b/i.test(r.report)
+}
+
+/** The cell is blocked on (read-line) & co.: one line in, Enter sends, EOF ends. */
+function InputBlock({ cell }: { cell: Cell }) {
+  const [text, setText] = useState('')
+  const send = () => { provideInput(cell.id, text); setText('') }
+  return (
+    <div className="mt-2 rounded-md border border-steel/40 bg-steel-dim/30">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <span className="shrink-0 font-mono text-[11px] font-bold text-steel">stdin ←</span>
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); send() }
+            if (e.key === 'd' && e.ctrlKey) { e.preventDefault(); provideInput(cell.id, null) }
+          }}
+          placeholder="the program is reading a line — type it and press Enter"
+          className="h-7 min-w-0 flex-1 rounded-md border border-hairline bg-inset px-2 font-mono text-[12px] text-primary placeholder:text-muted focus:border-strong focus:outline-none"
+        />
+        <button
+          className="shrink-0 rounded-full border border-steel/40 px-2.5 py-0.5 font-mono text-[11px] text-steel transition-colors hover:bg-steel-dim"
+          onClick={send}
+          title="Send this line"
+        >
+          send ↵
+        </button>
+        <button
+          className="shrink-0 font-mono text-[10.5px] text-muted hover:text-primary"
+          onClick={() => provideInput(cell.id, null)}
+          title="End of file (Ctrl+D)"
+        >
+          EOF
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** The live debugger: the image is suspended inside the handler and waits
+ * for one of these restarts. Number keys pick a row; a restart that takes a
+ * value opens an inline form input (read in the cell's package). */
+function DebuggerBlock({ cell }: { cell: Cell }) {
+  const pause = cell.debug
+  const [value, setValue] = useState('')
+  const [valueFor, setValueFor] = useState<number | null>(null)
+  const restarts = useMemo(() => pause?.restarts ?? [], [pause])
+
+  const pick = useCallback((r: DebugRestart) => {
+    if (restartNeedsValue(r)) { setValueFor(r.index); return }
+    chooseRestart(cell.id, r.index)
+  }, [cell.id])
+
+  const submitValue = () => {
+    if (valueFor == null || !value.trim()) return
+    chooseRestart(cell.id, valueFor, value)
+  }
+
+  // number keys pick a restart while this cell is paused (not while typing)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (!/^[0-9]$/.test(e.key)) return
+      const r = restarts.find((x) => x.index === Number(e.key))
+      if (r) { e.preventDefault(); pick(r) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [restarts, pick])
+
+  if (!pause) return null
+  const pending = valueFor != null ? restarts.find((r) => r.index === valueFor) : undefined
+  return (
+    <div className="mt-2 rounded-md border border-warning/40 bg-warning/[0.06]">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <OctagonX size={13} className="shrink-0 text-warning" />
+        <span className="font-mono text-[12px] font-bold text-warning">;; DEBUGGER — {pause.errorType ?? 'ERROR'}</span>
+        <span className="ml-auto font-mono text-[10.5px] text-muted">image paused · pick a restart</span>
+      </div>
+      <div className="whitespace-pre-wrap break-words px-3 pb-1.5 font-mono text-[12.5px] leading-relaxed text-primary/90">
+        {pause.condition}
+      </div>
+      <DetailsList details={pause.details} />
+      <FramesDetails frames={pause.frames} tone="warning" />
+      <div className="border-t border-warning/20 py-1">
+        {restarts.map((r) => (
+          <button
+            key={r.index}
+            className={cn(
+              'flex w-full items-baseline gap-3 px-3 py-1 text-left font-mono text-[12px] text-secondary transition-colors hover:bg-raised hover:text-primary',
+              valueFor === r.index && 'bg-raised text-primary',
+            )}
+            onClick={() => pick(r)}
+            title={restartNeedsValue(r) ? 'Takes a value — you will be asked for a form' : undefined}
+          >
+            <span className="text-muted">[{r.index}]</span>
+            <span className="w-28 shrink-0 font-semibold text-warning">{r.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px]" title={r.report}>{r.report}</span>
+            {restartNeedsValue(r) && <span className="text-[10px] text-muted">value…</span>}
+          </button>
+        ))}
+        {restarts.length === 0 && (
+          <div className="px-3 py-1 font-mono text-[11.5px] text-muted">; no restarts offered — decline to report the error</div>
+        )}
+      </div>
+      {pending && (
+        <div className="flex items-center gap-2 border-t border-warning/20 px-3 py-1.5">
+          <span className="shrink-0 font-mono text-[11px] text-muted">{pending.name} ←</span>
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') submitValue(); if (e.key === 'Escape') setValueFor(null) }}
+            placeholder={`a form, evaluated in ${cell.pkg} — e.g. 42 or (list 1 2)`}
+            className="h-7 min-w-0 flex-1 rounded-md border border-hairline bg-inset px-2 font-mono text-[12px] text-primary placeholder:text-muted focus:border-strong focus:outline-none"
+          />
+          <button
+            className="shrink-0 rounded-full border border-warning/40 px-2.5 py-0.5 font-mono text-[11px] text-warning transition-colors hover:bg-warning/10 disabled:opacity-40"
+            disabled={!value.trim()}
+            onClick={submitValue}
+          >
+            use ↵
+          </button>
+        </div>
+      )}
+      <div className="flex items-center gap-3 border-t border-warning/20 px-3 py-1 font-mono text-[10.5px] text-muted">
+        <button className="hover:text-primary" onClick={() => chooseRestart(cell.id, -1)} title="Leave the debugger; the condition is reported as an error">
+          report as error
+        </button>
+        <span>·</span>
+        <span>keys 0–{Math.max(0, restarts.length - 1)} pick a restart</span>
+        <span className="ml-auto">stuck? <span className="cc-kbd">Ctrl .</span> interrupts</span>
+      </div>
+    </div>
+  )
+}
+
+/** "run k of N" for a re-evaluated cell; opens the run history (Sprint 21) */
+function RunChip({ cell, run }: { cell: Cell; run: string }) {
+  const setCellHistory = useUi((s) => s.setCellHistory)
+  const [k, total] = run.split('/')
+  return (
+    <button
+      type="button"
+      data-testid="run-chip"
+      className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-primary"
+      title={`Run ${k} of ${total} — click to compare the runs`}
+      onClick={() => setCellHistory(lineageOf(cell))}
+    >
+      run {k}/{total}
+    </button>
+  )
+}
+
+function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?: string }) {
   const updateCell = useWorkspace((s) => s.updateCell)
   const removeCell = useWorkspace((s) => s.removeCell)
+  /* (updateCell: warning dismissal) */
   const [collapsed, setCollapsed] = useState(false)
   const [inputExpanded, setInputExpanded] = useState(false)
-  const [resumed, setResumed] = useState<string | null>(cell.resumedVia ?? null)
   const running = cell.status === 'running'
+  const paused = cell.status === 'paused'
   const isProject = cell.kind === 'project'
   const elapsed = useElapsed(running, cell.startedAt)
   const inputLines = cell.input.split('\n')
@@ -114,31 +316,6 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
   const shownInput = longInput && !inputExpanded ? inputLines.slice(0, 6).join('\n') : cell.input
   // values/warnings/errors have dedicated UI — never show their markers in the OUT well
   const outText = useMemo(() => stripOutMarkers(cell.stdout).replace(/\n+$/, ''), [cell.stdout])
-
-  // number-key restart selection while an error cell is shown
-  useEffect(() => {
-    if (cell.status !== 'error' || isProject) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      const idx = ['0', '1'].indexOf(e.key)
-      if (idx >= 0) chooseRestart(RESTARTS[idx].name)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cell.status, cell.id])
-
-  const chooseRestart = (name: string) => {
-    if (name === 'RETRY') {
-      setResumed('RETRY')
-      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'RETRY' })
-      void evaluateCode(cell.input, cell.bufferName)
-    } else if (name === 'ABORT') {
-      setResumed('ABORT')
-      updateCell(cell.id, { restartsUsed: cell.restartsUsed + 1, resumedVia: 'ABORT' })
-      useWorkspace.getState().addLog('DEBUG', 'EVAL', `cell [${cell.n}] resumed via ABORT`, { cellRef: cell.n })
-    }
-  }
 
   const cellText = useMemo(() => {
     const parts = [`${cell.pkg}> ${cell.input}`]
@@ -158,7 +335,9 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
   }
 
   const isError = cell.status === 'error'
-  const accent = isError ? 'cc-cell-error' : cell.warnings.length > 0 ? 'cc-cell-warning' : cell.status === 'done' ? 'cc-cell-result' : 'cc-cell-input'
+  const accent = isError ? 'cc-cell-error' : paused || cell.warnings.length > 0 ? 'cc-cell-warning' : cell.status === 'done' ? 'cc-cell-result' : 'cc-cell-input'
+  /* the OUT well must stay visible while the program waits for a line
+   * (prompts like "Name? " are printed right before the read) */
 
   return (
     <motion.div
@@ -192,7 +371,12 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
 
       {/* gutter header */}
       <div className="flex h-6 items-center justify-between px-3 pt-1.5">
-        <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
+        <span className="flex items-center gap-1.5">
+          <span className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright">In [{cell.n}]</span>
+          {cell.imported && <span className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted" title="Appended from a transcript — not evaluated in this session">imported</span>}
+          {cell.bufferId && <LinkedBufferChip bufferId={cell.bufferId} />}
+          {run && !run.endsWith('/1') && <RunChip cell={cell} run={run} />}
+        </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:opacity-100">
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Copy cell" onClick={() => void copyText(cellText, 'Cell copied')}>
             <Copy size={12} />
@@ -200,13 +384,18 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
           <button
             className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary"
             title={isProject ? 'Reload project' : 'Re-run'}
-            onClick={() => (isProject ? void loadProjectIntoRuntime() : void evaluateCode(cell.input, cell.bufferName))}
+            onClick={() => (isProject ? void loadProjectIntoRuntime() : rerunCell(cell))}
           >
             <RotateCw size={12} />
           </button>
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Paste into editor" onClick={pasteToEditor}>
             <CornerDownLeft size={12} />
           </button>
+          {!isProject && (
+            <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Open as buffer" onClick={() => openCellAsBuffer(cell)}>
+              <FilePlus2 size={12} />
+            </button>
+          )}
           <button className="rounded-sm p-1 text-muted hover:bg-panel hover:text-primary" title="Collapse" onClick={() => setCollapsed((c) => !c)}>
             <ChevronDown size={12} className={cn('transition-transform duration-150', collapsed && '-rotate-90')} />
           </button>
@@ -243,6 +432,11 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
               {elapsed > 5000 && <span className="text-muted">Taking long? Interrupt with <span className="cc-kbd">Ctrl .</span></span>}
             </div>
           )}
+
+          {/* paused in the debugger — live restarts (eval cells and project loads alike) */}
+          {paused && <DebuggerBlock cell={cell} />}
+          {/* blocked on standard input */}
+          {cell.status === 'input' && <InputBlock cell={cell} />}
 
           {/* stdout — hidden when nothing but marker lines were captured */}
           {outText && (
@@ -290,28 +484,20 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
               <div className="whitespace-pre-wrap break-words px-3 pb-1.5 font-mono text-[12.5px] leading-relaxed text-primary/90">
                 {cell.error}
               </div>
-              <div className="border-t border-error/15 py-1">
-                {RESTARTS.map((r, i) => (
-                  <button
-                    key={r.name}
-                    disabled={!r.available}
-                    className={cn(
-                      'flex w-full items-baseline gap-3 px-3 py-1 text-left font-mono text-[12px] transition-colors',
-                      r.available ? 'text-secondary hover:bg-raised hover:text-primary' : 'cursor-not-allowed text-muted/50',
-                    )}
-                    onClick={() => chooseRestart(r.name)}
-                    title={r.available ? undefined : 'Requires a live debugger connection — unavailable after handler-case capture'}
-                  >
-                    <span className="text-muted">[{i}]</span>
-                    <span className={cn('w-24 shrink-0 font-semibold', r.available ? 'text-steel' : '')}>{r.name}</span>
-                    <span className="text-[11px]">{r.desc}</span>
-                  </button>
-                ))}
+              <DetailsList details={cell.details ?? []} />
+              <FramesDetails frames={cell.frames ?? []} tone="error" />
+              <div className="flex items-center gap-3 border-t border-error/15 px-3 py-1 font-mono text-[11px] text-muted">
+                {cell.resumedVia
+                  ? <span>;; resolved via {cell.resumedVia}</span>
+                  : <span>;; reported without pausing{cell.errorType === 'READER-ERROR' ? ' (reader error)' : ''}</span>}
+                <button className="ml-auto hover:text-primary" onClick={() => rerunCell(cell)}>re-run</button>
               </div>
-              {resumed && (
-                <div className="px-3 pb-2 font-mono text-[11px] text-muted">;; resumed via {resumed}</div>
-              )}
             </div>
+          )}
+
+          {/* resolution line on a cell that came back from the debugger with values */}
+          {cell.status === 'done' && cell.resumedVia && (
+            <div className="mt-2 font-mono text-[11px] text-muted">;; resumed via {cell.resumedVia}</div>
           )}
 
           {/* aborted */}
@@ -345,7 +531,7 @@ function CellComponent({ cell, flash }: { cell: Cell; flash?: boolean }) {
                 <button className="hover:text-primary" onClick={() => void copyText(cellText, 'Cell copied')}>copy</button>
                 <button
                   className="hover:text-primary"
-                  onClick={() => (isProject ? void loadProjectIntoRuntime() : void evaluateCode(cell.input, cell.bufferName))}
+                  onClick={() => (isProject ? void loadProjectIntoRuntime() : rerunCell(cell))}
                 >
                   re-run
                 </button>

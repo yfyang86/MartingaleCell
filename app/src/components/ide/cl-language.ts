@@ -4,7 +4,7 @@
 
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { StreamParser } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
+import { tags, type Tag } from '@lezer/highlight'
 import { EditorView } from '@codemirror/view'
 
 const KEYWORDS = new Set([
@@ -45,8 +45,24 @@ interface ClState {
 const SYMBOL_CHARS = /[^\s()'"`,;#"]/
 const SPECIAL_VAR_RE = /^\*[^*]*\*$/
 
+/* Map our custom token names onto tags (read at StreamLanguage.define time). */
+export const clTokenTable: Record<string, Tag> = {
+  paren: tags.paren,
+  keyword: tags.keyword,
+  symbol: tags.variableName,
+  constant: tags.atom,
+  string: tags.string,
+  comment: tags.comment,
+  number: tags.number,
+  reader: tags.meta,
+  package: tags.namespace,
+  type: tags.typeName,
+  var: tags.special(tags.variableName),
+}
+
 export const clStreamParser: StreamParser<ClState> = {
   name: 'common-lisp',
+  tokenTable: clTokenTable,
   startState: (): ClState => ({ inString: false, blockComment: 0, expectSymbol: false }),
 
   token(stream, state): string | null {
@@ -137,22 +153,6 @@ export const clStreamParser: StreamParser<ClState> = {
   },
 }
 
-/* Map our custom token names onto tags (read at StreamLanguage.define time). */
-export const clTokenTable: Record<string, any> = {
-  paren: tags.paren,
-  keyword: tags.keyword,
-  symbol: tags.variableName,
-  constant: tags.atom,
-  string: tags.string,
-  comment: tags.comment,
-  number: tags.number,
-  reader: tags.meta,
-  package: tags.namespace,
-  type: tags.typeName,
-  var: tags.special(tags.variableName),
-}
-;(clStreamParser as any).tokenTable = clTokenTable
-
 export const commonLispLanguage = StreamLanguage.define(clStreamParser)
 
 /* design.md §1.2 syntax theme */
@@ -197,6 +197,18 @@ export function clEditorTheme(fontSize: number, ligatures: boolean) {
     },
     '.cm-activeLine': { backgroundColor: 'rgba(18, 20, 30, 0.5)' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-primary)' },
+    /* folds (Sprint 20): a quiet marker in the gutter, the placeholder as a dim pill */
+    '.cm-foldGutter .cm-gutterElement': { color: 'var(--text-muted)', opacity: '0.55', cursor: 'pointer', fontSize: '10px', paddingLeft: '2px' },
+    '.cm-foldGutter .cm-gutterElement:hover': { opacity: '1', color: 'var(--text-primary)' },
+    '.cm-foldPlaceholder': {
+      backgroundColor: 'var(--steel-dim)',
+      border: '1px solid var(--border-hairline)',
+      color: 'var(--text-primary)',
+      borderRadius: '4px',
+      padding: '0 5px',
+      margin: '0 2px',
+      cursor: 'pointer',
+    },
     '&.cm-focused': { outline: 'none' },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
       backgroundColor: 'rgba(110, 168, 220, 0.22) !important',

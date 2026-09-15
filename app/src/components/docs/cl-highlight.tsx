@@ -174,7 +174,7 @@ function tokenize(src: string): Token[] {
     if (isSymChar(c) || c === ':') {
       let j = i
       while (j < src.length && (isSymChar(src[j]) || src[j] === ':')) j++
-      let text = src.slice(i, j)
+      const text = src.slice(i, j)
 
       // REPL prompt prefix e.g. CL-USER>
       if (text.endsWith('>')) {

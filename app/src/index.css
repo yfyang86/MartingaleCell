@@ -189,3 +189,11 @@
     animation-play-state: paused;
   }
 }
+
+/* Sprint 9: marketing chrome animates with CSS so framer-motion stays out of the entry chunk */
+@keyframes cc-nav-in { from { transform: translateY(-64px); } to { transform: translateY(0); } }
+@keyframes cc-drawer-in { from { opacity: 0; transform: translateX(320px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes cc-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .cc-anim { animation: none !important; }
+}

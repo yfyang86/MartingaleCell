@@ -18,7 +18,7 @@ const STEPS = [
   {
     n: '02',
     title: 'Evaluate',
-    copy: 'One keystroke sends the form at point to ECL — values, output, and timing come back as a cell.',
+    copy: 'One keystroke sends the form at point to the Lisp engine — values, output, and timing come back as a cell.',
   },
   {
     n: '03',

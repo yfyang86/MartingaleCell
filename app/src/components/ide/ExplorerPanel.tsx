@@ -6,10 +6,13 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FolderOpen, FolderPlus, FilePlus, PackageOpen, MoreHorizontal, ChevronRight,
-  FileUp, FolderInput, RotateCw,
+  FileUp, FolderInput, RotateCw, Search, ListTree,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
+import { useUi } from '@/store/ui'
+import SearchPanel from './SearchPanel'
+import OutlinePanel from './OutlinePanel'
 import { useProject } from '@/store/project'
 import { loadProjectIntoRuntime } from '@/project/load'
 import { fsAccessSupported } from '@/project/fsaccess'
@@ -217,7 +220,12 @@ export default function ExplorerPanel() {
   const busy = useProject((s) => s.busy)
   const engineStatus = useWorkspace((s) => s.engineStatus)
   const evaluating = useWorkspace((s) => s.evaluating)
-  const engineReady = engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
+  const searchOpen = useUi((s) => s.searchOpen)
+  const openSearch = useUi((s) => s.openSearch)
+  const setSearchOpen = useUi((s) => s.setSearchOpen)
+  const outlineOpen = useUi((s) => s.outlineOpen)
+  const toggleOutline = useUi((s) => s.toggleOutline)
+  const engineReady = engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
 
   const [menu, setMenu] = useState<{ x: number; y: number; node: ProjectNode } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null)
@@ -259,10 +267,15 @@ export default function ExplorerPanel() {
           onClick={() => void loadProjectIntoRuntime()}
           disabled={loadDisabled}
         />
+        <IconBtn icon={<Search size={13} />} title="Search workspace (Ctrl⇧F)" onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())} />
+        <IconBtn icon={<ListTree size={13} />} title="Outline of definitions (Ctrl⇧O)" onClick={toggleOutline} />
         <IconBtn icon={<FilePlus size={13} />} title="New file" onClick={() => setCreating({ dir: '', kind: 'file' })} disabled={!kind} />
         <IconBtn icon={<FolderPlus size={13} />} title="New folder" onClick={() => setCreating({ dir: '', kind: 'folder' })} disabled={!kind} />
         <IconBtn icon={<MoreHorizontal size={13} />} title="Project actions" onClick={(e) => setMoreMenu({ x: (e.target as HTMLElement).getBoundingClientRect().left, y: (e.target as HTMLElement).getBoundingClientRect().bottom + 4 })} />
       </div>
+
+      {searchOpen && <SearchPanel />}
+      {outlineOpen && <OutlinePanel />}
 
       {/* inline create row */}
       <AnimatePresence>

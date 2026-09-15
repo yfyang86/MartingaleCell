@@ -3,11 +3,13 @@
 
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
-import type { EngineStatus, LogLevel, LogSource } from '@/lisp/types'
+import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
+import { pushHistory, sanitizeHistory } from '@/session/history'
+import { getEnginePref, setEnginePref, type EnginePref } from '@/lisp/engine-pref'
 
 /** Where a buffer's content lives: the scratch workspace or a project file. */
-export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string }
+export type BufferOrigin = { type: 'scratch' } | { type: 'project'; path: string } | { type: 'cell'; cellId: string; n: number }
 
 export interface IdeBuffer {
   id: string
@@ -18,7 +20,9 @@ export interface IdeBuffer {
   origin?: BufferOrigin
 }
 
-export type CellStatus = 'queued' | 'running' | 'done' | 'error' | 'aborted'
+/** paused = the image is suspended in the debugger, waiting for a restart choice */
+/** 'paused' = in the debugger; 'input' = blocked on standard input */
+export type CellStatus = 'queued' | 'running' | 'paused' | 'input' | 'done' | 'error' | 'aborted'
 
 export interface ProjectFileStatus {
   path: string
@@ -46,6 +50,14 @@ export interface Cell {
   warnings: string[]
   error?: string
   errorType?: string
+  /** named user frames at signal time, innermost first (ECL only) */
+  frames?: string[]
+  /** condition slots (datum/expected/name/…) at signal time (ECL only) */
+  details?: ConditionDetail[]
+  /** the job is blocked on standard input (status 'input') */
+  inputRequest?: InputRequest
+  /** live debugger state while status === 'paused' */
+  debug?: DebugPause
   durationMs: number
   startedAt: number
   restartsUsed: number
@@ -55,6 +67,12 @@ export interface Cell {
   project?: ProjectLoadInfo
   /** gnuplot captures (worker ;;PLOT64 markers) rendered as SVG plots */
   plots?: PlotAttachment[]
+  /** appended from a Markdown transcript, not evaluated in this session */
+  imported?: boolean
+  /** the buffer this cell was opened into ("Open as buffer"); re-run evaluates that buffer's current text */
+  bufferId?: string
+  /** id of the first cell in this cell's re-run chain (Sprint 21); absent on a first run */
+  lineage?: string
 }
 
 export interface LogEntry {
@@ -67,36 +85,50 @@ export interface LogEntry {
   cellRef?: number
   /** TRACE rows */
   trace?: { ms: number; forms: string }
+  /** a project file position to jump to (located load warnings) */
+  location?: { path: string; line: number; col: number }
 }
 
+/* Every field here is wired to something real (Sprint 2). `minimap` and
+ * `heapSize` were removed: CodeMirror has no minimap and the wasm heap is
+ * fixed by the WECL build — stale keys in persisted data are ignored. */
 export interface IdeSettings {
   fontSize: number
   ligatures: boolean
   rainbowParens: boolean
-  minimap: boolean
   lineWrap: boolean
   autosave: boolean
   tabWidth: 2 | 4
+  /** compile: bytecodes-compile each top-level form before running it */
   evalMode: 'eval' | 'compile'
+  /** Ctrl+S also evaluates every form of the active buffer */
   autoEvalOnSave: boolean
+  /** `*print-length*` in the image; 0 = unlimited */
   printLength: number
-  heapSize: 256 | 512 | 640
+  /** transcript export: clip values longer than this many characters (0 = whole) */
+  transcriptValueLimit: number
+  /** how boot lines / engine noise land in the log */
   verbosity: 'quiet' | 'normal' | 'verbose'
+  /** pause in the interactive debugger on an unhandled error (ECL only) */
+  debugOnError: boolean
+  /** Lisp implementation (Sprint 27): auto = ECL then JSCL then mock; ecl = ECL only; sbcl = SBCL, ECL if it cannot boot */
+  engine: EnginePref
 }
 
 export const DEFAULT_SETTINGS: IdeSettings = {
   fontSize: 13.5,
   ligatures: true,
   rainbowParens: true,
-  minimap: false,
   lineWrap: false,
   autosave: true,
   tabWidth: 2,
   evalMode: 'eval',
   autoEvalOnSave: false,
   printLength: 100,
-  heapSize: 640,
+  transcriptValueLimit: 0,
   verbosity: 'normal',
+  engine: 'auto',
+  debugOnError: true,
 }
 
 export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled to WASM.
@@ -127,6 +159,8 @@ interface Persisted {
   splitH: number
   splitV: number
   visited: boolean
+  /** session-box ↑/↓ history, newest first (Sprint 20) */
+  sessionHistory?: string[]
 }
 
 interface WorkspaceState {
@@ -137,10 +171,14 @@ interface WorkspaceState {
   cells: Cell[]
   cellCounter: number
   historyTrimmed: boolean
+  /** session-box input history, newest first, capped — persisted with the workspace */
+  sessionHistory: string[]
   logs: LogEntry[]
   settings: IdeSettings
   engineStatus: EngineStatus
   engineLabel: string
+  /** true once ANY engine has reported ready (boot screen dismissal) */
+  bootDone: boolean
   evaluating: boolean
   packageName: string
   splitH: number
@@ -148,6 +186,8 @@ interface WorkspaceState {
   saveState: 'saved' | 'saving'
   bootLines: string[]
   bootFailed: boolean
+  /** an artifact streaming in during boot (Sprint 27) */
+  bootProgress: { file: string; loaded: number; total: number | null } | null
   mobileView: 'editor' | 'session' | 'log' | 'files'
 
   hydrate: () => Promise<void>
@@ -167,8 +207,9 @@ interface WorkspaceState {
   appendCellStdout: (id: string, chunk: string) => void
   removeCell: (id: string) => void
   clearCells: () => void
+  pushSessionHistory: (text: string) => void
   // logs
-  addLog: (level: LogLevel, source: LogSource, message: string, opts?: { details?: string; cellRef?: number; trace?: { ms: number; forms: string } }) => void
+  addLog: (level: LogLevel, source: LogSource, message: string, opts?: { details?: string; cellRef?: number; trace?: { ms: number; forms: string }; location?: { path: string; line: number; col: number } }) => void
   clearLogs: () => void
   // misc
   setSettings: (patch: Partial<IdeSettings>) => void
@@ -178,6 +219,7 @@ interface WorkspaceState {
   setSplits: (h: number, v: number) => void
   addBootLine: (line: string) => void
   setBootFailed: (v: boolean) => void
+  setBootProgress: (p: { file: string; loaded: number; total: number | null } | null) => void
   setMobileView: (v: 'editor' | 'session' | 'log' | 'files') => void
   flushSave: () => void
   resetWorkspace: () => void
@@ -204,6 +246,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       splitH: s.splitH,
       splitV: s.splitV,
       visited: true,
+      sessionHistory: s.sessionHistory,
     }
     set({ saveState: 'saving' })
     idbSet(IDB_KEY, data)
@@ -224,10 +267,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     cells: [],
     cellCounter: 0,
     historyTrimmed: false,
+    sessionHistory: [],
     logs: [],
     settings: DEFAULT_SETTINGS,
     engineStatus: 'booting',
     engineLabel: '',
+    bootDone: false,
     evaluating: false,
     packageName: 'CL-USER',
     splitH: 55,
@@ -235,6 +280,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     saveState: 'saved',
     bootLines: [],
     bootFailed: false,
+    bootProgress: null,
     mobileView: 'editor',
 
     hydrate: async () => {
@@ -248,18 +294,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
             activeBufferId: data.activeBufferId ?? data.buffers?.[0]?.id ?? null,
             cells: data.cells ?? [],
             cellCounter: data.cellCounter ?? (data.cells?.length ?? 0),
-            settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
+            /* settings saved before Sprint 27 have no `engine`: adopt the localStorage-only choice they were using */
+            settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}), engine: data.settings?.engine ?? getEnginePref() },
             splitH: data.splitH ?? 55,
             splitV: data.splitV ?? 60,
+            sessionHistory: sanitizeHistory(data.sessionHistory),
           })
         } else {
-          set({ hydrated: true, freshVisit: true })
+          set({ hydrated: true, freshVisit: true, settings: { ...DEFAULT_SETTINGS, engine: getEnginePref() } })
         }
       } catch {
-        set({ hydrated: true, freshVisit: true })
+        set({ hydrated: true, freshVisit: true, settings: { ...DEFAULT_SETTINGS, engine: getEnginePref() } })
         get().addLog('WARN', 'STORAGE', 'Could not read workspace from IndexedDB — starting fresh')
       }
       const s = get()
+      /* keep the runtime's copy of the engine choice in step with the persisted setting (a reset or an import of settings must win) */
+      setEnginePref(s.settings.engine ?? 'auto')
       if (s.buffers.length === 0) {
         const id = s.newBuffer('scratch.lisp', WELCOME_CODE)
         set({ activeBufferId: id })
@@ -337,10 +387,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }))
     },
     removeCell: (id) => { set((s) => ({ cells: s.cells.filter((c) => c.id !== id) })); scheduleSave() },
-    /* clear cells + reset session state: numbering restarts at [1], package
-     * falls back to CL-USER (a fresh-session feel without touching buffers) */
+    /* clear cells: numbering restarts at [1]. The reader package is NOT
+     * touched — it mirrors the live image, and clearing the transcript does
+     * not change what the image reads in (Restart Lisp image does). */
     clearCells: () => {
-      set({ cells: [], cellCounter: 0, historyTrimmed: false, evaluating: false, packageName: 'CL-USER' })
+      set({ cells: [], cellCounter: 0, historyTrimmed: false, evaluating: false })
+      scheduleSave()
+    },
+
+    pushSessionHistory: (text) => {
+      const next = pushHistory(get().sessionHistory, text)
+      if (next.length === get().sessionHistory.length && next[0] === get().sessionHistory[0]) return
+      set({ sessionHistory: next })
       scheduleSave()
     },
 
@@ -350,13 +408,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
     clearLogs: () => set({ logs: [] }),
 
-    setSettings: (patch) => { set((s) => ({ settings: { ...s.settings, ...patch } })); scheduleSave() },
-    setEngine: (status, label) => set({ engineStatus: status, engineLabel: label }),
+    setSettings: (patch) => {
+      set((s) => ({ settings: { ...s.settings, ...patch } }))
+      if (patch.engine) setEnginePref(patch.engine) /* the runtime reads localStorage at boot */
+      scheduleSave()
+    },
+    setEngine: (status, label) => set((s) => ({
+      engineStatus: status, engineLabel: label,
+      bootDone: s.bootDone || status.startsWith('ready-'),
+    })),
     setEvaluating: (v) => set({ evaluating: v }),
     setPackageName: (p) => set({ packageName: p }),
     setSplits: (h, v) => { set({ splitH: h, splitV: v }); scheduleSave() },
     addBootLine: (line) => set((s) => ({ bootLines: [...s.bootLines, line] })),
     setBootFailed: (v) => set({ bootFailed: v }),
+    setBootProgress: (bootProgress) => set({ bootProgress }),
     setMobileView: (v) => set({ mobileView: v }),
     flushSave: () => { if (saveTimer) clearTimeout(saveTimer); persist() },
     resetWorkspace: () => {
@@ -364,8 +430,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       idbSet(IDB_KEY, undefined).catch(() => {})
       set({
         buffers: [], activeBufferId: null, cells: [], cellCounter: 0,
-        historyTrimmed: false, settings: DEFAULT_SETTINGS, freshVisit: true,
+        historyTrimmed: false, sessionHistory: [], settings: DEFAULT_SETTINGS, freshVisit: true,
       })
+      setEnginePref('auto') /* the engine choice resets with the workspace (Sprint 27) */
       const id = get().newBuffer('scratch.lisp', WELCOME_CODE)
       set({ activeBufferId: id })
     },

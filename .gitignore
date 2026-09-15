@@ -42,3 +42,9 @@ backend/dump.rdb
 
 # Third-party reference copy — kept locally, not tracked (submodule is the pointer)
 Research/qiang-dict-notes/
+
+# SBCL/wasm engine artifacts: only the gzip'd copies (~19 MB) are tracked; the
+# plain files (~124 MB) are local — the worker fetches .gz first and the Node
+# harness inflates .gz itself (scripts/fetch-sbcl.mjs --gzip writes both)
+app/public/sbcl/*
+!app/public/sbcl/*.gz

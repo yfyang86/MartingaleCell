@@ -56,7 +56,7 @@ const STEPS = [
 ]
 let buf = []
 function exercise() {
-  const base = '/tmp/clplot/cl-plot-master'
+  const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master' /* unzip public/sample-projects/cl-plot.zip */
   const files = fs.readdirSync(base).filter((n) => /\.(lisp|asd)$/i.test(n))
     .map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
   send({ type: 'load-project', id: 101, files })

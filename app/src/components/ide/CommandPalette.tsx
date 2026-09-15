@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
+import { foldCode, unfoldCode, foldAll, unfoldAll } from '@codemirror/language'
+import { foldTopLevelForms } from '@/editor/fold'
 import {
   evaluateFormAtPoint, evaluateAllForms,
   newBuffer, saveBuffers, focusEditor, loadExamples, loadExampleIntoBuffer,
-  copyText, type ExampleItem,
-} from './actions'
+  copyText, replayDefinitions, gotoDefinition, type ExampleItem, exportSession, findReferences, importTranscriptFile, getEditor } from './actions'
 import { explorerActions } from '@/project/actions'
 import { toast } from 'sonner'
 
@@ -29,20 +30,31 @@ function fuzzy(query: string, text: string): boolean {
   return qi === q.length
 }
 
+/* The palette body is mounted only while open, so its query/cursor state
+ * starts fresh on every open without effect-driven resets. */
 export default function CommandPalette() {
   const open = useUi((s) => s.paletteOpen)
   const setOpen = useUi((s) => s.setPaletteOpen)
-  const [query, setQuery] = useState('')
+  return (
+    <AnimatePresence>
+      {open && <PaletteBody close={() => setOpen(false)} />}
+    </AnimatePresence>
+  )
+}
+
+function PaletteBody({ close }: { close: () => void }) {
+  const [query, setQueryState] = useState('')
   const [cursor, setCursor] = useState(0)
   const [examples, setExamples] = useState<ExampleItem[]>([])
 
+  /* typing resets the highlighted row */
+  const setQuery = (q: string) => { setQueryState(q); setCursor(0) }
+
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setCursor(0)
-      void loadExamples().then(setExamples)
-    }
-  }, [open])
+    let cancelled = false
+    void loadExamples().then((list) => { if (!cancelled) setExamples(list) })
+    return () => { cancelled = true }
+  }, [])
 
   const commands = useMemo<Cmd[]>(() => {
     const ui = useUi.getState
@@ -51,6 +63,7 @@ export default function CommandPalette() {
       { id: 'eval-form', group: 'Evaluate', name: 'Evaluate form at point', kbd: 'Ctrl↵', run: evaluateFormAtPoint },
       { id: 'eval-all', group: 'Evaluate', name: 'Evaluate all forms', kbd: 'Ctrl⇧↵', run: evaluateAllForms },
       { id: 'interrupt', group: 'Evaluate', name: 'Interrupt evaluation', kbd: 'Ctrl.', run: () => ui().setConfirm('interrupt') },
+      { id: 'goto-def', group: 'Evaluate', name: 'Go to definition of symbol at point', kbd: 'F12', run: () => gotoDefinition() },
       { id: 'new-buffer', group: 'Buffer', name: 'New buffer', kbd: 'Ctrl N', run: newBuffer },
       { id: 'close-others', group: 'Buffer', name: 'Close other buffers', run: () => { const s = ws(); if (s.activeBufferId) s.closeOtherBuffers(s.activeBufferId) } },
       { id: 'save', group: 'Buffer', name: 'Save buffers', kbd: 'Ctrl S', run: saveBuffers },
@@ -68,6 +81,7 @@ export default function CommandPalette() {
         },
       },
       { id: 'restart', group: 'Runtime', name: 'Restart Lisp image', run: () => ui().setConfirm('restart') },
+      { id: 'replay', group: 'Runtime', name: 'Replay definitions from session (after a restart)', run: replayDefinitions },
       {
         id: 'mem-report', group: 'Runtime', name: 'Memory report', run: () => {
           const perf = performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }
@@ -78,10 +92,22 @@ export default function CommandPalette() {
           toast(msg)
         },
       },
+      { id: 'search-ws', group: 'View', name: 'Search in workspace', desc: 'open buffers + project files', kbd: 'Ctrl⇧F', run: () => ui().openSearch() },
+      { id: 'outline', group: 'View', name: 'Toggle definition outline', desc: 'buffer, project and session definitions', kbd: 'Ctrl⇧O', run: () => ui().toggleOutline() },
+      { id: 'find-refs', group: 'View', name: 'Find references of symbol at point', desc: 'whole symbol, code only', kbd: '⇧F12', run: () => findReferences() },
       { id: 'focus-editor', group: 'View', name: 'Focus editor', run: focusEditor },
+      { id: 'fold-form', group: 'Buffer', name: 'Fold form at line', desc: 'the outermost form opening on the caret line', kbd: 'Ctrl⇧[', run: () => { const v = getEditor(); if (v) { foldCode(v); v.focus() } } },
+      { id: 'unfold-form', group: 'Buffer', name: 'Unfold form at line', kbd: 'Ctrl⇧]', run: () => { const v = getEditor(); if (v) { unfoldCode(v); v.focus() } } },
+      { id: 'fold-all', group: 'Buffer', name: 'Fold all forms', kbd: 'Ctrl Alt [', run: () => { const v = getEditor(); if (v) { foldAll(v); v.focus() } } },
+      { id: 'fold-top', group: 'Buffer', name: 'Fold all top-level forms', desc: 'one line per defun; bodies keep their own folds', run: () => { const v = getEditor(); if (v) { foldTopLevelForms(v); v.focus() } } },
+      { id: 'unfold-all', group: 'Buffer', name: 'Unfold all forms', kbd: 'Ctrl Alt ]', run: () => { const v = getEditor(); if (v) { unfoldAll(v); v.focus() } } },
       { id: 'settings', group: 'View', name: 'Open settings', run: () => ui().setSettingsOpen(true) },
       { id: 'shortcuts', group: 'Help', name: 'Keyboard shortcuts', kbd: 'Ctrl/', run: () => ui().setShortcutsOpen(true) },
       { id: 'docs', group: 'Help', name: 'Open docs', run: () => { window.location.href = '/docs' } },
+      { id: 'import-transcript', group: 'Workspace', name: 'Import session transcript (.md / .lisp)', desc: 'append the cells of a Markdown transcript, or open a .lisp one as a buffer', run: () => importTranscriptFile('append') },
+      { id: 'import-transcript-replace', group: 'Workspace', name: 'Import transcript replacing the session', desc: 'clear the session (after a confirm), then import the cells', run: () => importTranscriptFile('replace') },
+      { id: 'export-md', group: 'Workspace', name: 'Export session as Markdown (.md)', desc: 'values, warnings, errors and plots inline', run: () => void exportSession('md') },
+      { id: 'export-lisp', group: 'Workspace', name: 'Export session as Lisp transcript (.lisp)', desc: 'results as comments — the file evaluates as is', run: () => void exportSession('lisp') },
       { id: 'export-ws', group: 'Workspace', name: 'Export workspace (.json)', run: () => {
           const s = ws()
           const blob = new Blob([JSON.stringify({ buffers: s.buffers, cells: s.cells, settings: s.settings }, null, 2)], { type: 'application/json' })
@@ -103,18 +129,24 @@ export default function CommandPalette() {
     return base
   }, [examples])
 
-  const filtered = useMemo(() => commands.filter((c) => !query || fuzzy(query, c.name) || fuzzy(query, c.group)), [commands, query])
-
-  useEffect(() => { setCursor(0) }, [query])
+  /* subsequence matches, but a name that starts with / contains the query verbatim ranks first (Sprint 10) */
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return commands
+    const rank = (c: Cmd) => { const n = c.name.toLowerCase(); return n.startsWith(q) ? 0 : n.includes(q) ? 1 : 2 }
+    return commands
+      .filter((c) => fuzzy(q, c.name) || fuzzy(q, c.group))
+      .map((c, i) => ({ c, i, r: rank(c) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map((x) => x.c)
+  }, [commands, query])
 
   const runCmd = (c: Cmd) => {
-    setOpen(false)
+    close()
     c.run()
   }
 
   return (
-    <AnimatePresence>
-      {open && (
         <motion.div
           className="fixed inset-0 z-50 flex items-start justify-center pt-[16vh]"
           initial={{ opacity: 0 }}
@@ -122,7 +154,7 @@ export default function CommandPalette() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
         >
-          <div className="absolute inset-0 bg-[rgba(4,5,9,.7)] backdrop-blur-[6px]" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-[rgba(4,5,9,.7)] backdrop-blur-[6px]" onClick={close} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -140,7 +172,7 @@ export default function CommandPalette() {
                   if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(c + 1, filtered.length - 1)) }
                   if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)) }
                   if (e.key === 'Enter' && filtered[cursor]) runCmd(filtered[cursor])
-                  if (e.key === 'Escape') setOpen(false)
+                  if (e.key === 'Escape') close()
                 }}
                 placeholder="Type a command…"
                 className="h-12 w-full bg-transparent text-[14px] text-primary placeholder:text-muted focus:outline-none"
@@ -167,8 +199,6 @@ export default function CommandPalette() {
             </div>
           </motion.div>
         </motion.div>
-      )}
-    </AnimatePresence>
   )
 }
 

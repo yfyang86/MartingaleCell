@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Search } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 interface Shortcut {
   keys: string[]
@@ -28,13 +29,17 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
     name: 'Project',
     shortcuts: [
       { keys: ['Ctrl', 'B'], action: 'Toggle project explorer' },
+      { keys: ['Ctrl', 'Shift', 'F'], action: 'Search the workspace (open buffers + project files); Enter jumps to the first hit' },
+      { keys: ['Ctrl', 'Shift', 'O'], action: 'Outline of definitions: buffer (✓ = evaluated), project, session box — click to jump' },
     ],
   },
   {
     name: 'Session',
     shortcuts: [
       { keys: ['Ctrl', 'Shift', 'L'], action: 'Clear session cells' },
-      { keys: ['0', '–', '4'], action: 'Choose restart (in a debugger cell)' },
+      { keys: ['0', '–', '9'], action: 'Choose a restart while a cell is paused in the debugger' },
+      { keys: ['Ctrl', 'D'], action: 'End of file for a cell waiting on standard input' },
+      { keys: ['Ctrl', 'R'], action: 'In the session box: search the input history (↑↓ move, Enter recalls); ↑ / ↓ alone walk it' },
     ],
   },
   {
@@ -43,7 +48,10 @@ const GROUPS: { name: string; shortcuts: Shortcut[] }[] = [
       { keys: ['Tab'], action: 'Complete symbol at point' },
       { keys: ['Ctrl', 'Space'], action: 'Autocomplete / symbol documentation' },
       { keys: ['Ctrl', 'Shift', '↑'], action: 'Select enclosing s-expression (repeat to grow)' },
+      { keys: ['F12'], action: 'Go to definition of the symbol at point (Ctrl+click too)' },
+      { keys: ['Shift', 'F12'], action: 'Find references of the symbol at point (workspace search, whole symbol, code only)' },
       { keys: ['Alt', '↑ / ↓'], action: 'Move between top-level forms' },
+      { keys: ['Ctrl', 'Shift', '[ / ]'], action: 'Fold / unfold the outermost form opening on the caret line (Ctrl+Alt+[ / ] for all forms); folds persist per buffer' },
     ],
   },
   {

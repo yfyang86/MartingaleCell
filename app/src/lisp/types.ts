@@ -5,11 +5,12 @@ import type { PlotAttachment } from '@/plot/gnuplot'
 export type EngineStatus =
   | 'booting'
   | 'ready-ecl'
+  | 'ready-sbcl'
   | 'ready-jscl'
   | 'ready-mock'
   | 'error'
 
-export type EngineKind = 'ecl' | 'jscl' | 'mock' | null
+export type EngineKind = 'ecl' | 'sbcl' | 'jscl' | 'mock' | null
 
 export interface EvalResult {
   stdout: string
@@ -22,6 +23,65 @@ export interface EvalResult {
   aborted?: boolean
   /** gnuplot captures (worker ;;PLOT64 markers) rendered as in-browser SVG plots. */
   plots?: PlotAttachment[]
+  /** Reader package after the job (worker ;;PACKAGE: marker) — `in-package` persists across cells. */
+  package?: string
+  /** Named user frames at signal time, innermost first (worker ;;FRAME: markers). */
+  frames?: string[]
+  /** The restart the user picked while the job was paused in the debugger. */
+  restartUsed?: string
+  /** Condition slots worth showing (worker ;;DETAIL: markers), e.g. datum/expected for a type-error. */
+  details?: ConditionDetail[]
+  /** Warnings that carry a project file location (load jobs). `warnings` holds their text too. */
+  locatedWarnings?: LocatedWarning[]
+}
+
+/** One `;;DETAIL: key|value` line printed at signal time. */
+export interface ConditionDetail {
+  key: string
+  value: string
+}
+
+/** A job waiting on standard input (worker ;;READ-WAIT). */
+export interface InputRequest {
+  jobId: number
+}
+
+/** Per-job evaluation options (mirrors the settings drawer). */
+export interface EvalOptions {
+  /** bytecodes-compile each top-level form before running it (evalMode: 'compile') */
+  compile?: boolean
+  /** pause in the debugger on an unhandled error (worker ;;DEBUG: protocol) */
+  debug?: boolean
+  /** buffer name; when set, each definition evaluated prints ;;DEF: path|offset|NAME|kind */
+  path?: string
+}
+
+/** One `;;DEF:` line from an eval or load job: a definition and where its form starts. */
+export interface DefinitionEvent {
+  path: string
+  /** byte offset of the form in the source string / file */
+  offset: number
+  /** upper-case name, e.g. "FOO" or "(SETF FOO)" */
+  name: string
+  /** defun / defmacro / defclass / … */
+  defKind: string
+}
+
+/** One live restart offered while a job is paused. */
+export interface DebugRestart {
+  index: number
+  name: string
+  report: string
+}
+
+/** A job paused in the debugger (worker ;;DEBUG-WAIT). */
+export interface DebugPause {
+  jobId: number
+  condition: string
+  errorType?: string
+  details: ConditionDetail[]
+  frames: string[]
+  restarts: DebugRestart[]
 }
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
@@ -42,17 +102,30 @@ export type LoadEvent =
   | { kind: 'note'; message: string }
   | { kind: 'hint'; message: string }
   | { kind: 'plot'; plot: PlotAttachment }
+  | { kind: 'definition'; path: string; offset: number; name: string; defKind: string }
+
+/** A warning raised while a project form loaded, with where (worker ;;WARNING: path|offset|text). */
+export interface LocatedWarning {
+  path: string
+  /** byte offset of the form in the file (file-position) */
+  offset: number
+  message: string
+}
 
 /* ---- worker protocol (public/wecl-worker.js) ---- */
 
 export type WorkerInMessage =
-  | { type: 'eval'; id: number; code: string }
-  | { type: 'load-project'; id: number; files: ProjectFilePayload[] }
+  | { type: 'eval'; id: number; code: string; compile?: boolean; debug?: boolean; path?: string }
+  | { type: 'restart'; id: number; index: number; value?: string }
+  | { type: 'input'; id: number; text: string | null }
+  | { type: 'load-project'; id: number; files: ProjectFilePayload[]; debug?: boolean }
   | { type: 'modules-snapshot'; id: number }
   | { type: 'modules-restore'; id: number; files: { path: string; content: string }[] }
 
 export type WorkerOutMessage =
   | { type: 'boot'; line: string }
+  /** an artifact streaming in (Sprint 27): bytes so far and the content length when the server sent one */
+  | { type: 'progress'; file: string; loaded: number; total: number | null }
   | { type: 'ready' }
   | { type: 'bootfail'; message: string }
   | { type: 'stdout'; id: number; text: string }

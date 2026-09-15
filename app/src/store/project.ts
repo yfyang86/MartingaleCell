@@ -24,7 +24,34 @@ export interface LoadedPackage {
   symbols: string[]
 }
 
+/** Where a project symbol was defined during the last Load Project (go-to-definition). */
+export interface ProjectDefinition {
+  /** upper-case symbol name, e.g. "FIGURE" or "(SETF FOO)" */
+  name: string
+  /** defun / defmacro / defclass / … */
+  kind: string
+  /** project-relative path */
+  path: string
+  line: number
+  col: number
+}
+
+/** A definition evaluated from an open buffer (Ctrl+Enter, region, evaluate-all); most recent first. */
+export interface BufferDefinition {
+  /** upper-case symbol name, e.g. "FIGURE" or "(SETF FOO)" */
+  name: string
+  kind: string
+  /** empty for a definition typed into the session box */
+  bufferId: string
+  bufferName: string
+  line: number
+  col: number
+  /** set when the definition came from the session box: the cell to scroll to */
+  cellN?: number
+}
+
 const IDB_HANDLE = 'conscell-dir-handle'
+const IDB_DEFS = 'conscell-definitions-v1'
 const IDB_VIRTUAL = 'conscell-virtual-project-v1'
 
 /** The live FS-Access root handle (not serializable into state — module scope). */
@@ -48,6 +75,10 @@ interface ProjectState {
   canReopen: boolean
   busy: boolean
   loadedPackages: LoadedPackage[]
+  /** definitions reported by the last Load Project (cleared when the project changes) */
+  definitions: ProjectDefinition[]
+  /** definitions evaluated from open buffers (worker ;;DEF: on eval jobs); not persisted */
+  bufferDefinitions: BufferDefinition[]
 
   hydrateProject: () => Promise<void>
   openFolder: () => Promise<void>
@@ -72,11 +103,29 @@ interface ProjectState {
   deletePath: (path: string) => Promise<void>
 
   setLoadedPackages: (pkgs: LoadedPackage[]) => void
+  setDefinitions: (defs: ProjectDefinition[]) => void
+  /** remember where a name was last evaluated (replaces an earlier entry for the same name) */
+  recordBufferDefinition: (def: BufferDefinition) => void
+  /** project-load definitions, then buffer definitions (later entries win in the completion registry) */
+  definitionsForCompletion: () => { name: string; kind: string; path: string; line: number }[]
+  /** drop index entries whose buffer or cell no longer exists (after both stores hydrated) */
+  pruneIndex: (liveBufferIds: Set<string>, liveCellNs: Set<number>) => void
+  /** the name is no longer defined where it was evaluated — drop its entry */
+  forgetBufferDefinition: (name: string) => void
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
 export const useProject = create<ProjectState>((set, get) => {
+  /* debounced IndexedDB write of the definition index */
+  let indexTimer: ReturnType<typeof setTimeout> | null = null
+  const saveIndex = () => {
+    if (indexTimer) clearTimeout(indexTimer)
+    indexTimer = setTimeout(() => {
+      const s = get()
+      idbSet(IDB_DEFS, { definitions: s.definitions, bufferDefinitions: s.bufferDefinitions }).catch(() => {})
+    }, 300)
+  }
   const log = (msg: string) => useWorkspace.getState().addLog('INFO', 'PROJECT', msg)
   const logErr = (msg: string) => useWorkspace.getState().addLog('ERROR', 'PROJECT', msg)
 
@@ -93,7 +142,7 @@ export const useProject = create<ProjectState>((set, get) => {
   const setVirtual = (name: string, files: Record<string, string>, attribution: string | null) => {
     rootHandle = null
     void idbDel(IDB_HANDLE)
-    set({ kind: 'virtual', name, files, tree: buildTree(Object.keys(files).map((p) => ({ path: p }))), attribution, canReopen: false, loadedPackages: [] })
+    set({ kind: 'virtual', name, files, tree: buildTree(Object.keys(files).map((p) => ({ path: p }))), attribution, canReopen: false, loadedPackages: [], definitions: [] })
     persistVirtual()
   }
 
@@ -101,7 +150,7 @@ export const useProject = create<ProjectState>((set, get) => {
     const tree = await fsa.readTree(handle)
     rootHandle = handle
     void idbSet(IDB_HANDLE, handle).catch(() => {})
-    set({ kind: 'fsaccess', name: handle.name, tree, files: {}, attribution: null, canReopen: true, loadedPackages: [] })
+    set({ kind: 'fsaccess', name: handle.name, tree, files: {}, attribution: null, canReopen: true, loadedPackages: [], definitions: [] })
   }
 
   const rebuildVirtualTree = () => {
@@ -139,8 +188,15 @@ export const useProject = create<ProjectState>((set, get) => {
     canReopen: false,
     busy: false,
     loadedPackages: [],
+    definitions: [],
+    bufferDefinitions: [],
 
     hydrateProject: async () => {
+      /* the definition index (Sprint 11): restored first, pruned by Ide once buffers/cells are known */
+      try {
+        const d = await idbGet<{ definitions: ProjectDefinition[]; bufferDefinitions: BufferDefinition[] }>(IDB_DEFS)
+        if (d) set({ definitions: Array.isArray(d.definitions) ? d.definitions : [], bufferDefinitions: Array.isArray(d.bufferDefinitions) ? d.bufferDefinitions : [] })
+      } catch { /* start empty */ }
       try {
         const v = await idbGet<VirtualPersisted>(IDB_VIRTUAL)
         if (v && v.files && Object.keys(v.files).length > 0) {
@@ -277,7 +333,7 @@ export const useProject = create<ProjectState>((set, get) => {
       detachBuffers(() => true)
       rootHandle = null
       void idbDel(IDB_VIRTUAL)
-      set({ kind: null, name: null, tree: [], files: {}, attribution: null, loadedPackages: [] })
+      set({ kind: null, name: null, tree: [], files: {}, attribution: null, loadedPackages: [], definitions: [] })
       log('Project closed')
     },
 
@@ -492,8 +548,38 @@ export const useProject = create<ProjectState>((set, get) => {
     },
 
     setLoadedPackages: (pkgs) => set({ loadedPackages: pkgs }),
+    setDefinitions: (defs) => { set({ definitions: defs }); saveIndex() },
+    recordBufferDefinition: (def) => { set((s) => ({ bufferDefinitions: [def, ...s.bufferDefinitions.filter((d) => d.name !== def.name)] })); saveIndex() },
+    pruneIndex: (liveBufferIds, liveCellNs) => {
+      set((s) => ({
+        bufferDefinitions: s.bufferDefinitions.filter((d) => (d.cellN != null ? liveCellNs.has(d.cellN) : liveBufferIds.has(d.bufferId))),
+        /* project-load definitions only make sense with a project to open them in */
+        definitions: s.kind ? s.definitions : [],
+      }))
+      saveIndex()
+    },
+    forgetBufferDefinition: (name) => { set((s) => ({ bufferDefinitions: s.bufferDefinitions.filter((d) => d.name !== name) })); saveIndex() },
+    definitionsForCompletion: () => {
+      const s = get()
+      return [
+        ...s.definitions,
+        ...[...s.bufferDefinitions].reverse().map((d) => ({ name: d.name, kind: d.kind, path: d.bufferName, line: d.line })),
+      ]
+    },
   }
 })
+
+/** Convert a byte offset (ECL `file-position`, UTF-8) in `content` to a 1-based line/col. */
+export function byteOffsetToLineCol(content: string, byteOffset: number): { line: number; col: number } {
+  let bytes = 0, line = 1, col = 1
+  for (const ch of content) {
+    if (bytes >= byteOffset) break
+    const cp = ch.codePointAt(0) ?? 0
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+    if (ch === '\n') { line++; col = 1 } else col++
+  }
+  return { line, col }
+}
 
 /** Lisp-source files of the current project, fresh. */
 export async function collectLispFiles(): Promise<{ path: string; content: string }[]> {

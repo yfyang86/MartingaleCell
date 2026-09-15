@@ -1,8 +1,10 @@
 import DocsSidebar from '@/components/docs/DocsSidebar'
 import { SectionDivider } from '@/components/docs/shared'
 import GettingStarted from '@/components/docs/GettingStarted'
+import Engines from '@/components/docs/Engines'
 import FeatureMatrix from '@/components/docs/FeatureMatrix'
 import SessionCells from '@/components/docs/SessionCells'
+import Editor from '@/components/docs/Editor'
 import DebuggerSection from '@/components/docs/DebuggerSection'
 import Projects from '@/components/docs/Projects'
 import Modules from '@/components/docs/Modules'
@@ -18,9 +20,13 @@ export default function Docs() {
       <div className="min-w-0 max-w-3xl flex-1 py-14 pb-28">
         <GettingStarted />
         <SectionDivider />
+        <Engines />
+        <SectionDivider />
         <FeatureMatrix />
         <SectionDivider />
         <SessionCells />
+        <SectionDivider />
+        <Editor />
         <SectionDivider />
         <DebuggerSection />
         <SectionDivider />

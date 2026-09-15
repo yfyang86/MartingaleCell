@@ -1,13 +1,16 @@
 /* Evaluation orchestration: runtime ↔ cells ↔ logs. */
 
 import { runtime } from '@/lisp/runtime'
+import { useProject } from '@/store/project'
+import { registerProjectDefinitions } from '@/components/ide/completion'
 import { useWorkspace, type Cell } from './workspace'
 import { autoDownloadSavedPlots } from '@/plot/download'
+import { lineageForBuffer } from '@/session/lineage'
 
-/** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, and the
- * `;;PLOT64` gnuplot capture channel) have their own dedicated cell UI —
- * they must never appear in the OUT well. */
-export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|PLOT64)/
+/** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
+ * `;;PLOT64` gnuplot capture channel and the `;;PACKAGE:` reader-package
+ * report) have their own dedicated UI — they must never appear in the OUT well. */
+export const OUT_MARKER_RE = /^;;(?:=>|WARNING:|ERROR:|ERRTYPE:|DETAIL:|FRAME:|PLOT64|PACKAGE:|DEF:)/
 
 /** Drop engine protocol marker lines from captured stdout. */
 export function stripOutMarkers(stdout: string): string {
@@ -18,14 +21,55 @@ export function stripOutMarkers(stdout: string): string {
     .join('\n')
 }
 
+/** A cell that still occupies the (serialized) runtime: queued, running, or paused in the debugger. */
+export function isBusy(c: Cell): boolean {
+  return c.status === 'running' || c.status === 'queued' || c.status === 'paused' || c.status === 'input'
+}
+
 /** Evaluate a code string; appends a cell and mirrors warnings/errors into the log. */
-export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
+/** Where a piece of code came from, so evaluated definitions get buffer positions. */
+export interface EvalOrigin {
+  /** the buffer the code came from; empty for the session box */
+  bufferId: string
+  /** character offset of `code` within the buffer */
+  from: number
+  /** the code was typed into the session box — definitions point at the cell */
+  session?: boolean
+  /** the new cell is a re-run: id of the first cell of the chain (Sprint 21) */
+  lineage?: string
+}
+
+/** byte offset (UTF-8) within `text` → character index */
+export function byteToCharOffset(text: string, byteOffset: number): number {
+  let bytes = 0, i = 0
+  for (const ch of text) {
+    if (bytes >= byteOffset) break
+    const cp = ch.codePointAt(0) ?? 0
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+    i += ch.length
+  }
+  return i
+}
+
+export function charOffsetToLineCol(content: string, offset: number): { line: number; col: number } {
+  let line = 1, col = 1
+  const end = Math.min(offset, content.length)
+  for (let i = 0; i < end; i++) {
+    if (content[i] === '\n') { line++; col = 1 } else col++
+  }
+  return { line, col }
+}
+
+export function evaluateCode(code: string, bufferName?: string, origin?: EvalOrigin): Promise<Cell> {
   const store = useWorkspace.getState()
   const trimmed = code.trim()
+  /* a re-run, or an evaluation from a buffer opened from a cell, joins that cell's run history */
+  const lineage = origin?.lineage ?? lineageForBuffer(store.buffers, store.cells, origin?.bufferId)
   const cell = store.addCell({
     input: trimmed,
     pkg: store.packageName,
     bufferName,
+    ...(lineage ? { lineage } : {}),
     status: 'queued',
     stdout: '',
     values: [],
@@ -34,7 +78,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
     startedAt: Date.now(),
     restartsUsed: 0,
   })
-  const pending = useWorkspace.getState().cells.some((c) => c.id !== cell.id && (c.status === 'running' || c.status === 'queued'))
+  const pending = useWorkspace.getState().cells.some((c) => c.id !== cell.id && isBusy(c))
   if (pending) store.updateCell(cell.id, { status: 'queued' })
 
   useWorkspace.getState().setEvaluating(true)
@@ -46,9 +90,13 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { status: 'running', startedAt: Date.now() })
         s.setEvaluating(true)
       },
-      onStream: (chunk) => {
+      onStream: (chunk, isErr) => {
         const kept = chunk.split('\n').filter((l) => !OUT_MARKER_RE.test(l.trimStart()))
         if (kept.length > 0) useWorkspace.getState().appendCellStdout(cell.id, kept.join('\n'))
+        /* verbosity "verbose": mirror engine stderr noise into the log too */
+        if (isErr && kept.length > 0 && useWorkspace.getState().settings.verbosity === 'verbose') {
+          useWorkspace.getState().addLog('DEBUG', 'RUNTIME', kept.join(' '), { cellRef: cell.n })
+        }
       },
       onPlot: (plot) => {
         /* stream gnuplot captures into the cell live, while it runs */
@@ -57,9 +105,56 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
         s.updateCell(cell.id, { plots: [...(cur?.plots ?? []), plot] })
         s.addLog('INFO', 'EVAL', `gnuplot intercepted — plot rendered in cell [${cell.n}]`, { cellRef: cell.n })
       },
-    })
+      onDebug: (pause) => {
+        /* the image is suspended inside the handler — show the live restarts */
+        const s = useWorkspace.getState()
+        s.updateCell(cell.id, { status: 'paused', debug: pause, errorType: pause.errorType, frames: pause.frames })
+        s.addLog('WARN', 'EVAL', `${pause.errorType ?? 'ERROR'} — paused in debugger — ${truncate(pause.condition, 100)} — cell [${cell.n}]`, {
+          cellRef: cell.n,
+          details: `${pause.condition}\n\nrestarts:\n  ${pause.restarts.map((r) => `[${r.index}] ${r.name} — ${r.report}`).join('\n  ')}`,
+        })
+      },
+      onDebugNote: (message) => {
+        const s = useWorkspace.getState()
+        s.appendCellStdout(cell.id, `; debugger: ${message}`)
+        s.addLog('WARN', 'EVAL', `debugger: ${message}`, { cellRef: cell.n })
+      },
+      onInputRequest: (req) => {
+        /* (read-line) & co.: the image is suspended until the cell answers */
+        const s = useWorkspace.getState()
+        s.updateCell(cell.id, { status: 'input', inputRequest: req })
+        s.addLog('INFO', 'EVAL', `cell [${cell.n}] is waiting for standard input`, { cellRef: cell.n })
+      },
+      onDefinition: (d) => {
+        /* ;;DEF: path|offset|NAME|kind — offset is a byte offset into `trimmed` */
+        if (!origin) return
+        const ws = useWorkspace.getState()
+        if (origin.session) {
+          useProject.getState().recordBufferDefinition({ name: d.name, kind: d.defKind, bufferId: '', bufferName: 'session', line: cell.n, col: 1, cellN: cell.n })
+          registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+          return
+        }
+        if (!bufferName) return
+        const buf = ws.buffers.find((b) => b.id === origin.bufferId)
+        if (!buf) return
+        const charOff = origin.from + code.indexOf(trimmed) + byteToCharOffset(trimmed, d.offset)
+        const { line, col } = charOffsetToLineCol(buf.content, charOff)
+        useProject.getState().recordBufferDefinition({ name: d.name, kind: d.defKind, bufferId: buf.id, bufferName: buf.name, line, col })
+        registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+      },
+    }, { compile: store.settings.evalMode === 'compile', debug: store.settings.debugOnError, ...(origin?.session ? { path: 'session' } : origin && bufferName ? { path: bufferName } : {}) })
     .then((result) => {
       const s = useWorkspace.getState()
+      /* the resolution line: which restart brought the job back */
+      if (result.restartUsed) {
+        const cur = s.cells.find((c) => c.id === cell.id)
+        s.updateCell(cell.id, { resumedVia: result.restartUsed, restartsUsed: (cur?.restartsUsed ?? 0) + 1, debug: undefined })
+      }
+      /* (in-package …) persists in the image — mirror it into the pill/prompt */
+      if (result.package && result.package !== s.packageName) {
+        s.setPackageName(result.package)
+        s.addLog('DEBUG', 'EVAL', `reader package → ${result.package}`, { cellRef: cell.n })
+      }
       if (result.plots && result.plots.length > 0) {
         /* cl-plot (save fig "name.png" …) — honor `set output` with an
          * automatic PNG download, still inside the user's click window */
@@ -73,13 +168,18 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
           status: 'error',
           error: result.error,
           errorType: result.errorType,
+          frames: result.frames,
+          details: result.details,
           warnings: result.warnings,
           values: result.values,
           durationMs: result.durationMs,
           stdout: mergeStdout(cell.id, result.stdout),
           ...(result.plots ? { plots: result.plots } : {}),
         })
-        s.addLog('ERROR', 'EVAL', `${result.errorType ?? 'ERROR'} — ${truncate(result.error, 120)} — see cell [${cell.n}]`, { cellRef: cell.n, details: result.error })
+        s.addLog('ERROR', 'EVAL', `${result.errorType ?? 'ERROR'} — ${truncate(result.error, 120)} — see cell [${cell.n}]`, {
+          cellRef: cell.n,
+          details: result.frames?.length ? `${result.error}\n\nframes (innermost first):\n  ${result.frames.join('\n  ')}` : result.error,
+        })
         result.warnings.forEach((w) => s.addLog('WARN', 'EVAL', w, { cellRef: cell.n }))
       } else {
         s.updateCell(cell.id, {
@@ -106,8 +206,7 @@ export function evaluateCode(code: string, bufferName?: string): Promise<Cell> {
     })
     .finally(() => {
       const s = useWorkspace.getState()
-      const stillBusy = s.cells.some((c) => c.status === 'running' || c.status === 'queued')
-      if (!stillBusy) s.setEvaluating(false)
+      if (!s.cells.some(isBusy)) s.setEvaluating(false)
     })
 }
 
@@ -122,10 +221,16 @@ function mergeStdout(cellId: string, finalStdout: string): string {
 }
 
 /** Evaluate every top-level form in a buffer, sequentially (one cell per form). */
-export function evaluateAll(code: string, bufferName?: string): void {
+export function evaluateAll(code: string, bufferName?: string, origin?: EvalOrigin): void {
   const forms = splitTopLevelForms(code)
   if (forms.length === 0) return
-  for (const f of forms) void evaluateCode(f, bufferName)
+  let cursor = 0
+  for (const f of forms) {
+    const at = code.indexOf(f, cursor)
+    const from = at === -1 ? cursor : at
+    cursor = from + f.length
+    void evaluateCode(f, bufferName, origin ? { bufferId: origin.bufferId, from: origin.from + from } : undefined)
+  }
 }
 
 /** Split source into top-level forms (strings/comments aware). */

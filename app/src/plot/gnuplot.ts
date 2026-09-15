@@ -32,6 +32,12 @@ export interface PlotSeries {
   ps?: number
   lt?: number
   sourcePath?: string
+  /** Sprint 30: a series the renderer cannot draw — a gnuplot function
+   * expression (`plot sin(x)`) or a data file that was not shipped in the
+   * payload. Kept so the plot can say so instead of drawing nothing. */
+  missing?: 'function' | 'no-data'
+  /** what to call the series when it has no title: the expression or the path */
+  label?: string
 }
 
 export interface PlotArrow {
@@ -214,14 +220,58 @@ function parseStyle(word: string | undefined): PlotStyle {
   }
 }
 
+/** Split a plot command body on the commas that separate its series:
+ * commas inside quotes or parentheses (`f(x, 2)`, `title "a, b"`) stay. */
+export function splitPlotSegments(rest: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let depth = 0
+  let quoted = false
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i]
+    if (quoted) {
+      cur += ch
+      if (ch === '\\' && i + 1 < rest.length) cur += rest[++i]
+      else if (ch === '"') quoted = false
+      continue
+    }
+    if (ch === '"') { quoted = true; cur += ch; continue }
+    if (ch === '(') depth++
+    else if (ch === ')' && depth > 0) depth--
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; continue }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
 /** Parse one `plot`/`replot` command body into series. */
 function parsePlotCommand(rest: string, dataByPath: Map<string, string>, spec: PlotSpec): void {
-  /* one command may carry several "file" specs separated by `, "…"` */
-  const segments = rest.split(/,(?=\s*")/)
+  /* one command may carry several series separated by commas: "file" specs
+   * and, since Sprint 30, function expressions (kept as not-drawn series) */
+  const segments = splitPlotSegments(rest)
+  let previousPath: string | undefined
   for (const seg of segments) {
-    const m = seg.match(/"([^"]*)"\s*([\s\S]*)$/)
-    if (!m) continue
-    const path = m[1]
+    const m = seg.match(/^"([^"]*)"\s*([\s\S]*)$/)
+    if (!m) {
+      /* a function expression: everything before the first plot keyword */
+      const kw = seg.search(/\s+(?:using|u|with|w|title|t|notitle|lt|lw|pt|ps|lc|axes)\b/)
+      const expr = (kw === -1 ? seg : seg.slice(0, kw)).trim()
+      const fopts = kw === -1 ? '' : seg.slice(kw)
+      const ftitle = fopts.match(/title\s+"((?:[^"\\]|\\.)*)"/)
+      const fwith = fopts.match(/with\s+([a-zA-Z]+)/)?.[1]
+      spec.series.push({
+        points: [],
+        style: fwith ? parseStyle(fwith) : 'lines' /* gnuplot draws functions as lines by default */,
+        title: ftitle ? unescapeGnuplot(ftitle[1]) : undefined,
+        missing: 'function',
+        label: expr,
+      })
+      continue
+    }
+    /* `""` means "the same file as the previous series" in gnuplot */
+    const path = m[1] === '' && previousPath !== undefined ? previousPath : m[1]
+    previousPath = path
     const opts = m[2]
     const using = opts.match(new RegExp(`using\\s+((?:\\d|:)+)`))
     const cols = using
@@ -241,6 +291,7 @@ function parsePlotCommand(rest: string, dataByPath: Map<string, string>, spec: P
       ps: ps ? parseInt(ps[1], 10) : undefined,
       lt: lt ? parseInt(lt[1], 10) : undefined,
       sourcePath: path,
+      ...(content === undefined ? { missing: 'no-data' as const, label: path || '""' } : {}),
     })
   }
 }

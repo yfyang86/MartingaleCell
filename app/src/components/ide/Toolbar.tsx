@@ -11,9 +11,10 @@ import {
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
+import { useProject } from '@/store/project'
 import {
   evaluateFormAtPoint, evaluateAllForms, loadExamples, loadExampleIntoBuffer,
-  shareWorkspace, type ExampleItem,
+  shareWorkspace, switchPackage, type ExampleItem,
 } from './actions'
 
 /* -------- dropdown primitive -------- */
@@ -75,7 +76,9 @@ export function EnginePill() {
       ? { dot: <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />, text: 'starting runtime…', cls: 'text-warning' }
       : status === 'ready-ecl'
         ? { dot: <span className="h-2 w-2 rounded-full bg-success" />, text: `ECL · WASM`, cls: 'text-secondary' }
-        : status === 'ready-jscl'
+        : status === 'ready-sbcl'
+          ? { dot: <span className="h-2 w-2 rounded-full bg-success" />, text: `SBCL · WASM`, cls: 'text-secondary' }
+          : status === 'ready-jscl'
           ? { dot: <span className="h-2 w-2 rounded-full bg-warning" />, text: 'JSCL · JS', cls: 'text-secondary' }
           : status === 'ready-mock'
             ? { dot: <span className="h-2 w-2 rounded-full bg-muted" />, text: 'Mock', cls: 'text-secondary' }
@@ -99,7 +102,7 @@ export function EnginePill() {
           {content.text}
         </motion.span>
       </AnimatePresence>
-      {status === 'ready-ecl' && label && <span className="hidden text-muted xl:inline">{label}</span>}
+      {(status === 'ready-ecl' || status === 'ready-sbcl') && label && <span className="hidden text-muted xl:inline">{label}</span>}
     </div>
   )
 }
@@ -108,17 +111,20 @@ export function EnginePill() {
 
 function PackagePill() {
   const packageName = useWorkspace((s) => s.packageName)
-  const setPackageName = useWorkspace((s) => s.setPackageName)
   const buffers = useWorkspace((s) => s.buffers)
+  const loadedPackages = useProject((s) => s.loadedPackages)
+  /* candidates: the live package, the standard ones, packages a loaded
+   * project defined, and every (defpackage …) found in an open buffer */
   const packages = useMemo(() => {
-    const found = new Set<string>(['CL-USER', 'CL', 'KEYWORD'])
-    const re = /\(\s*defpackage\s+:?([\w.-]+)/gi
+    const found = new Set<string>([packageName, 'CL-USER', 'CL', 'KEYWORD'])
+    for (const p of loadedPackages) found.add(p.name.toUpperCase())
+    const re = /\(\s*defpackage\s+(?::|#:|")?([\w.-]+)/gi
     for (const b of buffers) {
       let m: RegExpExecArray | null
       while ((m = re.exec(b.content))) found.add(m[1].toUpperCase())
     }
     return [...found]
-  }, [buffers])
+  }, [buffers, loadedPackages, packageName])
   return (
     <Dropdown
       trigger={
@@ -139,9 +145,8 @@ function PackagePill() {
                 p === packageName ? 'text-steel' : 'text-secondary hover:text-primary',
               )}
               onClick={() => {
-                setPackageName(p)
-                useWorkspace.getState().addLog('DEBUG', 'UI', `Reader package → ${p}`)
                 close()
+                if (p !== packageName) void switchPackage(p)
               }}
             >
               {p}
@@ -246,7 +251,7 @@ function IconButton({ icon, title, onClick, danger }: { icon: React.ReactNode; t
 export default function Toolbar() {
   const evaluating = useWorkspace((s) => s.evaluating)
   const engineStatus = useWorkspace((s) => s.engineStatus)
-  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
+  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
   const setPaletteOpen = useUi((s) => s.setPaletteOpen)
   const setSettingsOpen = useUi((s) => s.setSettingsOpen)
   const setConfirm = useUi((s) => s.setConfirm)
@@ -276,7 +281,7 @@ export default function Toolbar() {
             <MenuItem label="Back to home" href="/" />
             <MenuItem label="Examples" href="/examples" />
             <MenuItem label="Docs" href="/docs" />
-            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', 'ConsCell v0.9.2 — ECL (ANSI Common Lisp) compiled to WebAssembly')} />
+            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', `ConsCell v${__APP_VERSION__} — ANSI Common Lisp in the browser (SBCL or ECL, compiled to WebAssembly)`)} />
           </>
         )}
       </Dropdown>

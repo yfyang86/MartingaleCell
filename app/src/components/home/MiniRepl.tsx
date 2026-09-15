@@ -177,7 +177,7 @@ export default function MiniRepl() {
         </div>
       </div>
       <p className="mt-3 text-center font-mono text-[11px] text-muted">
-        This is a live preview — the real thing runs ECL
+        This is a live preview — the real thing runs SBCL or ECL
       </p>
     </div>
   )

@@ -12,6 +12,7 @@ import { X } from 'lucide-react'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { useProject } from '@/store/project'
+import { registerProjectDefinitions } from '@/components/ide/completion'
 import { runtime } from '@/lisp/runtime'
 import Toolbar from '@/components/ide/Toolbar'
 import EditorPanel from '@/components/ide/EditorPanel'
@@ -25,8 +26,7 @@ import BootScreen from '@/components/ide/BootScreen'
 import Modals from '@/components/ide/Modals'
 import {
   evaluateFormAtPoint, evaluateAllForms, newBuffer, saveBuffers,
-  decodeShareHash, loadExamples, loadExampleIntoBuffer,
-} from '@/components/ide/actions'
+  decodeShareHash, loadExamples, loadExampleIntoBuffer, findReferences } from '@/components/ide/actions'
 import { cn } from '@/lib/utils'
 
 function useMediaQuery(query: string): boolean {
@@ -67,6 +67,7 @@ export default function Ide() {
   const engineStatus = useWorkspace((s) => s.engineStatus)
   const bootLines = useWorkspace((s) => s.bootLines)
   const bootFailed = useWorkspace((s) => s.bootFailed)
+  const bootProgress = useWorkspace((s) => s.bootProgress)
   const splitH = useWorkspace((s) => s.splitH)
   const splitV = useWorkspace((s) => s.splitV)
   const isNarrow = useMediaQuery('(max-width: 1023px)')
@@ -78,29 +79,32 @@ export default function Ide() {
   const groupH = useGroupRef()
   const groupV = useGroupRef()
   const deepLinkHandled = useRef(false)
-  const [bootDone, setBootDone] = useState(false)
-
-  /* boot completes the first time any engine becomes ready */
-  useEffect(() => {
-    if (engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock') {
-      setBootDone(true)
-    }
-  }, [engineStatus])
+  /* boot completes the first time any engine becomes ready (store-derived) */
+  const bootDone = useWorkspace((s) => s.bootDone)
 
   /* hydrate, then boot the runtime */
   useEffect(() => {
     const ws = useWorkspace.getState()
-    void useProject.getState().hydrateProject()
+    const projectHydrated = useProject.getState().hydrateProject()
     void ws.hydrate().then(() => {
+      /* Sprint 11: the persisted definition index only keeps entries whose buffer / cell survived */
+      void projectHydrated.then(() => {
+        const w = useWorkspace.getState()
+        useProject.getState().pruneIndex(new Set(w.buffers.map((b) => b.id)), new Set(w.cells.map((c) => c.n)))
+        registerProjectDefinitions(useProject.getState().definitionsForCompletion())
+      })
       /* engine status mirror + transition logging */
       runtime.subscribeStatus(() => {
         const s = useWorkspace.getState()
         const prev = s.engineStatus
         s.setEngine(runtime.status, runtime.versionLabel)
+        /* a fresh image reads in CL-USER — keep the pill honest after restart/interrupt */
+        if (s.packageName !== runtime.currentPackage) s.setPackageName(runtime.currentPackage)
         if (prev !== runtime.status) {
           const names: Record<string, string> = {
             'booting': 'starting runtime…',
             'ready-ecl': 'ECL (ANSI Common Lisp → WebAssembly) ready',
+            'ready-sbcl': 'SBCL (wasm32-wasip1) ready',
             'ready-jscl': 'JSCL fallback ready (pure JS — CL subset)',
             'ready-mock': 'mock interpreter engaged (demo)',
             'error': 'runtime fault',
@@ -108,10 +112,30 @@ export default function Ide() {
           s.addLog(runtime.status === 'error' ? 'ERROR' : 'INFO', 'RUNTIME', `engine → ${names[runtime.status] ?? runtime.status}`)
         }
       })
+      runtime.subscribeProgress((p) => useWorkspace.getState().setBootProgress(p))
+      runtime.subscribeStatus(() => { if (runtime.status !== 'booting') useWorkspace.getState().setBootProgress(null) })
       runtime.subscribeBoot((line) => {
         const s = useWorkspace.getState()
         s.addBootLine(line)
-        s.addLog('INFO', 'RUNTIME', line)
+        /* verbosity: quiet keeps the transcript out of the INFO stream */
+        s.addLog(s.settings.verbosity === 'quiet' ? 'DEBUG' : 'INFO', 'RUNTIME', line)
+      })
+      /* settings → image: *print-length* on every ready transition (a fresh
+       * image forgets it) and whenever the slider moves */
+      let lastPrintLength: number | null = null
+      const applyPrintLength = (n: number) => {
+        if (runtime.engine !== 'ecl' && runtime.engine !== 'sbcl') return
+        lastPrintLength = n
+        void runtime.setPrintLength(n).then((r) => {
+          if (r.error) useWorkspace.getState().addLog('WARN', 'RUNTIME', `print length: ${r.error}`)
+        })
+      }
+      runtime.subscribeStatus(() => {
+        if (runtime.status === 'ready-ecl' || runtime.status === 'ready-sbcl') applyPrintLength(useWorkspace.getState().settings.printLength)
+      })
+      useWorkspace.subscribe((s, prev) => {
+        const n = s.settings.printLength
+        if (n !== prev.settings.printLength && n !== lastPrintLength) applyPrintLength(n)
       })
       void runtime.init().then(() => {
         const s = useWorkspace.getState()
@@ -119,7 +143,6 @@ export default function Ide() {
       }).catch(() => useWorkspace.getState().setBootFailed(true))
     })
     return () => { /* singleton runtime survives route changes */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* boot failure detection: runtime falls back to jscl/mock internally, so
@@ -148,7 +171,8 @@ export default function Ide() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated])
 
-  /* global keyboard shortcuts (design §8) */
+  /* app-wide keyboard shortcuts (design §8). NB: a comment must not begin
+   * with "global" — ESLint reads that as a globals directive. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return /* CodeMirror (or an input) already handled it */
@@ -165,9 +189,12 @@ export default function Ide() {
       else if (mod && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); ui.setPaletteOpen(true) }
       else if (mod && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); newBuffer() }
       else if (mod && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveBuffers() }
+      else if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); ui.openSearch() }
+      else if (mod && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); ui.toggleOutline() }
       else if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); ui.toggleExplorer() }
       else if (mod && e.shiftKey && (e.key === 'L' || e.key === 'l')) { e.preventDefault(); ui.setConfirm('clear-session') }
       else if (mod && e.key === '/') { e.preventDefault(); ui.setShortcutsOpen(!ui.shortcutsOpen) }
+      else if (e.key === 'F12' && e.shiftKey) { e.preventDefault(); findReferences() }
       else if (e.key === 'Escape') { if (ui.paletteOpen) ui.setPaletteOpen(false) }
     }
     window.addEventListener('keydown', onKey)
@@ -293,6 +320,7 @@ export default function Ide() {
         {showBoot && (
           <BootScreen
             lines={bootLines}
+            progress={bootProgress}
             failed={bootFailed || (!bootDone && engineStatus === 'error')}
             onRetry={() => {
               useWorkspace.getState().setBootFailed(false)

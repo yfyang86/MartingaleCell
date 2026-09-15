@@ -30,6 +30,7 @@ function DepthDiagram({ depth }: { depth: number }) {
 export default function StatusBar() {
   const engineStatus = useWorkspace((s) => s.engineStatus)
   const engineLabel = useWorkspace((s) => s.engineLabel)
+  const bootProgress = useWorkspace((s) => s.bootProgress)
   const packageName = useWorkspace((s) => s.packageName)
   const buffer = useWorkspace((s) => s.buffers.find((b) => b.id === s.activeBufferId))
   const fontSize = useWorkspace((s) => s.settings.fontSize)
@@ -51,7 +52,7 @@ export default function StatusBar() {
 
   const lastMs = [...cells].reverse().find((c) => c.status === 'done' || c.status === 'error')?.durationMs
   const balance = buffer ? parenBalance(buffer.content) : 0
-  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
+  const ready = engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' || engineStatus === 'ready-jscl' || engineStatus === 'ready-mock'
 
   return (
     <footer className="flex h-7 shrink-0 items-center justify-between gap-3 border-t border-hairline bg-panel px-3 font-mono text-[11.5px] text-secondary">
@@ -59,9 +60,9 @@ export default function StatusBar() {
         <span className="flex items-center gap-1.5" title={engineLabel || engineStatus}>
           <span className={cn(
             'h-1.5 w-1.5 rounded-full',
-            engineStatus === 'ready-ecl' ? 'bg-success' : engineStatus === 'ready-jscl' ? 'bg-warning' : engineStatus === 'ready-mock' ? 'bg-muted' : engineStatus === 'booting' ? 'animate-pulse bg-warning' : 'bg-error',
+            engineStatus === 'ready-ecl' || engineStatus === 'ready-sbcl' ? 'bg-success' : engineStatus === 'ready-jscl' ? 'bg-warning' : engineStatus === 'ready-mock' ? 'bg-muted' : engineStatus === 'booting' ? 'animate-pulse bg-warning' : 'bg-error',
           )} />
-          <span className="hidden sm:inline">{engineLabel || 'booting'}</span>
+          <span className="hidden sm:inline" data-testid="status-engine">{engineLabel || (bootProgress ? `booting · ${bootProgress.file} ${(bootProgress.loaded / 1e6).toFixed(1)}${bootProgress.total ? ` / ${(bootProgress.total / 1e6).toFixed(1)}` : ''} MB` : 'booting')}</span>
         </span>
         <span className="text-muted">{packageName}</span>
         <button

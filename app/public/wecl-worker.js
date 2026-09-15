@@ -27,8 +27,15 @@
  *     (EXT:CD does NOT — reading it throws SIMPLE-READER-ERROR at bootstrap).
  *
  * Protocol
- *   in : {type:'eval', id, code}
- *      | {type:'load-project', id, files:[{path, content}]}
+ *   in : {type:'eval', id, code, compile?, debug?}
+ *        (compile: bytecodes-compile each form; debug: pause on error)
+ *      | {type:'restart', id, index, value?}  answer for a paused job
+ *        (index into the ;;RESTART: list, -1 declines; value = Lisp form)
+ *      | {type:'input', id, text}   a line for a job waiting on stdin
+ *        (;;READ-WAIT); text null = end of file
+ *      | {type:'load-project', id, files:[{path, content}], debug?}
+ *        (debug: a failing project form pauses with SKIP-FORM / RETRY /
+ *         STORE-VALUE / DEFINE-FUNCTION / ABORT-LOAD restarts)
  *   out: {type:'boot', line} | {type:'ready'} | {type:'bootfail', message}
  *        {type:'stdout', id, text} | {type:'stderr', id, text}
  *        {type:'done', id} | {type:'joberror', id, message}
@@ -36,9 +43,18 @@
  *        {type:'load-note', id, note}
  *        {type:'crash', message}
  *
+ * Every eval job ends with a ;;PACKAGE: <name> stdout marker (the package
+ * the NEXT job will read in — (in-package …) persists across cells).
+ * An unhandled condition prints, on stderr, ;;ERRTYPE: <type-of>, then
+ * ;;DETAIL: key|value per interesting condition slot, then ;;FRAME: <fn>
+ * per named user frame (innermost first, captured at signal time), then
+ * the existing ;;ERROR: <report>.
  * Project loads additionally stream structured markers on stdout (parsed
  * main-side, never shown as output): ;;FILE: path|status|message,
- * ;;PKG: name|external-count, ;;SYM: pkg|symbol.
+ * ;;PKG: name|external-count, ;;SYM: pkg|symbol, and
+ * ;;DEF: path|byte-offset|NAME|kind per defining form (go-to-definition).
+ * Warnings raised while a project form loads are located:
+ * ;;WARNING: path|byte-offset|text.
  *
  * All wecl_* functions are Asyncify async — always awaited, always serialized.
  */
@@ -95,35 +111,212 @@ var CC_HELPER_SRC = [
   '(defpackage :cc (:use :cl) (:export :eval-string :load-project :package-install :package-list :package-uninstall :package-load))',
   '(in-package :cc)',
   '(defvar *eval-package* (find-package :cl-user))',
+  /* (path . byte-offset) of the project form being loaded, so warnings and
+   * definitions can be located — bound in %load-file-forms (Sprint 6) */
+  '(defvar *load-context* nil)',
   '(defun %report (e)',
   '  (let ((s (princ-to-string e)))',
   '    (if (and (> (length s) 1) (char= (char s 0) #\\#))',
   '        (format nil "~A signalled" (type-of e))',
   '        s)))',
+  /* ;;WARNING: text  — or, while a project form is loading,
+   * ;;WARNING: /project/path|byte-offset|text (a located warning) */
+  '(defun %say-warning (msg)',
+  '  (if *load-context*',
+  '      (format *error-output* "~&;;WARNING: ~A|~D|~A~%"',
+  '              (substitute #\\/ #\\| (princ-to-string (car *load-context*)))',
+  '              (or (cdr *load-context*) 0)',
+  '              (substitute #\\Space #\\Newline (princ-to-string msg)))',
+  '      (format *error-output* "~&;;WARNING: ~A~%" msg)))',
   '(defun %warn (w)',
-  '  (format *error-output* "~&;;WARNING: ~A~%" (%report w))',
+  '  (%say-warning (%report w))',
   '  (let ((r (find-restart \'muffle-warning w)))',
   '    (when r (invoke-restart r))))',
+  /* ---- honest condition reporting ----
+   * %note-error runs INSIDE handler-bind, i.e. at signal time before the
+   * stack unwinds, so the invocation-history stack (si::ihs-*) still holds
+   * the user frames. It prints the real condition type and the named user
+   * frames (innermost first) as markers; the outer handler-case then
+   * unwinds and prints ;;ERROR: as before. A user's own inner handler-case
+   * runs first and unwinds past us, so these markers only appear for
+   * conditions that really reach the top level. */
+  '(defun %frame-name (i)',
+  '  (let* ((f (ignore-errors (si::ihs-fun i)))',
+  '         (n (and f (ignore-errors (si::compiled-function-name f)))))',
+  '    (and n (symbolp n) n)))',
+  '(defun %user-frames ()',
+  '  (let ((cc (find-package :cc)) (si (find-package :si)))',
+  '    (loop for i from (si::ihs-top) downto 1',
+  '          for n = (%frame-name i)',
+  '          until (eq n (quote eval-one))',
+  '          when (and n',
+  '                    (not (eq (symbol-package n) cc))',
+  '                    (not (eq (symbol-package n) si)))',
+  '            collect (prin1-to-string n))))',
+  /* condition slots worth showing: printed as ;;DETAIL: key|value */
+  '(defun %condition-details (e)',
+  '  (let ((out nil))',
+  '    (flet ((add (k v) (push (cons k (%oneline (handler-case (prin1-to-string v) (serious-condition () "?")))) out)))',
+  '      (handler-case',
+  '          (progn',
+  '            (when (typep e (quote type-error))',
+  '              (add "datum" (type-error-datum e))',
+  '              (add "expected" (type-error-expected-type e)))',
+  '            (when (typep e (quote cell-error))',
+  '              (add "name" (cell-error-name e)))',
+  '            (when (typep e (quote arithmetic-error))',
+  '              (add "operation" (arithmetic-error-operation e))',
+  '              (add "operands" (arithmetic-error-operands e)))',
+  '            (when (typep e (quote package-error))',
+  '              (add "package" (package-error-package e)))',
+  '            (when (typep e (quote file-error))',
+  '              (add "pathname" (file-error-pathname e)))',
+  '            (when (typep e (quote stream-error))',
+  '              (add "stream" (stream-error-stream e))))',
+  '        (serious-condition () nil)))',
+  '    (nreverse out)))',
+  '(defun %note-error (e)',
+  '  (handler-case',
+  '      (progn',
+  '        (format *error-output* "~&;;ERRTYPE: ~A~%" (type-of e))',
+  '        (dolist (d (%condition-details e))',
+  '          (format *error-output* "~&;;DETAIL: ~A|~A~%" (car d) (cdr d)))',
+  '        (dolist (f (%user-frames))',
+  '          (format *error-output* "~&;;FRAME: ~A~%" f)))',
+  '    (serious-condition () nil)))',
+  /* evalMode "compile": every top-level form goes through the bytecodes
+   * compiler as a lambda before it runs (verified in this image). */
+  '(defvar *eval-compile* nil)',
+  '(defun %run (form)',
+  '  (if *eval-compile*',
+  '      (funcall (compile nil (list (quote lambda) (quote ()) form)))',
+  '      (eval form)))',
+  /* ---- interactive debugger (Sprint 3) ----
+   * For a job sent with debug:true, an unhandled error PAUSES the image
+   * inside the handler-bind handler: the live restarts are printed as
+   * markers and js-wait suspends the wasm on a promise that the worker
+   * resolves when the page posts {type:'restart', id, index, value?}
+   * (see __ccDebugWait below). The chosen restart is invoked from the
+   * handler (a non-local exit); a decline (index -1) returns normally and
+   * the outer handler-case reports ;;ERROR: exactly as before.
+   *   ;;DEBUG: <report>            start of a pause block
+   *   ;;RESTART: i|NAME|<report>   one line per live restart
+   *   ;;DEBUG-WAIT                 block complete, image suspended
+   *   ;;DEBUG-NOTE: <text>         a value form failed; re-pausing
+   * The image establishes no restarts of its own for top-level errors, so
+   * eval-one adds RETRY and ABORT; user restart-case restarts are listed
+   * before them (innermost first). */
+  '(defvar *debug-enabled* nil)',
+  '(defvar *debug-condition* nil)',
+  '(defun %restart-report (r)',
+  '  (%oneline (handler-case (princ-to-string r)',
+  '              (serious-condition () (string (restart-name r))))))',
+  '(defun %debug-choice ()',
+  '  (handler-case',
+  '      (eu.turtleware.wecl/implementation::js-wait "__ccDebugWait()")',
+  '    (serious-condition () "-1")))',
+  '(defun %debug-pause (e)',
+  '  (%note-error e)',
+  '  (setf *debug-condition* e)',
+  '  (when *debug-enabled*',
+  '    (let ((restarts (compute-restarts e)))',
+  '      (loop',
+  '        (handler-case (%flush-out) (serious-condition () nil))',
+  '        (format *error-output* "~&;;DEBUG: ~A~%" (%oneline (%report e)))',
+  '        (loop for r in restarts for i from 0',
+  '              do (format *error-output* "~&;;RESTART: ~D|~A|~A~%"',
+  '                         i (restart-name r) (%restart-report r)))',
+  '        (format *error-output* "~&;;DEBUG-WAIT~%")',
+  '        (finish-output)',
+  '        (let* ((choice (string-trim " " (%debug-choice)))',
+  '               (sp (position #\\Space choice))',
+  '               (idx (parse-integer choice :end sp :junk-allowed t))',
+  '               (r (and idx (>= idx 0) (< idx (length restarts)) (nth idx restarts))))',
+  '          (unless r (return nil))',
+  '          (if sp',
+  '              (let ((val (handler-case (eval (read-from-string (subseq choice (1+ sp))))',
+  '                           (serious-condition (ve)',
+  '                             (format *error-output* "~&;;DEBUG-NOTE: value form failed: ~A~%" (%report ve))',
+  '                             (finish-output)',
+  '                             (quote %cc-bad-value)))))',
+  '                (unless (eq val (quote %cc-bad-value))',
+  '                  (invoke-restart r val)))',
+  '              (invoke-restart r)))))))',
   '(defun eval-one (form)',
   '  (handler-case',
-  '      (let ((vals (handler-bind ((warning #\'%warn))',
-  '                    (multiple-value-list (eval form)))))',
+  '      (let ((vals (restart-case',
+  '                      (handler-bind ((warning #\'%warn)',
+  '                                     (serious-condition #\'%debug-pause))',
+  '                        (multiple-value-list (%run form)))',
+  '                    (retry ()',
+  '                      :report "Retry evaluating this form"',
+  '                      (return-from eval-one (eval-one form)))',
+  /* set-and-retry restarts: only offered (via :test) when the condition
+   * is the matching cell-error — the two mistakes every REPL session makes */
+  /* NB: invoke-restart re-checks :test with NIL for the condition, so the
+   * tests must accept NIL or the restart reports "not active" */
+  '                    (store-value (v)',
+  '                      :test (lambda (c) (or (null c) (typep c (quote unbound-variable))))',
+  '                      :report "Set the variable to a value, then retry this form"',
+  '                      (setf (symbol-value (cell-error-name *debug-condition*)) v)',
+  '                      (return-from eval-one (eval-one form)))',
+  '                    (define-function (f)',
+  '                      :test (lambda (c) (or (null c) (typep c (quote undefined-function))))',
+  '                      :report "Define the function (a lambda or a function name), then retry this form"',
+  '                      (setf (symbol-function (cell-error-name *debug-condition*)) (coerce f (quote function)))',
+  '                      (return-from eval-one (eval-one form)))',
+  '                    (abort ()',
+  '                      :report "Abort this form and return to top level"',
+  '                      (format *error-output* "~&;;ERROR: ~A~%"',
+  '                              (if *debug-condition* (%report *debug-condition*) "aborted"))',
+  '                      (return-from eval-one nil)))))',
+  /* one ;;=> line per value: a value that prints with spaces (#<"SMOKE" package>)
+   * is still one value main-side (Sprint 12) */
+  /* *print-pretty* nil: the pretty printer would wrap a long value over
+   * several lines and only the first would be taken as the value (Sprint 13) */
   '        (if vals',
-  '            (format t "~&;;=>~{ ~S~}~%" vals)',
-  '            (format t "~&;;=> ; no values~%")))',
+  '            (let ((*print-pretty* nil)) (dolist (v vals) (format t "~&;;=> ~S~%" v)))',
+  '            (format t "~&;;=> ; no values~%"))',
+  '        t)',
   '    (serious-condition (e)',
-  '      (format *error-output* "~&;;ERROR: ~A~%" (%report e)))))',
-  '(defun eval-string (src)',
-  '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*)))',
+  '      (format *error-output* "~&;;ERROR: ~A~%" (%report e))',
+  '      nil)))',
+  /* *package* is rebound per job so a reader error can never leave the image
+   * in a half-switched state, BUT the binding is copied back into
+   * *eval-package* when the job ends: (in-package :foo) in one cell is
+   * honored by every later cell, exactly like a terminal REPL. The final
+   * ;;PACKAGE: marker keeps the IDE's package pill in sync (parsed
+   * main-side, never shown as output). */
+  /* PATH (the buffer name, when the page knows it) makes each successfully
+   * evaluated definition print ;;DEF: path|offset|NAME|kind, offset being
+   * the form's position in SRC — same probe as the project loader */
+  '(defun eval-string (src &key compile debug path)',
+  '  (let ((*package* (or *eval-package* (find-package :cl-user) *package*))',
+  '        (*eval-compile* compile)',
+  '        (*debug-enabled* debug)',
+  '        (*debug-condition* nil))',
+  '    (handler-case (%stdin-reset) (serious-condition () nil))',
   '    (with-input-from-string (in src)',
-  '      (loop for form = (handler-case (read in nil :eof)',
-  '                         (serious-condition (e)',
-  '                           (format *error-output* "~&;;ERROR: reader: ~A~%" (%report e))',
-  '                           :cc-read-fail))',
-  '            until (eq form :eof)',
-  '            do (progn',
-  '                 (unless (eq form :cc-read-fail) (eval-one form))',
-  '                 (finish-output))))))',
+  '      (loop',
+  '        (when path (handler-case (%skip-blank in) (serious-condition () nil)))',
+  '        (let* ((pos (or (ignore-errors (file-position in)) 0))',
+  '               (form (handler-case (read in nil :eof)',
+  '                       (serious-condition (e)',
+  '                         (format *error-output* "~&;;ERROR: reader: ~A~%" (%report e))',
+  '                         :cc-read-fail))))',
+  '          (when (eq form :eof) (return))',
+  '          (unless (eq form :cc-read-fail)',
+  '            (when (and (eval-one form) path) (%say-def path pos form)))',
+  '          (finish-output))))',
+  '    (setf *eval-package* *package*)',
+  '    (format t "~&;;PACKAGE: ~A~%" (%package-label *package*))',
+  '    (finish-output)))',
+  /* shortest name/nickname, so the pill reads CL-USER, not COMMON-LISP-USER */
+  '(defun %package-label (p)',
+  '  (let ((names (remove nil (cons (package-name p) (package-nicknames p)))))',
+  '    (if names',
+  '        (first (sort (copy-list names) (function <) :key (function length)))',
+  '        "CL-USER")))',
   ';;; ---- project loader ----',
   '(defun %oneline (s)',
   '  (substitute #\\Space #\\Newline (substitute #\\/ #\\| (princ-to-string s))))',
@@ -209,16 +402,35 @@ var CC_HELPER_SRC = [
   '            rest))',
   '        (when (and (plusp (length trimmed)) (char= (char trimmed 0) #\\/))',
   '          trimmed))))',
+  /* Sprint 29: every series path on a plot/replot line -- the first quoted
+   * string after the keyword and each one that follows a comma (a quoted
+   * title "..." inside a series is skipped), mirroring the browser parser */
+  '(defun %plot-line-paths (line)',
+  '  ;; scan after the plot/replot keyword; a series starts at the line start',
+  '  ;; or after a comma, and is a data file only when its first non-blank',
+  '  ;; character is a quote (Sprint 30: `sin(x) title "s"` ships no file)',
+  '  (let* ((paths nil) (n (length line)) (expect t)',
+  '         (i (let ((sp (position #\\Space line))) (if sp (1+ sp) n))))',
+  '    (loop while (< i n) do',
+  '      (let ((ch (char line i)))',
+  '        (cond ((char= ch #\\")',
+  '               (let ((q2 (position #\\" line :start (1+ i))))',
+  '                 (unless q2 (return))',
+  '                 (when (and expect (> q2 (1+ i)))',
+  '                   (pushnew (subseq line (1+ i) q2) paths :test (function string=)))',
+  '                 (setf expect nil i (1+ q2))))',
+  '              ((char= ch #\\,) (setf expect t) (incf i))',
+  '              ((member ch (quote (#\\Space #\\Tab))) (incf i))',
+  '              (t (setf expect nil) (incf i)))))',
+  '    (nreverse paths)))',
   '(defun %plot-data-paths (script)',
   '  (let ((paths nil) (start 0) (n (length script)))',
   '    (loop',
   '      (let ((eol (or (position #\\Newline script :start start) n)))',
   '        (let ((line (string-trim (quote (#\\Space #\\Tab #\\Return)) (subseq script start eol))))',
   '          (when (or (%starts-with line "plot ") (%starts-with line "replot "))',
-  '            (let ((q1 (position #\\" line)))',
-  '              (when q1',
-  '                (let ((q2 (position #\\" line :start (1+ q1))))',
-  '                  (when q2 (pushnew (subseq line (1+ q1) q2) paths :test (function string=))))))))',
+  '            (dolist (p (%plot-line-paths line))',
+  '              (pushnew p paths :test (function string=)))))',
   '        (when (>= eol n) (return))',
   '        (setf start (1+ eol))))',
   '    (nreverse paths)))',
@@ -334,6 +546,32 @@ var CC_HELPER_SRC = [
    * themselves naturally when the form is evaluated. Per-form failures are
    * reported as ;;WARNING: on stderr (a raw ;;ERROR: would mark the whole
    * load job as failed main-side) and folded into the ;;FILE: status. */
+  /* skip whitespace AND ;-comments so file-position lands on the form
+   * itself (read consumes comments, peek-char only skips whitespace) */
+  '(defun %skip-block-comment (in)',
+  '  ;; called after the opening #| was consumed; handles nesting',
+  '  (let ((depth 1))',
+  '    (loop while (> depth 0)',
+  '      do (let ((c (read-char in nil nil)))',
+  '           (cond ((null c) (return))',
+  '                 ((and (eql c #\\|) (eql (peek-char nil in nil nil) #\\#))',
+  '                  (read-char in) (decf depth))',
+  '                 ((and (eql c #\\#) (eql (peek-char nil in nil nil) #\\|))',
+  '                  (read-char in) (incf depth)))))))',
+  '(defun %skip-blank (in)',
+  '  ;; skip whitespace, ; comments and #| |# comments so that the recorded',
+  '  ;; file-position is the start of the next form',
+  '  (loop',
+  '    (peek-char t in nil nil)',
+  '    (let ((c (peek-char nil in nil nil)))',
+  '      (cond ((eql c #\\;) (read-line in nil nil))',
+  '            ((eql c #\\#)',
+  '             (let ((p (file-position in)))',
+  '               (read-char in)',
+  '               (if (eql (peek-char nil in nil nil) #\\|)',
+  '                   (progn (read-char in) (%skip-block-comment in))',
+  '                   (progn (file-position in p) (return)))))',
+  '            (t (return))))))',
   '(defun %load-file-forms (path)',
   '  (let ((nok 0) (nerr 0) (first-err nil))',
   '    (handler-case',
@@ -342,37 +580,103 @@ var CC_HELPER_SRC = [
   '                (*load-pathname* (pathname path))',
   '                (*load-truename* (pathname path)))',
   '            (loop',
-  '              (let ((form (handler-case (read in nil :eof)',
-  '                            (serious-condition (e)',
-  '                              (setf first-err (or first-err (format nil "reader: ~A" (%report e))))',
-  '                              :cc-read-fail))))',
+  '              (%skip-blank in)',
+  '              (let* ((pos (or (ignore-errors (file-position in)) 0))',
+  '                     (*load-context* (cons path pos))',
+  '                     (form (handler-case (read in nil :eof)',
+  '                             (serious-condition (e)',
+  '                               (setf first-err (or first-err (format nil "reader: ~A" (%report e))))',
+  '                               :cc-read-fail))))',
   '                (cond ((eq form :eof) (return))',
   '                      ((eq form :cc-read-fail)',
   '                       (incf nerr)',
-  '                       (format *error-output* "~&;;WARNING: ~A: ~A~%" path first-err)',
+  '                       (%say-warning first-err)',
   '                       (return))',
   '                      (t',
-  '                       (handler-case',
-  '                           (progn',
-  '                             (handler-bind ((warning (function %warn))) (eval form))',
-  '                             (incf nok))',
-  '                         (serious-condition (e)',
-  '                           (incf nerr)',
-  '                           (setf first-err (or first-err (%report e)))',
-  '                           (format *error-output* "~&;;WARNING: ~A: ~A~%" path (%report e))))))))))',
+  '                       (let ((r (%load-one-form path form)))',
+  '                         (case r',
+  '                           (:ok (incf nok) (%say-def path pos form))',
+  '                           (:abort-load',
+  '                            (incf nerr)',
+  '                            (setf first-err (or first-err "load aborted from the debugger"))',
+  '                            (setf *load-aborted* t)',
+  '                            (return))',
+  '                           (t (incf nerr) (setf first-err (or first-err r)))))))))))',
   '      (serious-condition (e)',
   '        (setf first-err (or first-err (%report e)))',
   '        (when (zerop nerr) (incf nerr))))',
   '    (values nok nerr first-err)))',
+  /* One project form through the debugger (Sprint 5). With debug on, an
+   * unhandled error pauses the image with load-specific restarts; with
+   * debug off (or a decline) the form is skipped exactly as before and the
+   * failure is folded into the file status. Returns :ok, :abort-load, or
+   * the report string of the skipped form. */
+  '(defvar *load-aborted* nil)',
+  /* ;;DEF: path|byte-offset|NAME|kind for every defining form a project
+   * file evaluated — the page turns these into go-to-definition targets */
+  '(defvar *def-heads* (list "DEFUN" "DEFMACRO" "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFCLASS"',
+  '                           "DEFSTRUCT" "DEFGENERIC" "DEFMETHOD" "DEFTYPE" "DEFINE-CONDITION" "DEFPACKAGE"))',
+  '(defun %def-name (n)',
+  '  (cond ((and (consp n) (symbolp (car n)) (string= (symbol-name (car n)) "SETF") (consp (cdr n)))',
+  '         (format nil "(SETF ~A)" (%def-name (cadr n))))',
+  '        ((consp n) (%def-name (car n)))',
+  '        ((symbolp n) (symbol-name n))',
+  '        ((stringp n) (string-upcase n))',
+  '        (t (%oneline (prin1-to-string n)))))',
+  '(defun %say-def (path pos form)',
+  '  (handler-case',
+  '      (when (and (consp form) (symbolp (car form)) (consp (cdr form))',
+  '                 (member (symbol-name (car form)) *def-heads* :test (function string=)))',
+  '        (format t "~&;;DEF: ~A|~D|~A|~A~%"',
+  '                (%oneline path) pos (%def-name (cadr form)) (string-downcase (symbol-name (car form))))',
+  '        (finish-output))',
+  '    (serious-condition () nil)))',
+  '(defun %load-one-form (path form)',
+  '  (loop',
+  '    (let ((outcome',
+  '            (restart-case',
+  '                (handler-case',
+  '                    (progn',
+  '                      (handler-bind ((warning (function %warn))',
+  '                                     (serious-condition (function %debug-pause)))',
+  '                        (eval form))',
+  '                      :ok)',
+  '                  (serious-condition (e)',
+  '                    (%say-warning (%report e))',
+  '                    (%report e)))',
+  '              (skip-form ()',
+  '                :report "Skip this form and keep loading the project"',
+  '                (let ((msg (if *debug-condition* (%report *debug-condition*) "skipped")))',
+  '                  (%say-warning (format nil "~A (skipped)" msg))',
+  '                  msg))',
+  '              (retry ()',
+  '                :report "Retry this form"',
+  '                :cc-retry)',
+  '              (store-value (v)',
+  '                :test (lambda (c) (or (null c) (typep c (quote unbound-variable))))',
+  '                :report "Set the variable to a value, then retry this form"',
+  '                (setf (symbol-value (cell-error-name *debug-condition*)) v)',
+  '                :cc-retry)',
+  '              (define-function (f)',
+  '                :test (lambda (c) (or (null c) (typep c (quote undefined-function))))',
+  '                :report "Define the function (a lambda or a function name), then retry this form"',
+  '                (setf (symbol-function (cell-error-name *debug-condition*)) (coerce f (quote function)))',
+  '                :cc-retry)',
+  '              (abort-load ()',
+  '                :report "Stop loading the project here"',
+  '                :abort-load))))',
+  '      (unless (eq outcome :cc-retry) (return outcome)))))',
   '(defun %manual-load-ordered (files)',
   '  (dolist (f files)',
-  '    (multiple-value-bind (nok nerr first-err) (%load-file-forms f)',
-  '      (cond ((zerop nerr)',
-  '             (%say-file f "ok" (format nil "loaded (~A form~:P)" nok)))',
-  '            ((plusp nok)',
-  '             (%say-file f "warn" (format nil "~A/~A forms ok -- ~A" nok (+ nok nerr) first-err)))',
-  '            (t',
-  '             (%say-file f "error" (or first-err "load failed")))))))',
+  '    (if *load-aborted*',
+  '        (%say-file f "error" "not loaded -- load aborted from the debugger")',
+  '        (multiple-value-bind (nok nerr first-err) (%load-file-forms f)',
+  '          (cond ((zerop nerr)',
+  '                 (%say-file f "ok" (format nil "loaded (~A form~:P)" nok)))',
+  '                ((plusp nok)',
+  '                 (%say-file f "warn" (format nil "~A/~A forms ok -- ~A" nok (+ nok nerr) first-err)))',
+  '                (t',
+  '                 (%say-file f "error" (or first-err "load failed"))))))))',
   '(defun %package-first (files)',
   '  (sort (copy-list files)',
   '        (lambda (a b)',
@@ -473,8 +777,11 @@ var CC_HELPER_SRC = [
   '                               (package-name (car found))',
   '                               (string-downcase (package-name (car found)))',
   '                               (string-downcase (symbol-name (cdr found))))))))))',
-  '(defun load-project (files)',
-  '  (let* ((asds (remove-if-not (lambda (f) (%ext= f ".asd")) files))',
+  '(defun load-project (files &key debug)',
+  '  (setf *load-aborted* nil)',
+  '  (let* ((*debug-enabled* debug)',
+  '         (*debug-condition* nil)',
+  '         (asds (remove-if-not (lambda (f) (%ext= f ".asd")) files))',
   '         (lisps (remove-if-not (lambda (f) (or (%ext= f ".lisp") (%ext= f ".lsp") (%ext= f ".cl")))',
   '                               files)))',
   '    (%install-ext-polyfills)',
@@ -645,6 +952,68 @@ var CC_HELPER_SRC = [
   '    (format t "~&;; package ~A uninstalled — files removed from /modules/~A/~%" nm nm)',
   '    (format t ";; note: definitions already loaded remain in the image until the runtime restarts~%")',
   '    t))',
+  /* ---- standard input (Sprint 4) ----
+   * The image's fd-0 stream has no reader in wasm. %stdin is a Gray
+   * character input stream whose buffer holds one line; when it runs dry
+   * it prints ;;READ-WAIT (stderr, so a with-output-to-string around the
+   * read cannot swallow it) and suspends on js-wait until the page answers
+   * {type:'input', id, text}. A lone #\Eot (code 4) means end of file. It
+   * is installed as *standard-input* and as the input half of *terminal-io*
+   * (so *query-io* / y-or-n-p work) at bootstrap. */
+  '(defclass %stdin (gray:fundamental-character-input-stream)',
+  '  ((buf :initform "" :accessor %sbuf)',
+  '   (pos :initform 0 :accessor %spos)',
+  '   (eof :initform nil :accessor %seof)))',
+  /* Emscripten's TTY holds a partial stdout line (a prompt like "Name? ")
+   * until a newline arrives; %flush-out asks the worker to push it through
+   * Module.print NOW, so the prompt reaches the cell before the wait marker. */
+  '(defun %flush-out ()',
+  '  (finish-output)',
+  '  (handler-case (eu.turtleware.wecl/implementation::js-eval "__ccFlush()")',
+  '    (serious-condition () nil))',
+  '  nil)',
+  '(defun %stdin-reset ()',
+  '  ;; each job starts with a fresh stdin: no leftover line, no sticky EOF',
+  '  (let ((s *standard-input*))',
+  '    (when (typep s (quote %stdin))',
+  '      (setf (%sbuf s) "" (%spos s) 0 (%seof s) nil))))',
+  '(defun %stdin-fill (s)',
+  '  (unless (%seof s)',
+  '    (%flush-out)',
+  '    (format *error-output* "~&;;READ-WAIT~%")',
+  '    (finish-output *error-output*)',
+  '    (let ((line (handler-case',
+  '                    (eu.turtleware.wecl/implementation::js-wait "__ccReadWait()")',
+  '                  (serious-condition () (string (code-char 4))))))',
+  '      (if (and (= (length line) 1) (char= (char line 0) (code-char 4)))',
+  '          (setf (%seof s) t (%sbuf s) "" (%spos s) 0)',
+  '          (setf (%sbuf s) (concatenate (quote string) line (string #\\Newline))',
+  '                (%spos s) 0)))))',
+  '(defmethod gray:stream-read-char ((s %stdin))',
+  '  (when (>= (%spos s) (length (%sbuf s))) (%stdin-fill s))',
+  '  (if (>= (%spos s) (length (%sbuf s)))',
+  '      :eof',
+  '      (prog1 (char (%sbuf s) (%spos s)) (incf (%spos s)))))',
+  '(defmethod gray:stream-unread-char ((s %stdin) c)',
+  '  (declare (ignore c))',
+  '  (when (> (%spos s) 0) (decf (%spos s)))',
+  '  nil)',
+  '(defmethod gray:stream-peek-char ((s %stdin))',
+  '  (when (>= (%spos s) (length (%sbuf s))) (%stdin-fill s))',
+  '  (if (>= (%spos s) (length (%sbuf s))) :eof (char (%sbuf s) (%spos s))))',
+  '(defmethod gray:stream-listen ((s %stdin))',
+  '  (< (%spos s) (length (%sbuf s))))',
+  '(defmethod gray:stream-clear-input ((s %stdin))',
+  '  (setf (%sbuf s) "" (%spos s) 0)',
+  '  nil)',
+  '(defun %install-stdin ()',
+  '  (handler-case',
+  '      (let ((in (make-instance (quote %stdin))))',
+  '        (setf *standard-input* in)',
+  '        (setf *terminal-io* (make-two-way-stream in *standard-output*))',
+  '        t)',
+  '    (serious-condition () nil)))',
+  '(%install-stdin)',
   /* make the four symbols read unqualified from CL-USER sessions */
   '(import (list (find-symbol (string :package-install) (find-package :cc))',
   '              (find-symbol (string :package-list) (find-package :cc))',
@@ -655,6 +1024,18 @@ var CC_HELPER_SRC = [
 
 function escapeLispString(src) {
   return String(src).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/* A condition that escapes the helper library at the top level of
+ * wecl_eval (a bug in cc itself, not in user code — user errors are handled
+ * inside eval-string / load-project) would enter the ECL debugger, which
+ * waits for terminal input for ever: a silent worker hang. Every top-level
+ * call is therefore wrapped so such a bug is reported as ;;ERROR: instead. */
+function guardTopLevel(form) {
+  return '(handler-case ' + form +
+    ' (serious-condition (e)' +
+    '   (handler-case (format *error-output* "~&;;ERROR: internal: ~A~%" e)' +
+    '     (serious-condition () (format *error-output* "~&;;ERROR: internal: ~A signalled~%" (type-of e))))))';
 }
 
 /* wecl_eval reads ONE form — deliver the helper via a single bootstrap form.
@@ -683,12 +1064,70 @@ var CC_BOOTSTRAP =
 
 var queue = Promise.resolve();
 
-function runEval(id, code) {
+/* ---- debugger pause (Sprint 3) ----
+ * The Lisp handler calls js-wait("__ccDebugWait()"): the glue evals that
+ * expression on this global scope, awaits the promise and hands `.text()`
+ * back to Lisp. The promise is resolved by a {type:'restart'} message for
+ * the paused job. Only one pause can be pending (evals are serialized). */
+var pendingDebug = null; /* { id, resolve(text) } */
+self.__ccDebugWait = function () {
+  return new Promise(function (resolve) {
+    pendingDebug = {
+      id: currentJobId,
+      resolve: function (s) { resolve({ text: function () { return String(s); } }); },
+    };
+  });
+};
+function answerDebug(id, index, value) {
+  if (!pendingDebug || pendingDebug.id !== id) return false;
+  var p = pendingDebug;
+  pendingDebug = null;
+  p.resolve(value != null && value !== '' ? String(index) + ' ' + String(value) : String(index));
+  return true;
+}
+
+/* Push any partial stdout/stderr line the Emscripten TTY is holding through
+ * Module.print/printErr right now (prompts have no trailing newline).
+ * Called synchronously from Lisp via js-eval before a wait marker. */
+self.__ccFlush = function () {
+  try {
+    if (typeof TTY !== 'undefined' && TTY && TTY.ttys) {
+      TTY.ttys.forEach(function (tty) {
+        if (tty && tty.output && tty.output.length > 0 && tty.ops && tty.ops.fsync) tty.ops.fsync(tty);
+      });
+    }
+  } catch (e) { /* best effort */ }
+  return '';
+};
+
+/* ---- stdin (Sprint 4): same mechanism, one pending read per job ---- */
+var pendingRead = null; /* { id, resolve(text) } */
+self.__ccReadWait = function () {
+  return new Promise(function (resolve) {
+    pendingRead = {
+      id: currentJobId,
+      resolve: function (s) { resolve({ text: function () { return String(s); } }); },
+    };
+  });
+};
+/* text null/undefined = end of file (a lone EOT char, which no line can be) */
+function answerInput(id, text) {
+  if (!pendingRead || pendingRead.id !== id) return false;
+  var p = pendingRead;
+  pendingRead = null;
+  p.resolve(text == null ? '' : String(text).replace(/\r?\n$/, ''));
+  return true;
+}
+
+function runEval(id, code, opts) {
+  opts = opts || {};
   queue = queue.then(function () {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
-        return wecl_eval('(cc:eval-string "' + escapeLispString(code) + '")');
+        return wecl_eval(guardTopLevel('(cc:eval-string "' + escapeLispString(code) + '"' +
+          (opts.compile ? ' :compile t' : '') + (opts.debug ? ' :debug t' : '') +
+          (opts.path ? ' :path "' + escapeLispString(String(opts.path)) + '"' : '') + ')'));
       })
       .then(function () {
         self.postMessage({ type: 'done', id: id });
@@ -756,13 +1195,13 @@ function pathListLiteral(files) {
   }).join(' ') + ')';
 }
 
-function runLoadProject(id, files) {
+function runLoadProject(id, files, debug) {
   queue = queue.then(function () {
     currentJobId = id;
     return Promise.resolve()
       .then(function () {
         if (writeProjectFiles(files)) {
-          return wecl_eval('(cc:load-project (quote ' + pathListLiteral(files) + '))');
+          return wecl_eval(guardTopLevel('(cc:load-project (quote ' + pathListLiteral(files) + ')' + (debug ? ' :debug t' : '') + ')'));
         }
         /* no Emscripten FS — fall back to evaluating file contents in order */
         self.postMessage({
@@ -863,10 +1302,139 @@ function runModulesOp(id, msg) {
 
 self.onmessage = function (ev) {
   var m = ev.data || {};
-  if (m.type === 'eval') runEval(m.id, m.code);
-  else if (m.type === 'load-project') runLoadProject(m.id, m.files || []);
+  if (m.type === 'eval') runEval(m.id, m.code, { compile: !!m.compile, debug: !!m.debug, path: m.path || '' });
+  else if (m.type === 'restart') answerDebug(m.id, m.index, m.value);
+  else if (m.type === 'input') answerInput(m.id, m.text);
+  else if (m.type === 'load-project') runLoadProject(m.id, m.files || [], !!m.debug);
   else if (m.type === 'modules-snapshot' || m.type === 'modules-restore') runModulesOp(m.id, m);
 };
+
+/* ---- fast setjmp trampolines (Sprint 7) ----------------------------------
+ * The WECL build uses Emscripten's JavaScript setjmp/longjmp support: every
+ * call made from a C function that contains a setjmp (ECL's frame stack —
+ * i.e. the whole bytecodes interpreter) leaves wasm through an `invoke_*`
+ * import. Measured: ~10 such calls per empty loop iteration, ~3.5 µs each,
+ * which is 97 % of the interpreter's run time — the stock trampolines call
+ * `stackSave` and `dynCall_*` through the glue's assertion + Asyncify
+ * export wrappers. These replacements do the same three things (save the
+ * stack pointer, call the table entry, on a longjmp restore + setThrew)
+ * with the RAW exports and a cached table mirror: 20 000 loop iterations
+ * drop from ~1450 ms to ~45 ms in the Node harness. Semantics are
+ * unchanged, so Asyncify unwinding (debugger pauses, stdin) and longjmp
+ * (handler-case) behave exactly as before — the harness suite proves it.
+ * Installed by shadowing the worker's global WebAssembly with a thin
+ * object that patches the import table at instantiation; if anything
+ * looks unexpected the original trampolines are used. */
+(function installFastInvoke() {
+  var Orig = self.WebAssembly;
+  if (!Orig || typeof Orig.instantiate !== 'function') return;
+  var exportsRef = null;
+  var table = null;
+  var mirror = [];
+  function entry(i) {
+    var f = mirror[i];
+    if (f === undefined) { f = table.get(i); mirror[i] = f; }
+    return f;
+  }
+  function makeFast(orig, returnsValue) {
+    return function (index) {
+      if (exportsRef === null) return orig.apply(this, arguments);
+      var ex = exportsRef;
+      var sp = ex.emscripten_stack_get_current();
+      var n = arguments.length;
+      try {
+        var f = entry(index);
+        switch (n) {
+          case 1: return f();
+          case 2: return f(arguments[1]);
+          case 3: return f(arguments[1], arguments[2]);
+          case 4: return f(arguments[1], arguments[2], arguments[3]);
+          case 5: return f(arguments[1], arguments[2], arguments[3], arguments[4]);
+          default: return f.apply(null, Array.prototype.slice.call(arguments, 1));
+        }
+      } catch (e) {
+        ex._emscripten_stack_restore(sp);
+        if (e !== e + 0) throw e; /* a real JS exception, not a longjmp */
+        ex.setThrew(1, 0);
+        return returnsValue ? 0 : undefined;
+      }
+    };
+  }
+  function patch(imports) {
+    try {
+      var env = imports && imports.env;
+      if (!env) return imports;
+      Object.keys(env).forEach(function (k) {
+        var m = /^invoke_([vi]+)$/.exec(k);
+        if (m && typeof env[k] === 'function') env[k] = makeFast(env[k], m[1][0] !== 'v');
+      });
+    } catch (e) { /* leave the stock trampolines in place */ }
+    return imports;
+  }
+  function remember(result) {
+    var inst = result && result.instance ? result.instance : result;
+    var ex = inst && inst.exports;
+    if (ex && ex.__indirect_function_table &&
+        typeof ex.emscripten_stack_get_current === 'function' &&
+        typeof ex._emscripten_stack_restore === 'function' &&
+        typeof ex.setThrew === 'function') {
+      table = ex.__indirect_function_table;
+      mirror = [];
+      exportsRef = ex;
+      bootLine('fast setjmp trampolines installed');
+    } else {
+      bootLine('fast setjmp trampolines NOT installed (exports missing) — stock speed');
+    }
+    return result;
+  }
+  /* everything else (Module, Memory, Table, validate, …) is inherited from
+   * the real namespace through the prototype — nothing is copied, because
+   * some of its properties (JSTag) are read-only and assignment would throw */
+  var WA = Object.create(Orig);
+  WA.instantiate = function (src, imports) { return Orig.instantiate(src, patch(imports)).then(remember); };
+  WA.instantiateStreaming = function (src, imports) { return Orig.instantiateStreaming(src, patch(imports)).then(remember); };
+  self.WebAssembly = WA;
+})();
+
+/* ---- download progress (Sprint 27) ----
+ * The Emscripten glue fetches wecl.wasm itself; wrapping fetch for .wasm
+ * URLs hands it a Response whose body is counted on the way through, so
+ * the page can show "wecl.wasm 4.2 / 9.0 MB". Harness sandboxes without
+ * web streams get the original response. */
+(function () {
+  if (typeof self.fetch !== 'function') return;
+  var origFetch = self.fetch;
+  self.fetch = function (input, init) {
+    var url = String(input && input.url ? input.url : input);
+    var p = origFetch.apply(self, arguments);
+    if (!/\.wasm(\?|$)/.test(url)) return p;
+    return p.then(function (r) { return progressResponse(r, url.split('/').pop()); });
+  };
+})();
+
+function progressResponse(r, file) {
+  if (!r || !r.ok || !r.body || typeof ReadableStream !== 'function' || typeof Response !== 'function') return r;
+  var total = Number(r.headers && r.headers.get && r.headers.get('content-length')) || null;
+  var loaded = 0, last = 0;
+  var reader = r.body.getReader();
+  var stream = new ReadableStream({
+    pull: function (controller) {
+      return reader.read().then(function (res) {
+        if (res.done) {
+          controller.close();
+          self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total || loaded });
+          return;
+        }
+        loaded += res.value.byteLength;
+        var now = Date.now();
+        if (now - last > 80) { last = now; self.postMessage({ type: 'progress', file: file, loaded: loaded, total: total }); }
+        controller.enqueue(res.value);
+      });
+    },
+    cancel: function () { return reader.cancel(); },
+  });
+  return new Response(stream, { status: r.status, statusText: r.statusText, headers: r.headers });
+}
 
 /* ---- boot sequence ---- */
 

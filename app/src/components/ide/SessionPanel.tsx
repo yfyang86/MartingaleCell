@@ -1,16 +1,18 @@
 /* Session panel — notebook-style result cells with smart autoscroll. */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown } from 'lucide-react'
+import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown, Download } from 'lucide-react'
 import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { autocompletion, completionKeymap, completionStatus, closeCompletion, startCompletion } from '@codemirror/autocomplete'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
+import { recallStep, filterEntries, historyEntries } from '@/session/history'
+import { runIndexAll } from '@/session/lineage'
 import { CellView } from './Cell'
-import { copyText, pasteIntoEditor } from './actions'
+import { copyText, pasteIntoEditor, exportSession } from './actions'
 import { clCompletionSource } from './completion'
 import { clEditorTheme, clSyntaxExtension } from './cl-language'
 
@@ -25,9 +27,13 @@ const replTheme = EditorView.theme({
 }, { dark: true })
 
 /** Jupyter-style REPL prompt: type a form, Enter evaluates it as a new cell.
- * Shift+Enter inserts a newline; ↑/↓ walk the input history. Completion is
+ * Shift+Enter inserts a newline; ↑/↓ walk the input history (kept in the
+ * workspace store, so it survives a reload — Sprint 20). Completion is
  * the same source as the editor (CL core + project symbols) — Ctrl+Space
  * forces it, typing activates it. */
+const setText = (v: EditorView, text: string) =>
+  v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, selection: { anchor: text.length } })
+
 function ReplInput() {
   const packageName = useWorkspace((s) => s.packageName)
   const fontSize = useWorkspace((s) => s.settings.fontSize)
@@ -35,42 +41,44 @@ function ReplInput() {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const themeComp = useRef(new Compartment())
-  const historyRef = useRef<string[]>([])
   const histIdx = useRef(-1)
+  /* Ctrl+R: search the persisted history (Sprint 21) */
+  const [search, setSearch] = useState<{ query: string; sel: number } | null>(null)
+  const sessionHistory = useWorkspace((s) => s.sessionHistory)
+  const sessionCells = useWorkspace((s) => s.cells)
+  /* Sprint 31: the list also carries the session's cell inputs, with their cell numbers */
+  const entries = useMemo(() => historyEntries(sessionHistory, sessionCells), [sessionHistory, sessionCells])
+  const matches = useMemo(() => (search ? filterEntries(entries, search.query) : []), [search, entries])
+  const closeSearch = useCallback((recall?: string) => {
+    setSearch(null)
+    const v = viewRef.current
+    if (!v) return
+    if (recall !== undefined) { setText(v, recall); histIdx.current = -1 }
+    v.focus()
+  }, [])
 
   const submit = useCallback(() => {
     const v = viewRef.current
     if (!v) return
     const text = v.state.doc.toString().trim()
     if (!text) return
-    historyRef.current = [text, ...historyRef.current].slice(0, 100)
+    useWorkspace.getState().pushSessionHistory(text)
     histIdx.current = -1
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: '' } })
-    void evaluateCode(text)
+    void evaluateCode(text, undefined, { bufferId: '', from: 0, session: true })
   }, [])
-
-  const setText = (v: EditorView, text: string) =>
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, selection: { anchor: text.length } })
 
   const recall = (dir: 1 | -1): boolean => {
     const v = viewRef.current
     if (!v || completionStatus(v.state) !== null) return false
-    const text = v.state.doc.toString()
-    if (dir === 1) {
-      /* ↑: only when caret at doc start (or already walking history) and
-       * not mid-multiline-edit */
-      const atStart = v.state.selection.main.head === 0 && v.state.selection.main.anchor === 0
-      if (histIdx.current < 0 && (!atStart || text.includes('\n'))) return false
-      const next = Math.min(histIdx.current + 1, historyRef.current.length - 1)
-      if (next === histIdx.current) return false
-      histIdx.current = next
-      setText(v, historyRef.current[next])
-      return true
-    }
-    if (histIdx.current < 0) return false
-    const next = histIdx.current - 1
-    histIdx.current = next
-    setText(v, next < 0 ? '' : historyRef.current[next])
+    const step = recallStep(useWorkspace.getState().sessionHistory, {
+      idx: histIdx.current,
+      text: v.state.doc.toString(),
+      atStart: v.state.selection.main.head === 0 && v.state.selection.main.anchor === 0,
+    }, dir)
+    if (!step) return false
+    histIdx.current = step.idx
+    setText(v, step.text)
     return true
   }
 
@@ -90,7 +98,9 @@ function ReplInput() {
             {
               key: 'Enter',
               run: (v) => {
-                if (completionStatus(v.state) !== null) return false /* completion keymap accepts */
+                const st = completionStatus(v.state)
+                if (st === 'active') return false /* completion keymap accepts */
+                if (st === 'pending') closeCompletion(v) /* Enter right after typing: evaluate, do not wait for the popup */
                 submit()
                 return true
               },
@@ -107,6 +117,7 @@ function ReplInput() {
             },
             { key: 'ArrowUp', run: () => recall(1) },
             { key: 'ArrowDown', run: () => recall(-1) },
+            { key: 'Ctrl-r', run: () => { setSearch({ query: '', sel: 0 }); return true } },
             { key: 'Ctrl-Space', run: (v) => (completionStatus(v.state) !== null ? false : (startCompletion(v), true)) },
           ]),
           /* after ours → higher precedence: Enter accepts a completion when
@@ -125,11 +136,58 @@ function ReplInput() {
     viewRef.current?.dispatch({ effects: themeComp.current.reconfigure(clEditorTheme(fontSize, ligatures)) })
   }, [fontSize, ligatures])
 
+  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!search) return
+    const move = (d: number) => setSearch({ ...search, sel: matches.length ? (search.sel + d + matches.length) % matches.length : 0 })
+    if (e.key === 'ArrowDown' || (e.key === 'r' && e.ctrlKey)) { e.preventDefault(); move(1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+    else if (e.key === 'Enter') { e.preventDefault(); closeSearch(matches[search.sel]?.text) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch() }
+  }
+
   return (
-    <div className="shrink-0 border-t border-hairline bg-panel px-3 py-2">
+    <div className="relative shrink-0 border-t border-hairline bg-panel px-3 py-2">
+      {search && (
+        <div data-testid="session-history-search" className="absolute inset-x-3 bottom-full z-20 mb-1 rounded-md border border-hairline bg-raised p-1.5 shadow-modal">
+          <div className="flex items-center gap-2 px-1 pb-1">
+            <span className="select-none font-mono text-[10.5px] uppercase tracking-wide text-muted">history</span>
+            <input
+              autoFocus
+              value={search.query}
+              onChange={(e) => setSearch({ query: e.target.value, sel: 0 })}
+              onKeyDown={onSearchKey}
+              onBlur={() => closeSearch()}
+              placeholder="type to search — ↑↓ or Ctrl R move, Enter recalls, Esc closes"
+              aria-label="Search session history"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-primary outline-none placeholder:text-muted"
+            />
+          </div>
+          {matches.length === 0 ? (
+            <div className="px-1 py-1 font-mono text-[11px] text-muted">{entries.length ? 'no match' : 'no history yet'}</div>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto">
+              {matches.map((m, i) => (
+                <li key={`${i}-${m.text}`}>
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-2 rounded-sm px-1.5 py-0.5 text-left font-mono text-[11.5px] ${i === search.sel ? 'bg-steel-dim text-primary' : 'text-secondary hover:text-primary'}`}
+                    onMouseDown={(e) => { e.preventDefault(); closeSearch(m.text) }}
+                    title={m.text}
+                  >
+                    <span data-testid="history-entry" className="min-w-0 flex-1 truncate">{m.text.split('\n')[0]}{m.text.includes('\n') ? ' …' : ''}</span>
+                    {m.cell !== undefined && (
+                      <span data-testid="history-cell" className="shrink-0 rounded-sm border border-hairline px-1 text-[10px] text-muted">In [{m.cell}]</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="flex items-start gap-2 rounded-md border border-hairline bg-inset px-2.5 py-0.5 transition-colors duration-150 focus-within:border-steel/50">
         <span className="mt-px select-none whitespace-nowrap py-1 font-mono text-[12px] text-steel">{packageName}&gt;</span>
-        <div ref={hostRef} className="min-w-0 flex-1 [&_.cm-editor]:bg-transparent" />
+        <div ref={hostRef} data-testid="session-input" className="min-w-0 flex-1 [&_.cm-editor]:bg-transparent" />
       </div>
     </div>
   )
@@ -158,11 +216,14 @@ function EmptySession() {
 export default function SessionPanel() {
   const cells = useWorkspace((s) => s.cells)
   const packageName = useWorkspace((s) => s.packageName)
+  const engineStatus = useWorkspace((s) => s.engineStatus)
   const historyTrimmed = useWorkspace((s) => s.historyTrimmed)
   const setConfirm = useUi((s) => s.setConfirm)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [flashCell, setFlashCell] = useState<number | null>(null)
+  /* "run k/N" per cell, one pass per cells change (Sprint 21) */
+  const runs = useMemo(() => runIndexAll(cells), [cells])
 
   const warningCount = cells.reduce((n, c) => n + c.warnings.length, 0)
 
@@ -235,6 +296,9 @@ export default function SessionPanel() {
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Copy all as transcript" onClick={copyAll}>
             <ClipboardCopy size={14} />
           </button>
+          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Export session as Markdown (⇧click: .lisp transcript)" onClick={(e) => void exportSession(e.shiftKey ? 'lisp' : 'md')}>
+            <Download size={14} />
+          </button>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Paste into editor" onClick={() => void pasteIntoEditor()}>
             <ClipboardPaste size={14} />
           </button>
@@ -252,13 +316,25 @@ export default function SessionPanel() {
           </button>
         </div>
       </header>
+      {/* fallback rungs (Sprint 5 decision): keep them, but say what they cannot do */}
+      {(engineStatus === 'ready-jscl' || engineStatus === 'ready-mock') && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning/[0.07] px-3 py-1.5 text-[11.5px] leading-snug text-secondary">
+          <span className="mt-px shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-warning">
+            {engineStatus === 'ready-jscl' ? 'JSCL fallback' : 'demo runtime'}
+          </span>
+          <span>
+            ECL could not be loaded. This rung has no debugger, no standard input, no packages and only a subset of ANSI Common Lisp.
+            Restart the runtime once the network is back to get the real image.
+          </span>
+        </div>
+      )}
 
       {/* cells */}
       <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-3">
         {cells.length === 0 ? (
           <EmptySession />
         ) : (
-          cells.map((c) => <CellView key={c.id} cell={c} flash={flashCell === c.n} />)
+          cells.map((c) => <CellView key={c.id} cell={c} flash={flashCell === c.n} run={runs.get(c.id)} />)
         )}
       </div>
 

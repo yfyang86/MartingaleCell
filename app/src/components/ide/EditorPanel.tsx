@@ -4,31 +4,39 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X } from 'lucide-react'
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState, Compartment, Annotation, type Extension } from '@codemirror/state'
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   drawSelection, rectangularSelection,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyField, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import {
   autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap,
   startCompletion, completionStatus,
 } from '@codemirror/autocomplete'
-import { indentService, indentUnit } from '@codemirror/language'
+import { foldGutter, foldKeymap, foldState, indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
+import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON, type SerializeCache } from '@/editor/buffer-states'
+import { lispFoldService } from '@/editor/fold'
+import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { useEditorMeta } from '@/store/editor-meta'
 import { clSyntaxExtension, clEditorTheme } from './cl-language'
 import { rainbowParens } from './rainbow-parens'
 import { clCompletionSource } from './completion'
 import { lookupSymbol } from '@/lisp/symbols'
-import { depthAt, callContextAt, innermostFormAt, topLevelForms } from './lisp-utils'
+import { depthAt, callContextAt, topLevelForms } from './lisp-utils'
 import {
   registerEditor, evaluateFormAtPoint, evaluateAllForms, evaluateRegion,
   macroexpandAtPoint, copyText, pasteIntoEditor, saveBuffers, requestCloseBuffer,
+  selectEnclosingForm, gotoDefinition, findReferences, symbolAtOffset,
 } from './actions'
+
+/** Marks the transactions of the first-visit typing animation, so the
+ * update listener can tell them from real edits (which must always win). */
+const welcomeTick = Annotation.define<boolean>()
 
 /* -------- lisp-aware indentation (2-space, body-aware) -------- */
 
@@ -77,6 +85,10 @@ const lispIndent = indentService.of((context, pos) => {
 
 /* -------- context menu -------- */
 
+const EDITOR_STATES_KEY = 'conscell-editor-states-v1'
+/** state fields serialised per buffer: undo history (Sprint 18) and folds (Sprint 20) */
+const PERSISTED_FIELDS = { history: historyField, fold: foldState }
+
 interface MenuState { x: number; y: number }
 
 function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
@@ -85,6 +97,8 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
     { label: 'Evaluate region', run: evaluateRegion },
     { label: 'Macroexpand-1', run: macroexpandAtPoint },
     { label: 'Select enclosing form', kbd: 'Ctrl⇧↑', run: selectEnclosingForm },
+    { label: 'Go to definition', kbd: 'F12', run: () => gotoDefinition() },
+    { label: 'Find references', kbd: '⇧F12', run: () => findReferences() },
     { label: 'Copy', kbd: 'Ctrl C', run: () => {
         const v = getViewSafe()
         if (v) { const s = v.state.selection.main; if (!s.empty) void copyText(v.state.sliceDoc(s.from, s.to), 'Copied selection') }
@@ -116,38 +130,6 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
 
 function getViewSafe(): EditorView | null { return viewRef.current }
 const viewRef: { current: EditorView | null } = { current: null }
-
-/** Jump the editor caret to a 1-based line/col and flash the line. */
-export function jumpToPosition(line: number, col: number) {
-  const v = viewRef.current
-  if (!v) return
-  const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)))
-  const pos = Math.min(l.from + Math.max(0, col - 1), l.to)
-  v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
-  v.focus()
-  requestAnimationFrame(() => {
-    const el = v.dom.querySelector('.cm-activeLine') as HTMLElement | null
-    if (el) {
-      el.style.transition = 'none'
-      el.style.backgroundColor = 'rgba(110,168,220,0.28)'
-      requestAnimationFrame(() => {
-        el.style.transition = 'background-color 600ms ease'
-        el.style.backgroundColor = ''
-      })
-    }
-  })
-}
-
-export function selectEnclosingForm() {
-  const v = viewRef.current
-  if (!v) return
-  const doc = v.state.doc.toString()
-  const sel = v.state.selection.main
-  // grow: if a form is already fully selected, expand around it
-  const probe = sel.empty ? sel.head : Math.max(0, sel.from - 1)
-  const form = innermostFormAt(doc, probe)
-  if (form) v.dispatch({ selection: { anchor: form.from, head: form.to } })
-}
 
 /* -------- tab bar -------- */
 
@@ -187,6 +169,8 @@ function TabBar() {
             )}
             onClick={() => setActiveBuffer(b.id)}
             onContextMenu={(e) => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, id: b.id }) }}
+            data-testid="buffer-tab"
+            data-active={active ? 'true' : undefined}
           >
             <span className="text-[11px] text-muted">λ</span>
             {renaming === b.id ? (
@@ -202,7 +186,10 @@ function TabBar() {
                 }}
               />
             ) : (
-              <span className="truncate">{b.name}</span>
+              <>
+                <span className="truncate" title={b.origin?.type === 'cell' ? `Opened from cell [${b.origin.n}] — re-running that cell evaluates this buffer` : undefined}>{b.name}</span>
+                {b.origin?.type === 'cell' && <span className="rounded-sm bg-steel-dim px-1 text-[9.5px] text-steel-bright" aria-label={`from cell ${b.origin.n}`}>[{b.origin.n}]</span>}
+              </>
             )}
             {b.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-steel" title="unsaved changes" />}
             <button
@@ -268,6 +255,23 @@ function EditorSurface() {
   const lineWrap = useWorkspace((s) => s.settings.lineWrap)
   const hydrated = useWorkspace((s) => s.hydrated)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  /* Sprint 14: one EditorState per buffer so undo history never crosses a buffer switch */
+  const extensionsRef = useRef<Extension[]>([])
+  const statesRef = useRef(new BufferStates())
+  const shownBufferRef = useRef<string | null>(null)
+  /* Sprint 18: stashed states (and the shown one) persist to IndexedDB so undo history survives a reload */
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const serializeCache = useRef<SerializeCache>(new Map())
+  const persistStates = useCallback((immediate = false) => {
+    if (persistTimer.current) clearTimeout(persistTimer.current)
+    const run = () => {
+      const v = viewRef.current
+      const shown = shownBufferRef.current
+      const live = v && shown ? { id: shown, state: v.state, scrollTop: v.scrollDOM.scrollTop } : null
+      idbSet(EDITOR_STATES_KEY, statesToJSON(statesRef.current, PERSISTED_FIELDS, live, serializeCache.current)).catch(() => {})
+    }
+    if (immediate) run(); else persistTimer.current = setTimeout(run, 500)
+  }, [])
   const themeComp = useRef(new Compartment())
   const rainbowComp = useRef(new Compartment())
   const tabComp = useRef(new Compartment())
@@ -301,88 +305,152 @@ function EditorSurface() {
     const initialDoc = buf?.content ?? ''
     const doTypingWelcome = s.freshVisit && !typedRef.current && initialDoc.length > 0
 
+    /* the typing animation's timer lives here so a user edit can cancel it
+     * from inside the update listener */
+    let welcomeTimer: ReturnType<typeof setTimeout> | null = null
+    const stopWelcome = () => {
+      if (welcomeTimer) { clearTimeout(welcomeTimer); welcomeTimer = null }
+      typingWelcomeRef.current = false
+    }
+
+    const extensions: Extension[] = [
+      lineNumbers(),
+      /* Sprint 20: fold the outermost form opening on a line; the fold state is part of the persisted per-buffer state */
+      lispFoldService,
+      foldGutter({ openText: '▾', closedText: '▸' }),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      history(),
+      drawSelection(),
+      rectangularSelection(),
+      highlightSelectionMatches(),
+      EditorState.allowMultipleSelections.of(true),
+      indentUnit.of('  '),
+      lispIndent,
+      closeBrackets(),
+      autocompletion({ override: [clCompletionSource], maxRenderedOptions: 8, icons: true }),
+      clSyntaxExtension,
+      themeComp.current.of(clEditorTheme(useWorkspace.getState().settings.fontSize, useWorkspace.getState().settings.ligatures)),
+      tabComp.current.of(EditorState.tabSize.of(useWorkspace.getState().settings.tabWidth)),
+      rainbowComp.current.of(useWorkspace.getState().settings.rainbowParens ? rainbowParens() : []),
+      wrapComp.current.of(useWorkspace.getState().settings.lineWrap ? EditorView.lineWrapping : []),
+      keymap.of([
+        { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
+        { key: 'F12', run: () => { gotoDefinition(); return true } },
+        { key: 'Shift-F12', run: () => { findReferences(); return true } },
+        /* Ctrl/⌘+Shift+F: workspace search — bound here too so CodeMirror's Mod-f (in-buffer search) fallback never eats it */
+        { key: 'Mod-Shift-f', run: () => { useUi.getState().openSearch(); return true } },
+        { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
+        { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
+        { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },
+        { key: 'Mod-s', run: () => { saveBuffers(); return true } },
+        { key: 'Mod-Shift-L', run: () => { useUi.getState().setConfirm('clear-session'); return true } },
+        {
+          key: 'Ctrl-Space',
+          run: (v) => {
+            if (completionStatus(v.state) !== null) return false
+            const word = v.state.wordAt(v.state.selection.main.head)
+            const text = word ? v.state.sliceDoc(word.from, word.to) : ''
+            if (text && lookupSymbol(text) && completionStatus(v.state) === null) {
+              // completed symbol → startCompletion still shows docs on hover of the option;
+              // fall through to completion for consistency
+            }
+            return startCompletion(v)
+          },
+        },
+        { key: 'Mod-Shift-ArrowUp', run: () => { selectEnclosingForm(); return true } },
+        {
+          key: 'Alt-ArrowUp',
+          run: (v) => {
+            const forms = topLevelForms(v.state.doc.toString())
+            const head = v.state.selection.main.head
+            const prev = [...forms].reverse().find((f) => f.from < head - 1)
+            if (prev) v.dispatch({ selection: { anchor: prev.from }, scrollIntoView: true })
+            return true
+          },
+        },
+        {
+          key: 'Alt-ArrowDown',
+          run: (v) => {
+            const forms = topLevelForms(v.state.doc.toString())
+            const head = v.state.selection.main.head
+            const next = forms.find((f) => f.from > head)
+            if (next) v.dispatch({ selection: { anchor: next.from }, scrollIntoView: true })
+            return true
+          },
+        },
+        indentWithTab,
+        ...closeBracketsKeymap,
+        ...completionKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        ...foldKeymap,
+        ...defaultKeymap,
+      ]),
+      /* Ctrl/⌘+click on a symbol → go to definition */
+      EditorView.domEventHandlers({
+        mousedown: (e, v) => {
+          if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return false
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY })
+          if (pos == null) return false
+          const sym = symbolAtOffset(v.state.doc.toString(), pos)
+          if (!sym) return false
+          e.preventDefault()
+          gotoDefinition(sym)
+          return true
+        },
+      }),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) {
+          const isAnimationTick = u.transactions.length > 0 && u.transactions.every((tr) => tr.annotation(welcomeTick))
+          if (!isAnimationTick) {
+            /* a real edit during the welcome animation: the user wins —
+             * stop typing the welcome text and keep what they wrote */
+            if (typingWelcomeRef.current) stopWelcome()
+            const st = useWorkspace.getState()
+            const id = st.activeBufferId
+            if (id) st.updateBufferContent(id, u.state.doc.toString())
+            persistStates()
+          }
+        }
+        if (u.selectionSet || u.docChanged) updateMeta(u.view)
+      }),
+    ]
+    extensionsRef.current = extensions
+
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
         doc: doTypingWelcome ? '' : initialDoc,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLine(),
-          highlightActiveLineGutter(),
-          history(),
-          drawSelection(),
-          rectangularSelection(),
-          highlightSelectionMatches(),
-          EditorState.allowMultipleSelections.of(true),
-          indentUnit.of('  '),
-          lispIndent,
-          closeBrackets(),
-          autocompletion({ override: [clCompletionSource], maxRenderedOptions: 8, icons: true }),
-          clSyntaxExtension,
-          themeComp.current.of(clEditorTheme(useWorkspace.getState().settings.fontSize, useWorkspace.getState().settings.ligatures)),
-          tabComp.current.of(EditorState.tabSize.of(useWorkspace.getState().settings.tabWidth)),
-          rainbowComp.current.of(useWorkspace.getState().settings.rainbowParens ? rainbowParens() : []),
-          wrapComp.current.of(useWorkspace.getState().settings.lineWrap ? EditorView.lineWrapping : []),
-          keymap.of([
-            { key: 'Mod-Enter', run: () => { evaluateFormAtPoint(); return true } },
-            { key: 'Mod-Shift-Enter', run: () => { evaluateAllForms(); return true } },
-            { key: 'Mod-k', run: () => { const ui = useUi.getState(); ui.setPaletteOpen(!ui.paletteOpen); return true } },
-            { key: 'Mod-.', run: () => { if (useWorkspace.getState().evaluating) useUi.getState().setConfirm('interrupt'); return true } },
-            { key: 'Mod-s', run: () => { saveBuffers(); return true } },
-            { key: 'Mod-Shift-L', run: () => { useUi.getState().setConfirm('clear-session'); return true } },
-            {
-              key: 'Ctrl-Space',
-              run: (v) => {
-                if (completionStatus(v.state) !== null) return false
-                const word = v.state.wordAt(v.state.selection.main.head)
-                const text = word ? v.state.sliceDoc(word.from, word.to) : ''
-                if (text && lookupSymbol(text) && completionStatus(v.state) === null) {
-                  // completed symbol → startCompletion still shows docs on hover of the option;
-                  // fall through to completion for consistency
-                }
-                return startCompletion(v)
-              },
-            },
-            { key: 'Mod-Shift-ArrowUp', run: () => { selectEnclosingForm(); return true } },
-            {
-              key: 'Alt-ArrowUp',
-              run: (v) => {
-                const forms = topLevelForms(v.state.doc.toString())
-                const head = v.state.selection.main.head
-                const prev = [...forms].reverse().find((f) => f.from < head - 1)
-                if (prev) v.dispatch({ selection: { anchor: prev.from }, scrollIntoView: true })
-                return true
-              },
-            },
-            {
-              key: 'Alt-ArrowDown',
-              run: (v) => {
-                const forms = topLevelForms(v.state.doc.toString())
-                const head = v.state.selection.main.head
-                const next = forms.find((f) => f.from > head)
-                if (next) v.dispatch({ selection: { anchor: next.from }, scrollIntoView: true })
-                return true
-              },
-            },
-            indentWithTab,
-            ...closeBracketsKeymap,
-            ...completionKeymap,
-            ...searchKeymap,
-            ...historyKeymap,
-            ...defaultKeymap,
-          ]),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !typingWelcomeRef.current) {
-              const st = useWorkspace.getState()
-              const id = st.activeBufferId
-              if (id) st.updateBufferContent(id, u.state.doc.toString())
-            }
-            if (u.selectionSet || u.docChanged) updateMeta(u.view)
-          }),
-        ],
+        extensions,
       }),
     })
     viewRef.current = view
+    shownBufferRef.current = useWorkspace.getState().activeBufferId
+    /* restore persisted per-buffer states; the shown buffer takes its stash when the document still matches */
+    void idbGet(EDITOR_STATES_KEY).then((json) => {
+      if (viewRef.current !== view || typingWelcomeRef.current) return
+      const ws = useWorkspace.getState()
+      const restored = statesFromJSON(json, extensions, PERSISTED_FIELDS, ws.buffers.map((b) => b.id))
+      if (restored.size === 0) return
+      const shown = shownBufferRef.current
+      let shownEntry: { state: EditorState; scrollTop: number } | undefined
+      for (const [id, st] of restored.entries()) {
+        if (id === shown) shownEntry = st
+        else statesRef.current.stash(id, st.state, st.scrollTop)
+      }
+      if (shown && shownEntry) {
+        const content = ws.buffers.find((b) => b.id === shown)?.content ?? ''
+        const tmp = new BufferStates()
+        tmp.stash(shown, shownEntry.state, shownEntry.scrollTop)
+        const r = tmp.resolve(shown, content, (doc) => EditorState.create({ doc, extensions }))
+        if (r.source !== 'fresh') {
+          view.setState(r.state)
+          if (r.scrollTop !== null) scheduleScrollRestore(r.scrollTop, () => viewRef.current === view && shownBufferRef.current === shown, (top) => { view.scrollDOM.scrollTop = top }, requestAnimationFrame)
+          updateMeta(view)
+        }
+      }
+    }).catch(() => {})
     registerEditor(view)
     updateMeta(view)
 
@@ -395,24 +463,20 @@ function EditorSurface() {
       let i = 0
       const target = initialDoc
       const tick = () => {
-        if (!viewRef.current) return
+        if (!viewRef.current || !typingWelcomeRef.current) return
         i = Math.min(target.length, i + 1)
-        view.dispatch({ changes: { from: view.state.doc.length, insert: target.slice(i - 1, i) } })
-        if (i < target.length) timer = setTimeout(tick, 12)
-        else typingWelcomeRef.current = false
+        view.dispatch({
+          changes: { from: view.state.doc.length, insert: target.slice(i - 1, i) },
+          annotations: welcomeTick.of(true),
+        })
+        if (i < target.length) welcomeTimer = setTimeout(tick, 12)
+        else stopWelcome()
       }
-      let timer = setTimeout(tick, 350)
-      return () => {
-        clearTimeout(timer)
-        typingWelcomeRef.current = false
-        registerEditor(null)
-        viewRef.current = null
-        view.destroy()
-      }
+      welcomeTimer = setTimeout(tick, 350)
     }
 
     return () => {
-      typingWelcomeRef.current = false
+      stopWelcome()
       registerEditor(null)
       viewRef.current = null
       view.destroy()
@@ -420,18 +484,36 @@ function EditorSurface() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated])
 
-  // swap document when the active buffer changes
+  // switch editor state when the active buffer changes: the outgoing buffer's
+  // state (document, selection, undo history) is stashed; the incoming buffer
+  // gets its stashed state back when its document still matches the store,
+  // otherwise a fresh state from the store content. No transaction is
+  // dispatched, so a switch is never an undo step.
   useEffect(() => {
     const v = viewRef.current
     if (!v) return
     if (typingWelcomeRef.current) return // typing welcome owns the doc until done
-    const buf = useWorkspace.getState().buffers.find((b) => b.id === activeBufferId)
+    const ws = useWorkspace.getState()
+    const buf = ws.buffers.find((b) => b.id === activeBufferId)
     const content = buf?.content ?? ''
-    if (v.state.doc.toString() !== content) {
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: content } })
-      updateMeta(v)
+    const prev = shownBufferRef.current
+    if (prev === activeBufferId) {
+      /* same buffer, content changed outside the editor (e.g. a replace through the store) */
+      if (v.state.doc.toString() !== content) { v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: content } }); updateMeta(v) }
+      return
     }
-  }, [activeBufferId, updateMeta])
+    if (prev) statesRef.current.stash(prev, v.state, v.scrollDOM.scrollTop)
+    statesRef.current.prune(ws.buffers.map((b) => b.id))
+    /* the rules (restored / updated / fresh) live in src/editor/buffer-states.ts and are tested in Node */
+    const r = statesRef.current.resolve(activeBufferId, content, (doc) => EditorState.create({ doc, extensions: extensionsRef.current }))
+    v.setState(r.state)
+    if (r.scrollTop !== null) {
+      scheduleScrollRestore(r.scrollTop, () => viewRef.current === v && shownBufferRef.current === activeBufferId, (top) => { v.scrollDOM.scrollTop = top }, requestAnimationFrame)
+    }
+    shownBufferRef.current = activeBufferId
+    updateMeta(v)
+    persistStates(true)
+  }, [activeBufferId, updateMeta, persistStates])
 
   // live settings reconfiguration
   useEffect(() => {

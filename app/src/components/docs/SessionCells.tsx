@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { TriangleAlert } from 'lucide-react'
-import { SectionHeading, CalloutDot, CalloutList, EASE_OUT } from './shared'
+import { SectionHeading, CalloutDot, CalloutList } from './shared'
+import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
 
 const CALLOUTS = [
@@ -38,6 +39,14 @@ const SPECS = [
   {
     title: 'Copy & paste',
     body: 'Copy all yields a plain-text transcript with ;;=> markers — paste it into a gist or a bug report as-is.',
+  },
+  {
+    title: 'Export',
+    body: 'The download button (or the palette) saves the session as a Markdown notebook — code, output, values, warnings, errors and plots inline as SVG — or as a .lisp transcript with results as comments that evaluates as is. Import (palette) appends the cells of a Markdown or .lisp transcript back into the session, marked as imported and re-runnable. A settings slider can clip long values in exports. Open as buffer turns a cell into a linked buffer: re-running the cell evaluates the buffer\'s current text.',
+  },
+  {
+    title: 'Run history',
+    body: 'Re-running a cell (the ↻ button, or evaluating its linked buffer) adds a run to its history. The cell shows run k/N; click it to see the runs side by side — input, status, values — with each value marked when it differs from the run before, and a changed input shown as a line diff against it. The Markdown export keeps the runs (run k/N of cell m in the heading) and an import re-links them.',
   },
   {
     title: 'Truncation',

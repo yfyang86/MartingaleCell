@@ -18,7 +18,7 @@ const KEYWORDS = new Set([
 
 interface Tok { text: string; cls: string }
 
-export function tokenizeLisp(src: string): Tok[] {
+function tokenizeLisp(src: string): Tok[] {
   const toks: Tok[] = []
   let depth = 0
   let i = 0

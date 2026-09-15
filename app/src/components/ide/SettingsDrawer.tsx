@@ -132,9 +132,6 @@ export default function SettingsDrawer() {
                 <Row label="Ligatures">
                   <Toggle value={settings.ligatures} onChange={(v) => setSettings({ ligatures: v })} />
                 </Row>
-                <Row label="Minimap">
-                  <Toggle value={settings.minimap} onChange={(v) => setSettings({ minimap: v })} />
-                </Row>
                 <Row label="Line wrap">
                   <Toggle value={settings.lineWrap} onChange={(v) => setSettings({ lineWrap: v })} />
                 </Row>
@@ -146,22 +143,58 @@ export default function SettingsDrawer() {
                 <Row label="Auto-eval on save">
                   <Toggle value={settings.autoEvalOnSave} onChange={(v) => setSettings({ autoEvalOnSave: v })} />
                 </Row>
-                <Row label="Print length">
-                  <Slider value={settings.printLength} min={10} max={1000} step={10} onChange={(v) => setSettings({ printLength: v })} />
+                <Row label="Pause in debugger on error">
+                  <Toggle value={settings.debugOnError} onChange={(v) => setSettings({ debugOnError: v })} />
                 </Row>
+                <Row label="Print length">
+                  <Slider
+                    value={settings.printLength} min={0} max={1000} step={10}
+                    format={(v) => (v === 0 ? 'nil' : String(v))}
+                    onChange={(v) => setSettings({ printLength: v })}
+                  />
+                </Row>
+                <Row label="Transcript value limit">
+                  <Slider
+                    value={settings.transcriptValueLimit ?? 0} min={0} max={2000} step={100}
+                    format={(v) => (v === 0 ? 'whole' : `${v} chars`)}
+                    onChange={(v) => setSettings({ transcriptValueLimit: v })}
+                  />
+                </Row>
+                <p className="text-[11px] leading-snug text-muted">
+                  compile: each form goes through the bytecodes compiler first. Print length sets <code className="font-mono">*print-length*</code> in the image (nil = unlimited). The transcript value limit clips long values in exported transcripts (whole = as printed).
+                </p>
               </Section>
               <Section title="Runtime">
                 <div className="rounded-md border border-hairline bg-inset px-3 py-2 font-mono text-[11.5px] text-secondary">
                   <div className="flex justify-between"><span className="text-muted">engine</span><span>{engineLabel || engineStatus}</span></div>
                   <div className="flex justify-between"><span className="text-muted">status</span><span>{engineStatus}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">source</span><span>{runtime.engine === 'ecl' ? '/wecl/ (self-hosted)' : runtime.engine === 'jscl' ? 'CDN fallback' : 'built-in'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">source</span><span>{runtime.engine === 'ecl' ? '/wecl/ (self-hosted)' : runtime.engine === 'sbcl' ? '/sbcl/ (self-hosted)' : runtime.engine === 'jscl' ? 'CDN fallback' : 'built-in'}</span></div>
                 </div>
-                <Row label="Heap size">
-                  <Segmented value={settings.heapSize} options={[256, 512, 640] as (256 | 512 | 640)[]} onChange={(v) => { setSettings({ heapSize: v }); toast('Heap size applies on next runtime restart') }} />
+                <Row label="Lisp implementation">
+                  <Segmented
+                    value={settings.engine}
+                    options={['auto', 'ecl', 'sbcl']}
+                    onChange={(v) => {
+                      if (v === settings.engine) return
+                      setSettings({ engine: v })
+                      toast(
+                        v === 'sbcl' ? 'SBCL/wasm boots on the next restart (ECL if its artifacts are missing)'
+                          : v === 'ecl' ? 'ECL boots on the next restart — no fallback to another engine'
+                            : 'Automatic: SBCL, then ECL, then JSCL, then the demo interpreter',
+                        { action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') } },
+                      )
+                    }}
+                  />
                 </Row>
-                <Row label="Boot verbosity">
+                <p className="mt-1 font-mono text-[10.5px] text-muted">
+                  auto: SBCL, then ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
+                </p>
+                <Row label="Log verbosity">
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />
                 </Row>
+                <p className="text-[11px] leading-snug text-muted">
+                  quiet: boot lines at DEBUG · normal: INFO · verbose: also engine stderr noise. Heap size is fixed by the WECL build (memory grows on demand).
+                </p>
               </Section>
               <Section title="Workspace">
                 <Row label="Autosave">

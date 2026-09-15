@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { ChevronRight, CircleAlert } from 'lucide-react'
-import { SectionHeading, CalloutDot, CalloutList, EASE_OUT } from './shared'
+import { SectionHeading, CalloutDot, CalloutList } from './shared'
+import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
 
 const CALLOUTS = [
@@ -10,7 +11,7 @@ const CALLOUTS = [
   },
   {
     title: 'Restart rows',
-    body: 'Every established restart, clickable. Keys 0–4 work while the debugger cell has focus.',
+    body: 'Every live restart — yours from restart-case, plus RETRY and ABORT — clickable. Keys 0–9 pick one while the cell is paused; restarts that take a value ask for a form.',
   },
   {
     title: 'Frames expander',

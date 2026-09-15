@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle } from 'lucide-react'
-import { SectionHeading, EASE_OUT } from './shared'
+import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle, Search } from 'lucide-react'
+import { SectionHeading } from './shared'
+import { EASE_OUT } from './motion'
 
 const CARDS = [
   {
@@ -17,6 +18,11 @@ const CARDS = [
     Icon: PackageOpen,
     title: 'Load the whole project',
     body: '"Load Project into Runtime" ships every .lisp/.lsp/.cl/.asd file to the worker and loads them recursively. If an .asd exists, its system is loaded via asdf:load-source-op — ECL\'s C-compile path can\'t exist in WASM, so sources load uncompiled. Without an .asd, files load manually: package definitions first, then alphabetical; every file is guarded, so one bad file never aborts the batch.',
+  },
+  {
+    Icon: Search,
+    title: 'Search & go to definition',
+    body: 'Ctrl+Shift+F searches open buffers and every Lisp file of the project — match case, whole symbol, regex, and a code-only mode that skips strings and comments. Results are grouped by file; a click opens the file at the line. A Replace box rewrites the hits: the buffer in the editor through one undoable edit, other open buffers in place, and project files that are not open get opened as dirty buffers — nothing reaches disk until Ctrl+S or the "Save N files" action on the summary. Undo history is kept per buffer: switching buffers is never an undo step.',
   },
   {
     Icon: FileUp,

@@ -11,10 +11,13 @@ import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
+import { loadSampleProject } from './lib/sample-project.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sampleProject = process.argv.includes('--exercise') ? await loadSampleProject() : null
 const publicDir = path.join(root, 'public')
-const timeoutMs = Number(process.argv[process.argv.indexOf('--timeout-ms') + 1] || 90_000)
+const timeoutIdx = process.argv.indexOf('--timeout-ms')
+const timeoutMs = timeoutIdx >= 0 ? Number(process.argv[timeoutIdx + 1]) || 90_000 : 90_000
 
 const messages = []
 const t0 = Date.now()
@@ -120,6 +123,16 @@ sandbox.postMessage = (m) => {
  * capture contract: a ;;PLOT64 payload arrives during the load (from
  * plot-example's (show *fig*)), the script + referenced data file check out,
  * and a fresh (show …) in a later eval job attributes the plot to THAT job. */
+/* Sprint 29: a gnuplot script whose plot line names two data files (with a
+ * quoted title in between, which must not be mistaken for a path); Sprint 30
+ * adds a third, function series whose quoted title must not ship as a file */
+const TWO_SERIES_CODE = String.raw`(progn
+  (with-open-file (o "/tmp/cc-two-a.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 2~%2 4~%"))
+  (with-open-file (o "/tmp/cc-two-b.dat" :direction :output :if-exists :overwrite :if-does-not-exist :create) (format o "1 20~%2 40~%"))
+  (with-open-file (o "/tmp/cc-two.sh" :direction :output :if-exists :overwrite :if-does-not-exist :create)
+    (format o "cat << EOF | gnuplot -p~%set title \"two series\"~%plot \"/tmp/cc-two-a.dat\" using 1:2 title \"a\" with lines, \"/tmp/cc-two-b.dat\" using 1:2 title \"b\" with points, sin(x) title \"s\" with lines~%EOF~%"))
+  (ext:shell "bash /tmp/cc-two.sh"))`
+
 function exercise() {
   const send = (msg) => sandbox.onmessage({ data: msg })
   const loadLines = [] /* stdout+stderr lines of job 101 */
@@ -135,17 +148,10 @@ function exercise() {
     if ((m.type === 'stdout' || m.type === 'stderr') && m.id === 104) shellErrLines.push(m.text)
     if (m.type === 'stdout' && m.text.startsWith(';;PLOT64 ')) plotMsgs.push({ id: m.id, text: m.text })
     if (m.type === 'done' && m.id === 100) {
-      // load the bundled sample project (public/sample-projects/cl-plot.zip,
-      // extracted on demand; override with SAMPLE_PROJECT_DIR)
-      const base = process.env.SAMPLE_PROJECT_DIR || '/tmp/clplot/cl-plot-master'
-      let files = []
-      try {
-        files = fs.readdirSync(base)
-          .filter((n) => /\.(lisp|asd)$/i.test(n))
-          .map((n) => ({ path: n, content: fs.readFileSync(path.join(base, n), 'utf8') }))
-      } catch { /* sample not extracted */ }
+      // load the bundled sample project: SAMPLE_PROJECT_DIR, /tmp/clplot, or the zip read in memory (Sprint 28)
+      const files = sampleProject ?? []
       if (!files.length) {
-        console.log('(sample project not extracted — skipping load-project exercise)')
+        console.log('(sample project not available — skipping load-project exercise)')
         finish(true, 'boot ready + eval job done')
         return
       }
@@ -183,7 +189,13 @@ function exercise() {
       send({ type: 'eval', id: 104, code: '(ext:shell "echo hello")' })
       setTimeout(() => finish(false, 'non-gnuplot shell eval (104) did not finish within 30s'), 30000)
     }
-    if (m.type === 'done' && m.id === 104) void checkPlots(loadLines, evalLines, plotMsgs, shellErrLines)
+    if (m.type === 'done' && m.id === 104) {
+      /* job 105 (Sprint 29): a hand-written two-series plot line — both
+       * data files must ship in the payload, not just the first one */
+      send({ type: 'eval', id: 105, code: TWO_SERIES_CODE })
+      setTimeout(() => finish(false, 'two-series plot eval (105) did not finish within 30s'), 30000)
+    }
+    if (m.type === 'done' && m.id === 105) void checkPlots(loadLines, evalLines, plotMsgs, shellErrLines)
     if (m.type === 'joberror') finish(false, `joberror id=${m.id}: ${m.message}`)
   }
   send({ type: 'eval', id: 100, code: '(+ 2 3) (format t "hello ~a" :world)' })
@@ -367,6 +379,35 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
           && saveSpec.series[0].title === 'data' && saveSpec.series[0].points.length === 2)) {
         problems.push('parser: titled linespoints series not parsed')
       }
+      /* 14. (Sprint 29) the two-series script ships BOTH data files and the
+       * real parser sees two series with their own points */
+      const twoPlot = plotMsgs.find((p) => p.id === 105)
+      if (!twoPlot) problems.push('no ;;PLOT64 attributed to the two-series eval job 105')
+      else {
+        let two = null
+        try {
+          two = mod.unpackPlotPayload(Buffer.from(twoPlot.text.slice(';;PLOT64 '.length).trim(), 'base64').toString('utf8'))
+        } catch (e) {
+          problems.push('two-series payload did not unpack: ' + (e?.message ?? e))
+        }
+        if (two) {
+          const paths = two.files.map((f) => f.path)
+          if (paths.join(',') !== '/tmp/cc-two-a.dat,/tmp/cc-two-b.dat') {
+            problems.push(`two-series payload shipped ${JSON.stringify(paths)} (want both data files, in order, and no title)`)
+          }
+          const b = two.files.find((f) => f.path === '/tmp/cc-two-b.dat')
+          if (b && !/1 20\n2 40/.test(b.content)) problems.push('two-series payload: second data file content wrong: ' + JSON.stringify(b.content))
+          const twoSpec = mod.parseGnuplot(two.script, two.files)
+          const shape = twoSpec.series.map((sr) => `${sr.title}:${sr.missing ?? sr.style}:${sr.points.length}`).join(' ')
+          if (shape !== 'a:lines:2 b:points:2 s:function:0') problems.push(`parser: series shape ${JSON.stringify(shape)} (want "a:lines:2 b:points:2 s:function:0")`)
+          else if (twoSpec.series[1].points[1].y !== 40) problems.push('parser: second series did not read its own file')
+          /* Sprint 31: the function series sin(x) is drawn (sampled over the data range), no footnote */
+          const twoSvg = mod.buildSvg(twoSpec)
+          if (/not drawn/.test(twoSvg)) problems.push('buildSvg: sin(x) should be drawn since Sprint 31, but the SVG still says not drawn: ' + (twoSvg.match(/not drawn:[^<]*/)?.[0] ?? ''))
+          if ((twoSvg.match(/<polyline /g) ?? []).length < 2) problems.push('buildSvg: expected the lines series a and the sampled sin(x) as polylines')
+          if (!/>s<\/text>/.test(twoSvg)) problems.push('buildSvg: the function series has no plain legend entry "s"')
+        }
+      }
       /* 13. the real renderer emits an <svg> with the 6 points */
       const svg = mod.buildSvg(spec)
       if (!svg.startsWith('<svg')) problems.push('buildSvg output does not start with <svg')
@@ -378,6 +419,7 @@ async function checkPlots(loadLines, evalLines, plotMsgs, shellErrLines) {
         console.log('  ✓ data file captured with all 6 example points')
         console.log('  ✓ eval job 103 attributed its own plot (fresh figure show)')
         console.log('  ✓ parseGnuplot + buildSvg (real modules, esbuild-bundled) → <svg> polyline with 6 points')
+        console.log('  ✓ two-series plot line ships both data files, the function series ships nothing; parser sees a:lines:2 b:points:2 s:function:0, SVG draws sin(x) over the data range (Sprints 29–31)')
       }
     }
   }

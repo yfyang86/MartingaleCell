@@ -1,0 +1,144 @@
+# Changelog
+
+All notable changes to ConsCell. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
+uses [Semantic Versioning](https://semver.org/). Work lands in sprints
+(`Sprints/SprintN/`), each with a goal, implementation notes, a
+test-and-fix log and a proposal for the next one.
+
+## [1.0.0-beta.0] — 2026-09-15
+
+The first tagged release. `1.0.0-alpha.0` was the working version of
+the sprints below and was never tagged.
+
+### Engines
+- **SBCL 2.4.8 compiled to `wasm32-wasip1`** as the default engine: a
+  from-scratch browser host (`public/sbcl-worker.js`) with a WASI
+  preview-1 shim, a SharedArrayBuffer job mailbox, timers, the
+  debugger pause, standard input, runaway-recursion recovery and module
+  persistence. Artifacts ship as three gzip-compressed files (~19 MB,
+  ~125 MB inflated in the worker), fetched with progress and inflated
+  with `DecompressionStream`. (Sprints 23–26)
+- **ECL via WECL** as the fallback engine (and selectable any time),
+  with the setjmp-trampoline patch that made the interpreter ~30×
+  faster. (Sprints 7, 23)
+- **Settings → Lisp implementation**: `auto | ecl | sbcl`, download
+  progress in the boot screen and the status bar, `crossOriginIsolated`
+  preflight so non-isolated hosts skip straight to ECL. (Sprints 27–28)
+- One version string (`__APP_VERSION__` from `package.json`) on the
+  boot screen, in About and in the service-worker cache name. (Sprint 28)
+
+### Session and debugger
+- `in-package` persists across cells and drives the package pill;
+  honest condition reporting with type, message and slots. (Sprints 1–2)
+- A real interactive debugger: an unhandled error pauses the image
+  inside the handler with the live restarts (USE-VALUE, CONTINUE,
+  RETRY, ABORT, STORE-VALUE, DEFINE-FUNCTION and the user's own),
+  frames and condition details, also during project loads with
+  SKIP-FORM. (Sprints 3–5)
+- Standard input: `read-line`, `read`, `y-or-n-p` pause the cell for a
+  line. (Sprint 4)
+- Per-line values, multi-line values kept whole, long values capped in
+  transcripts. (Sprints 12–13, 15)
+- Re-run history per cell: run chips, a side-by-side history view with
+  value and input diffs, lineage kept across export and import.
+  (Sprints 21–22, 24)
+- Session-box input history persisted across reloads, Ctrl+R search
+  over the box's history and every cell input evaluated in the session
+  (`In [n]` chips). (Sprints 20–21, 31)
+- Session export as Markdown or `.lisp` transcript, import back as
+  cells (appending or replacing), a cell opened as a buffer stays
+  linked to it. (Sprints 8, 10, 16–17, 26)
+
+### Editor
+- CodeMirror with Lisp syntax, rainbow parens, completion from the
+  image and the project. Per-buffer undo history, selection, scroll
+  position and folds, all persisted across reloads. (Sprints 14–18, 20)
+- Workspace search with jump-to-hit, replace across the workspace
+  applied through the editor (undoable) with a save-all summary, find
+  references (Shift+F12). (Sprints 9–10, 13–14)
+- Go-to-definition (F12) over project files, evaluated forms and the
+  session box; an outline panel (Ctrl+Shift+O) of buffers and unloaded
+  project files; a persisted definition index that follows the buffer
+  a form was evaluated from. (Sprints 6, 9–12)
+
+### Projects and plots
+- Projects from a local folder, a ZIP or a set of files; ASDF systems
+  loaded in `:components` order, form by form; load warnings with
+  locations; the bundled cl-plot sample. (Sprints 5–6)
+- In-runtime package manager (`package-install` and friends) with
+  modules persisted in IndexedDB.
+- gnuplot capture on `ext:shell` rendered as SVG in the cell, on both
+  engines: every data file of a multi-series `plot` line ships,
+  function expressions (`sin(x)`, `x**2`, …) are drawn from a built-in
+  evaluator, series without data are named as "not drawn" instead of
+  dropped. (Sprints 28–31)
+
+### Offline and hosting
+- A service worker (`public/sw.js`, production builds) keeps the app
+  shell and the engine artifacts of the loaded version: the IDE opens
+  and boots offline after its first load; a new version installs a new
+  worker and drops the old cache. (Sprint 31)
+- COOP/COEP headers from the dev and preview servers; the SBCL engine
+  needs them on the host too (see `RELEASE.md`).
+
+### Docs and licences
+- Docs site with Getting started, Engines, Feature matrix, Session,
+  Editor, Debugger, Projects, Modules, Shortcuts, Persistence and FAQ
+  sections, kept in line with the code. (Sprints 6, 19, 28, 30)
+- `LICENSE` (MIT) and licence notes for SBCL (public domain with
+  MIT/BSD-style parts), WECL (LGPL-2.1+, shipped unmodified) and
+  cl-plot (MIT). (Sprint 29)
+
+### Tests and CI
+- 17 Node suites, no test framework: pure-TS rules (transcript, search,
+  outline, editor state, session history, fold, lineage, plot parser
+  and evaluator, smoke summary, artifact loader) and real-image
+  harnesses (ECL boot with the cl-plot sample, package, settings,
+  debugger, stdin, performance floor, SBCL). (Sprints 1–31)
+- Browser smoke: 11 Playwright scenarios (debugger, stdin,
+  definitions, transcript, persistence, replace, landing and docs,
+  history, sbcl, engine, offline) with a JSON report and a summary on
+  the job page; runs on labelled pull requests and on every push to
+  `dev`. (Sprints 18–21, 24, 26)
+- GitHub Actions: lint, build and every suite on pull requests and
+  `dev` pushes; the labelled run carries both jobs. (Sprints 1, 20–22, 29)
+
+## Sprint history
+
+| Sprint | What landed |
+|---|---|
+| 1 | `in-package` persistence across cells; lint clean; first CI gate |
+| 2 | Settings that do what they say; honest condition reporting; restart-protocol spike |
+| 3 | Interactive debugger with live restarts |
+| 4 | Standard input via the pause primitive; debugger polish |
+| 5 | Debugger during project loads; nested errors; examples gallery |
+| 6 | Definitions from the loader, go-to-definition; load warnings with locations; docs pass |
+| 7 | Profiling; fast setjmp trampolines (~30× interpreter speed); definition index persistence |
+| 8 | Speed examples; block comments in the offset probe; session export as transcript |
+| 9 | Workspace search; definitions from evaluated forms; navbar without framer-motion |
+| 10 | Find references; import a transcript back; definitions from the session box |
+| 11 | Outline panel; persisted definition index |
+| 12 | Per-line values; definition freshness; outline for unloaded project files |
+| 13 | Replace in workspace; multi-line values |
+| 14 | Editor state per buffer; save-all from the replace summary; apply order in CI |
+| 15 | Stashed-state edits; per-buffer scroll; transcript value limit |
+| 16 | Editor stash rules in Node; open a cell as a buffer; replacing import |
+| 17 | Cell ↔ buffer link; scroll-restore guard; replace confirm with preview |
+| 18 | Smoke build guard; persisted editor states; transcript buffer note |
+| 19 | Smoke scenarios; editor docs section; serialisation cache |
+| 20 | Smoke in CI behind a label; persisted session history; folds per buffer |
+| 21 | Cell history view; smoke on `dev` pushes; session-box history search |
+| 22 | Run history in the transcript; input diff between runs; merge-commit CI run kept |
+| 23 | SBCL/wasm as a second engine (browser host worker, plumbing, artifacts) |
+| 24 | gzip'd artifacts; SBCL smoke scenario; value diff; smoke JSON report |
+| 25 | SBCL hardened against the real image in the browser; CI browser install |
+| 26 | Only `.gz` artifacts in git; `.lisp` transcript import; smoke summary; fetch progress |
+| 27 | Engine choice `auto | ecl | sbcl` with loading progress; ECL comes back reliably |
+| 28 | One default-engine story; cl-plot in CI on both engines; isolation preflight; version in one place |
+| 29 | Every series' data file shipped; licence notes and LICENSE; boot-cache spike |
+| 30 | Engines section in the docs; series without data named in plots |
+| 31 | Function series drawn; Ctrl+R over cell inputs; service worker for offline use |
+| 32 | Code cut: version `1.0.0-beta.0`, this changelog, documents pass, release checklist |
+
+[1.0.0-beta.0]: https://github.com/yfyang86/ConsCell/releases/tag/v1.0.0-beta.0

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Clipboard, Link2, X } from 'lucide-react'
 import type { Example } from '@/data/examples'
-import { ClCodeBlock, renderTokens, tokenizeLine } from './highlight'
+import { ClCodeBlock } from './ClCode'
+import { renderTokens, tokenizeLine } from './highlight'
 import {
   DIFFICULTY_CLASS,
   DIFFICULTY_LABEL,

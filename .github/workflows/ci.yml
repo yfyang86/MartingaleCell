@@ -1,0 +1,168 @@
+# ConsCell CI — the "green" gate for merging into dev.
+# Runs on every PR and on pushes to dev: lint, type-check + build, then the
+# real ECL/WASM image booted through the real worker in Node (boot harness +
+# in-package regression test). No browser needed.
+#
+# A second job, `smoke`, runs the real-browser scenarios (Playwright +
+# Chromium against `pnpm preview`) on pull requests labelled `smoke` —
+# adding the label triggers it on its own (the `labeled` event runs only
+# that job) — and on every push to dev (Sprint 21), where it is a report
+# on the merge commit rather than a gate. Sprint 20.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [dev]
+    # a docs-only push (the sprint record after a merge) starts no run, so
+    # the merge commit keeps its completed run (Sprint 22)
+    paths-ignore:
+      - 'Sprints/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # cancel superseded runs on a pull request; never on dev, where every push is a merge worth a full record
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: lint · build · wasm tests
+    # runs on every event, the `labeled` one included: with cancel-in-progress a label added seconds
+    # after opening supersedes the opened run, and the PR head would otherwise have no check result (Sprint 29)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check and build
+        run: pnpm build
+
+      - name: session export (Markdown / .lisp transcript) test
+        run: node scripts/transcript-test.mjs
+
+      - name: workspace search matcher test
+        run: node scripts/search-test.mjs
+
+      - name: definition outline scanner test
+        run: node scripts/outline-test.mjs
+
+      - name: editor per-buffer state rules test
+        run: node scripts/editor-state-test.mjs
+
+      - name: session-box history rules test
+        run: node scripts/session-history-test.mjs
+
+      - name: Lisp fold ranges test
+        run: node scripts/fold-test.mjs
+
+      - name: cell lineage (re-run history) test
+        run: node scripts/lineage-test.mjs
+
+      - name: Boot the ECL image + load the bundled cl-plot sample (real worker + wasm, Node harness)
+        run: node scripts/boot-harness.mjs --exercise --timeout-ms 120000
+
+      - name: in-package persistence regression test
+        run: node scripts/package-test.mjs
+
+      - name: settings + condition-reporting regression test
+        run: node scripts/settings-test.mjs
+
+      - name: interactive debugger protocol test
+        run: node scripts/debugger-test.mjs
+
+      - name: standard input (read-line / read / y-or-n-p) test
+        run: node scripts/stdin-test.mjs
+
+      - name: performance floor (fast setjmp trampolines)
+        run: node scripts/perf-test.mjs
+
+      # SBCL/wasm second engine — skips (exit 0) when public/sbcl/ artifacts
+      # are absent (they are ~112 MB, gitignored, copied in by
+      # scripts/fetch-sbcl.mjs from a local sbcl wasm-dev build)
+      - name: SBCL/wasm engine test (real image from the tracked .gz artifacts)
+        run: node scripts/sbcl-test.mjs --timeout-ms 180000
+
+      - name: SBCL artifact loader (gzip) test — synthetic data, no artifacts needed
+        run: node scripts/sbcl-artifact-test.mjs
+
+      - name: smoke summary formatter test
+        run: node scripts/smoke-summary-test.mjs
+
+      - name: gnuplot subset parser + SVG builder test (function and no-data series)
+        run: node scripts/plot-test.mjs
+
+  smoke:
+    name: browser smoke (label `smoke`, and pushes to dev)
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for the project's playwright (devDependency since Sprint 25)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Serve the build
+        run: |
+          nohup pnpm preview --port 4173 > preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4173/ > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:4173/ > /dev/null
+
+      - name: Browser scenarios
+        run: node scripts/browser-smoke.mjs --json dist/smoke-report.json
+
+      - name: Summary on the job page
+        if: always()
+        run: node scripts/smoke-summary.mjs dist/smoke-report.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: |
+            app/dist/smoke-report.json
+            app/dist/smoke-*.png
+          if-no-files-found: ignore
