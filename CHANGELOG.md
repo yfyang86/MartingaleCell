@@ -8,8 +8,41 @@ test-and-fix log and a proposal for the next one.
 
 ## [Unreleased]
 
-`dev` carries version `1.0.0-beta.1` since the release, so builds after
+`dev` carries version `1.0.0-beta.3` since the release, so builds after
 it install their own service-worker cache.
+
+## [1.0.0-beta.2] — 2026-09-16
+
+A fix release for the SBCL engine: evaluating a whole buffer could
+starve or reorder jobs, which looked like functions vanishing between
+cells.
+
+### Fixed
+- **Whole-buffer evaluation on SBCL** (any browser): two job-channel
+  races. (1) `poll_oneoff` parked without draining the mailbox, so a
+  request arriving while the REPL polled starved — its wakeup had
+  already been consumed and fd0-readiness only measured the form ring.
+  (2) Submits to the worker's single-slot mailbox were fire-and-forget:
+  the flag handshake prevents overwriting but not overtaking, so with
+  every cell of a buffer submitted up front, a call cell could pass the
+  defun cell above it and run first — `UNDEFINED-FUNCTION` for a
+  function defined one cell earlier, after which the pause-on-error
+  debugger (on by default) blocked the rest of the session. Poll now
+  drains a pending request before parking; submits are serialized
+  through a promise chain.
+- **The form splitter on unbalanced source**: one stray `)` drove the
+  top-level splitter depth-negative and shredded every following form
+  into garbage atom/fragment cells. It now stops at the stray closer
+  and hands the engine the rest as one form — one clean reader error.
+
+### Changed
+- SBCL engine artifacts re-synced from the port's master-sync build
+  (`sbcl.core.gz` 12.4 MB, `sbcl-core.wasm.gz` 5.2 MB; the runtime was
+  unchanged) — runtime, core and core module from one build.
+
+### Docs
+- End-user README, Developer Manual and their Chinese editions; an
+  interim note wrongly blaming a browser/V8 bug is corrected.
 
 ## [1.0.0-beta.0] — 2026-09-15
 
