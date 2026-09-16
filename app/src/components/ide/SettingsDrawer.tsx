@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
-import { runtime } from '@/lisp/runtime'
+import { runtime, getSbclMemory, setSbclMemory } from '@/lisp/runtime'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -188,6 +188,23 @@ export default function SettingsDrawer() {
                 </Row>
                 <p className="mt-1 font-mono text-[10.5px] text-muted">
                   auto: SBCL, then ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
+                </p>
+                <Row label="SBCL memory">
+                  <Segmented<'off' | '512' | '768'>
+                    value={String(getSbclMemory()) as 'off' | '512' | '768'}
+                    options={['512', '768', 'off']}
+                    onChange={(v) => {
+                      setSbclMemory(v === 'off' ? 'off' : (Number(v) as 512 | 768))
+                      toast(v === 'off'
+                        ? 'SBCL memory uncapped — applies on the next SBCL boot'
+                        : `SBCL capped at ${v} MB of linear memory — applies on the next SBCL boot`, {
+                        action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') },
+                      })
+                    }}
+                  />
+                </Row>
+                <p className="mt-1 font-mono text-[10.5px] text-muted">
+                  A total linear-memory ceiling for the SBCL engine (off by default). The image is ~230 MB at rest; cap it to keep embedded preview panes from being OOM-killed. Hitting the cap crashes the image with a clear message (raise it or switch to ECL).
                 </p>
                 <Row label="Log verbosity">
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />

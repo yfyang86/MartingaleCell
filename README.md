@@ -76,7 +76,7 @@ Switching takes effect on the next runtime restart (toolbar ↻).
 | gnuplot plots (cl-plot) | ✓ captured to SVG | ✓ captured to SVG |
 | interrupt (Ctrl+.) | restarts the image (the port cannot deliver Ctrl-C to Lisp yet) | restarts the image |
 | hosting requirement | page must be crossOriginIsolated (COOP/COEP headers — vite dev/preview send them; see RELEASE.md) | none |
-| quirks | no `(directory …)` enumeration; 30-bit fixnums | — |
+| quirks | no `(directory …)` enumeration; 30-bit fixnums; memory quota (Settings → SBCL memory) for embedded panes | — |
 
 If SBCL cannot boot (artifacts missing, or a host without the isolation
 headers) the IDE says so in the boot log and falls back to ECL.

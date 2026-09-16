@@ -1183,6 +1183,7 @@ function bootstrapDone() {
     var ok = verifyLines.some(function (l) { return l.indexOf(';;=> 3') !== -1 })
     if (ok) {
       bootLine('warm-up eval (+ 1 2) ;;=> 3')
+      try { bootLine('image resident: ' + Math.round(mem().byteLength / 1048576) + ' MB linear memory (quota ' + (memoryQuotaBytes > 0 ? Math.round(memoryQuotaBytes / 1048576) + ' MB' : 'off') + ')') } catch (e1) { /* diagnostics */ }
       bootLine('ready — happy hacking (SBCL, wasm32-wasip1)')
       phase = 'run'
       self.postMessage({ type: 'ready' })
@@ -1215,6 +1216,9 @@ function readPath(ptr, len) {
  * clock — it does constantly (get-internal-real-time) */
 var timerDeadline = 0
 var registerArea = 0
+/* the memory quota (0: off) and whether we already nudged a GC */
+var memoryQuotaBytes = 0
+var memoryQuotaNudged = false
 
 function setInterruptBits(bits) {
   if (!registerArea) return
@@ -1231,6 +1235,19 @@ function checkInterrupts() {
   if (Atomics.load(sabI32, 5) === 1) {
     Atomics.store(sabI32, 5, 0)
     setInterruptBits(1)
+  }
+  /* the quota: nudge a GC when close, refuse to grow past it — a page
+   * OOM-killed by its embedder is worse than a clean crash here */
+  if (memoryQuotaBytes > 0 && wasm) {
+    var used = mem().byteLength
+    if (used >= memoryQuotaBytes) {
+      self.postMessage({ type: 'crash', message: 'SBCL memory quota exceeded (' + Math.round(used / 1048576) + ' MB linear memory; quota ' + Math.round(memoryQuotaBytes / 1048576) + ' MB — raise Settings → SBCL memory)' })
+      throw new Error('SBCL memory quota exceeded')
+    }
+    if (used >= memoryQuotaBytes * 0.85 && !memoryQuotaNudged) {
+      memoryQuotaNudged = true
+      setInterruptBits(4) /* WASM_PENDING_GC: collect at the next safe point */
+    }
   }
 }
 
@@ -1292,6 +1309,7 @@ function makeWasi() {
 
   w.fd_write = function (fd, iovs, iovsLen, nwrittenPtr) {
     var dv = memDV()
+    checkInterrupts() /* the quota check too: output follows big allocations */
     if (fd !== 1 && fd !== 2) {
       /* a file the Lisp side opened for output: buffer, commit at close */
       var e = fdTable.get(fd)
@@ -1876,10 +1894,29 @@ function boot() {
       vfsWriteFile('/sbcl/sbcl.core', new Uint8Array(coreBytes))
       vfsWriteFile('/sbcl/sbcl-core.wasm', new Uint8Array(coreModuleBytes))
 
+      /* the Lisp heap quota (dynamic space, MB): from the worker URL's
+       * ?mem= (the page's SBCL memory setting) or a harness hook; the
+       * floor keeps tiny quotas from failing the warm boot itself */
+      /* the memory mode: a total linear-memory ceiling in MB, or 0 = off.
+       * The port commits roughly dynamic-space + ~100 MB of static/core
+       * spaces, so the flag is derived from the ceiling and the host
+       * watches the linear memory for the hard stop (the flag alone does
+       * not bound growth — the wasm memory grows on demand) */
+      var memMode = 0
+      try {
+        if (typeof self.__CC_SBCL_MEM === 'number') memMode = self.__CC_SBCL_MEM
+        else if (typeof location === 'object' && location.search) {
+          var qm = /(?:^|[?&])mem=(\d+)/.exec(location.search)
+          if (qm) memMode = parseInt(qm[1], 10)
+        }
+      } catch (e0) { /* keep the default */ }
+      var quotaMb = memMode >= 192 ? memMode : 0
+      var flagMb = quotaMb > 0 ? Math.max(64, quotaMb - 384) : 512
       /* runtime options (--core, --dynamic-space-size) must precede the
        * toplevel ones (--noinform …) or the runtime refuses the mix */
-      ARGS = ['sbcl.wasm', '--core', '/sbcl/sbcl.core', '--dynamic-space-size', '512',
+      ARGS = ['sbcl.wasm', '--core', '/sbcl/sbcl.core', '--dynamic-space-size', String(flagMb),
         '--noinform', '--no-sysinit', '--no-userinit', '--disable-debugger']
+      if (quotaMb > 0) memoryQuotaBytes = quotaMb * 1024 * 1024
       ENVS = ['PWD=/', 'HOME=/', 'SBCL_WASM_HOST=sbcl-worker', 'SBCL_WASM_RUNTIME=/sbcl/sbcl.wasm']
 
       var mod = new WebAssembly.Module(new Uint8Array(runtimeBytes))

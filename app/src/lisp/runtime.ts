@@ -20,9 +20,9 @@ const MODULES_IDB_KEY = 'conscell-modules-v1'
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
-import { getEnginePref, setEnginePref, type EnginePref } from './engine-pref'
+import { getEnginePref, setEnginePref, getSbclMemory, setSbclMemory, type EnginePref, type SbclMemory } from './engine-pref'
 import { warmEngineArtifacts } from './sw-warm'
-export { getEnginePref, setEnginePref, type EnginePref }
+export { getEnginePref, setEnginePref, getSbclMemory, setSbclMemory, type EnginePref, type SbclMemory }
 
 /* the sbcl worker's shared-buffer layout (public/sbcl-worker.js) */
 const SBCL_MAILBOX_OFF = 8192
@@ -320,7 +320,8 @@ class LispRuntime {
     if (!present) throw new Error('/sbcl/sbcl.wasm not found (copy the artifacts with scripts/fetch-sbcl.mjs)')
     /* a deep-enough native stack so runaway Lisp recursion reports a Lisp
      * storage-condition rather than an engine RangeError (SBCL-Handoff 4.5) */
-    return this.spawnWorker('/sbcl-worker.js', 'sbcl', 'SBCL 2.4.8 · wasm32-wasip1', {
+    const mem = getSbclMemory()
+    return this.spawnWorker(`/sbcl-worker.js${mem === 'off' ? '' : `?mem=${mem}`}`, 'sbcl', 'SBCL 2.4.8 · wasm32-wasip1', {
       resourceLimits: { stackSizeMb: 256 },
     })
   }
