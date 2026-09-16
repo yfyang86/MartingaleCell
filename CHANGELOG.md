@@ -9,7 +9,7 @@ test-and-fix log and a proposal for the next one.
 ## [Unreleased]
 
 `dev` carries version `1.0.0-beta.3` since the release, so builds after
-it install their own service-worker cache.
+it install their own service-worker cache. Nothing unreleased yet.
 
 ## [1.0.0-beta.2] — 2026-09-16
 
