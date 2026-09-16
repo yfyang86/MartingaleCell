@@ -206,21 +206,6 @@ The checklist is [RELEASE.md](RELEASE.md); in short:
 
 ## Known open ends
 
-- **Chrome/V8 misfire on cross-cell calls (alpha, upstream):** in
-  Chrome, calling a function defined by an earlier compiled module
-  intermittently lands in the undefined-function trampoline — the
-  definition is provably present (`fboundp` returns it right after) —
-  and later calls can wedge. Not reproducible in Firefox or in the Node
-  harness (which runs V8's *flagged* exnref rather than the shipped
-  one); reproduces with both the Sprint 13 and the master-sync
-  artifacts, so it is not a recent port regression. Reproducer: load the
-  cl-plot sample, then run the *Fractal plots* example cell by cell with
-  pause-on-error on. With `debugOnError` on (the default) each misfire
-  pauses the debugger and blocks the serialized queue — which is what
-  makes it look like the whole load failed. Suspects: V8's shipped
-  exnref (try_table/throw) or its tiering interacting with the port's
-  compiled calls; needs debugging in the port/V8, not in ConsCell.
-
 - Ctrl-C delivery to Lisp is unimplemented in the sbcl port itself
   (`wasm-arch.c`) — `interrupt()` respawns the SBCL image; drop the
   respawn when a port build grows delivery.

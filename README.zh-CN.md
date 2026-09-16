@@ -75,12 +75,9 @@ SBCL 的其他已知限制：不支持 `(directory …)` 枚举；30 位 fixnum�
 若 SBCL 无法启动（artifacts 缺失，或托管站点缺少 isolation headers），
 IDE 会在 boot log 中说明原因并退回 ECL。
 
-> **浏览器提示（alpha，已上报上游）：** 在 **Chrome** 中，V8 的
-> WebAssembly bug 会让对早先 cell 所定义函数的调用间歇性失效（如
-> *Fractal plots* 示例）—— 对一个实际存在的定义报 `UNDEFINED-FUNCTION`，
-> 之后的调用可能卡死。**Firefox 下同样的负载完全正常**，Node harness
-> 亦然。在 port/V8 修复之前，Chrome 用户请切换 ECL（Settings）或改用
-> Firefox。
+（1.0.0-beta.2 已修复：整 buffer 求值曾会让 job 乱序或饥饿 —— 调用
+cell 可能先于其上方的 defun cell 执行，对已定义的函数报
+`UNDEFINED-FUNCTION`，且 pause-on-error 调试器会阻塞会话的其余部分。）
 
 ## 一分钟上手
 
