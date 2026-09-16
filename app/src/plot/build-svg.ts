@@ -155,7 +155,7 @@ export function buildSvg(spec: PlotSpec): string {
   const drawnFns = new Map<PlotSeries, PlotPoint[][]>()
   for (const s of spec.series) {
     if (s.missing !== 'function' || !s.label) continue
-    const fn = compileExpression(s.label)
+    const fn = compileExpression(s.label, spec.defs)
     if (!fn) continue
     const segments = sampleFunction(fn, xmin, xmax)
     if (segments.length > 0) drawnFns.set(s, segments)
