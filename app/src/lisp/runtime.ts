@@ -595,10 +595,17 @@ class LispRuntime {
   /** Send a request to the live worker: postMessage for the ECL worker,
    * a mailbox write into the shared buffer for the SBCL worker (its
    * thread sits inside wasm and never processes onmessage). */
+  private sbclSendQueue: Promise<void> = Promise.resolve()
   private send(msg: WorkerInMessage): void {
     if (!this.worker) return
     if (this.engine === 'sbcl' && this.sbclSab) {
-      void this.sbclSubmit(msg).catch((e) => this.onCrash('sbcl submit failed: ' + String(e?.message ?? e)))
+      /* the flag handshake only prevents overwrite, not overtaking — two
+       * fire-and-forget submits could reorder (a call cell evaluated
+       * before the defun cell before it: UNDEFINED-FUNCTION). Serialize
+       * the writes; the eval queue already orders the sends. */
+      this.sbclSendQueue = this.sbclSendQueue
+        .then(() => this.sbclSubmit(msg))
+        .catch((e) => this.onCrash('sbcl submit failed: ' + String(e?.message ?? e)))
     } else {
       this.worker.postMessage(msg)
     }

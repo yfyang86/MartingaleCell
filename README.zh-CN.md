@@ -75,6 +75,10 @@ SBCL 的其他已知限制：不支持 `(directory …)` 枚举；30 位 fixnum�
 若 SBCL 无法启动（artifacts 缺失，或托管站点缺少 isolation headers），
 IDE 会在 boot log 中说明原因并退回 ECL。
 
+（1.0.0-beta.2 已修复：整 buffer 求值曾会让 job 乱序或饥饿 —— 调用
+cell 可能先于其上方的 defun cell 执行，对已定义的函数报
+`UNDEFINED-FUNCTION`，且 pause-on-error 调试器会阻塞会话的其余部分。）
+
 ## 一分钟上手
 
 1. 打开 IDE，状态栏显示 `SBCL · WASM`（SBCL 无法启动或你选择了 ECL

@@ -259,6 +259,15 @@ export function splitTopLevelForms(src: string): string[] {
     }
     if (c === '(') { if (depth === 0) start = i; depth++ }
     else if (c === ')') {
+      if (depth === 0) {
+        /* a stray closer: the source is unbalanced past this point. Stop
+         * splitting and hand the engine the rest as one form — one clean
+         * reader error, instead of a cascade of garbage atom/fragment
+         * cells (a single extra ')' used to flip depth negative and
+         * shred every form after it) */
+        forms.push(src.slice(start >= 0 ? start : i))
+        return forms.filter((f) => f.trim().length > 0)
+      }
       depth--
       if (depth === 0 && start >= 0) { forms.push(src.slice(start, i + 1)); start = -1 }
     } else if (depth === 0 && !/\s/.test(c) && start < 0) {

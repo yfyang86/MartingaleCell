@@ -81,6 +81,11 @@ Switching takes effect on the next runtime restart (toolbar ↻).
 If SBCL cannot boot (artifacts missing, or a host without the isolation
 headers) the IDE says so in the boot log and falls back to ECL.
 
+*(Fixed in 1.0.0-beta.2: evaluating a whole buffer used to starve or
+reorder jobs — a call cell could run before the defun cell above it,
+reporting UNDEFINED-FUNCTION for a defined function, with the
+pause-on-error debugger blocking the rest of the session.)*
+
 ## A one-minute tour
 
 1. Open the IDE; the status bar shows `SBCL · WASM` (or `ECL · WASM`

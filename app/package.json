@@ -1,6 +1,6 @@
 {
   "name": "conscell",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.2",
   "description": "ConsCell — a notebook-style Common Lisp IDE in the browser (ECL and SBCL compiled to WebAssembly)",
   "private": true,
   "license": "MIT",

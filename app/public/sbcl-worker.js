@@ -1017,6 +1017,7 @@ function withDoneMarker(form) {
 /* ------------------------------------------------------------------ */
 
 function feedForm(formText) {
+  try { console.log('[cc] feed ' + formText.length + 'B id-curve') } catch (e) {}
   /* the trailing blank line matters: SBCL's reader buffers the form but
    * waits for input to continue past it (verified empirically — without
    * the second newline a form sits evaluated-but-unrun until the next
@@ -1101,6 +1102,7 @@ function serveForm() {
   for (;;) {
     var item = ringTake(FORM_OFF, FORM_RING_BYTES, Atomics.load(sabI32, 0), Atomics.load(sabI32, 1))
     if (item) {
+      try { console.log('[cc] serve ' + item.bytes.length + 'B') } catch (e) {}
       Atomics.store(sabI32, 1, item.newRead)
       Atomics.notify(sabI32, 1)
       return item.bytes
@@ -1677,6 +1679,17 @@ function makeWasi() {
       /* nothing ready: an fd-0 wait (the REPL waiting for a form) and/or
        * a timer — park on the mailbox flag in bounded slices so requests
        * and interrupts still get through, then re-evaluate */
+      var pr = mailboxTake()
+      if (pr) {
+        /* a request arrived while we park: an eval/load/quit feeds the
+         * form ring (that is exactly fd0-readiness); input/restart go to
+         * the stdin ring. Without this the poll parks holding the only
+         * notify — its wakeup was already consumed — and the form
+         * starves until some later request happens along */
+        try { console.log('[cc] poll-drain ' + pr.type + ' id=' + pr.id) } catch (e) {}
+        handleRequest(pr)
+        continue
+      }
       var waitMs = 200
       if (timerWhen > 0) {
         var remainMs = (timerWhen - performance.now() * 1e6) / 1e6
