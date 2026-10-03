@@ -1221,6 +1221,13 @@ function writeOutChunk(fd, u8) {
     var t = lines[i]
     if (t !== '') emitLine(fd, t)
   }
+  /* escape-code-driven output (cursor addressing, colors) never emits
+   * newlines — flush the pending partial once it carries sequences, so
+   * the page's ANSI screen updates live */
+  if (outLine[fd].length >= 32 && outLine[fd].indexOf(String.fromCharCode(27)) >= 0) {
+    emitLine(fd, outLine[fd])
+    outLine[fd] = ''
+  }
 }
 
 function mem() { return wasm.exports.memory.buffer }

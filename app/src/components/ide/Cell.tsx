@@ -315,7 +315,12 @@ function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?
   const longInput = inputLines.length > 12
   const shownInput = longInput && !inputExpanded ? inputLines.slice(0, 6).join('\n') : cell.input
   // values/warnings/errors have dedicated UI — never show their markers in the OUT well
-  const outText = useMemo(() => stripOutMarkers(cell.stdout).replace(/\n+$/, ''), [cell.stdout])
+  const outText = useMemo(() => {
+    const t = stripOutMarkers(cell.stdout).replace(/\n+$/, '')
+    /* with a live terminal the escapes are rendered as the screen — keep the
+     * OUT well for whatever readable text remains */
+    return cell.terminal ? t.replace(new RegExp(String.fromCharCode(27) + '\\[[0-9;]*[A-Za-z]', 'g'), '') : t
+  }, [cell.stdout, cell.terminal])
 
   const cellText = useMemo(() => {
     const parts = [`${cell.pkg}> ${cell.input}`]
@@ -437,6 +442,22 @@ function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?
           {paused && <DebuggerBlock cell={cell} />}
           {/* blocked on standard input */}
           {cell.status === 'input' && <InputBlock cell={cell} />}
+
+          {/* live ANSI terminal (escape-code-driven output) */}
+          {cell.terminal && cell.terminal.rows.length > 0 && (
+            <div className="mt-2 overflow-auto rounded-md border border-hairline bg-[#0d0f14] px-3 py-2">
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">ansi screen</div>
+              <pre className="font-mono text-[11.5px] leading-[1.25]">
+                {cell.terminal.rows.map((line, i) => (
+                  <div key={i} className="whitespace-pre">
+                    {line.map((tc, j) => (
+                      <span key={j} className={tc.s || 'text-[#abb2bf]'}>{tc.c}</span>
+                    ))}
+                  </div>
+                ))}
+              </pre>
+            </div>
+          )}
 
           {/* stdout — hidden when nothing but marker lines were captured */}
           {outText && (
