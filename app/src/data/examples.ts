@@ -681,6 +681,95 @@ export const EXAMPLES: Example[] = [
 ;;=> NIL`,
   },
   {
+    slug: 'matrix-terminal',
+    title: 'Matrix effect on the ANSI screen',
+    category: 'Algorithms',
+    difficulty: 2,
+    description:
+      'Cursor addressing, colors and a frame loop — rendered live on the cell\'s ansi screen (SBCL).',
+    code: `
+;;;; The Matrix effect — escape-code-driven output. The cell detects the
+;;;; cursor/color codes and renders them on a live terminal screen
+;;;; (SBCL streams such output; ECL flushes per newline only, so its
+;;;; screen stays blank). Iterations: 20 here, 0 = run until Ctrl .
+
+(defun clear-screen ()
+  "Clear the terminal screen using ANSI escape codes."
+  (format t "~c[2J~c[H" #\\Escape #\\Escape))
+
+(defun move-cursor (row col)
+  "Move the cursor to the specified position using ANSI escape codes."
+  (format t "~c[~d;~dH" #\\Escape row col))
+
+(defun set-green-color ()
+  "Set the text color to green using ANSI escape codes."
+  (format t "~c[32m" #\\Escape))
+
+(defun reset-color ()
+  "Reset the text color to default using ANSI escape codes."
+  (format t "~c[0m" #\\Escape))
+
+(defun random-char ()
+  "A random character, with a higher probability of being a space."
+  (if (zerop (random 5))
+      #\\Space
+      (code-char (+ 33 (random 94))))) ; '!' to '~'
+
+(defun copy-2d-array (src target w h)
+  "Copy the contents of a 2D array to another 2D array."
+  (loop for row from 0 below h do
+          (loop for col from 0 below w do
+                  (setf (aref target row col) (aref src row col)))))
+
+(defun update-with-changed-chars (buffer prev-buffer width height)
+  "Update the terminal with only the changed characters."
+  (loop for row from 0 below height do
+          (loop for col from 0 below width do
+                  (unless (char= (aref buffer row col) (aref prev-buffer row col))
+                    (move-cursor row col)
+                    (format t "~c " (aref buffer row col))))))
+
+(defun random-2d-array-with-columns (buffer columns width height)
+  "Drop a new character at each column's current head, then advance."
+  (loop for col from 0 below width do
+          (when (zerop (random 10)) ; 1/10 chance to restart a column
+                (setf (aref columns col) (random height)))
+          (setf (aref buffer (aref columns col) col) (random-char))
+          (incf (aref columns col))
+          (when (>= (aref columns col) height)
+                (setf (aref columns col) 0))))
+
+(defun matrix-effect (width height delay-time iterations)
+  "Simulate the Matrix effect: green characters falling down the screen.
+ITERATIONS 0 means run until interrupted (Ctrl .)."
+  (clear-screen)
+  (set-green-color)
+  (loop
+   with columns = (make-array width :initial-element 0)
+   with buffer = (make-array (list height width) :initial-element #\\Space)
+   with prev-buffer = (make-array (list height width) :initial-element #\\Space)
+   for i from 0
+   while (or (zerop iterations) (< i iterations))
+   do (progn
+        (random-2d-array-with-columns buffer columns width height)
+        (update-with-changed-chars buffer prev-buffer width height)
+        (copy-2d-array buffer prev-buffer width height)
+        (sleep delay-time)
+        (finish-output))))
+
+(defun run-matrix-effect (&optional (w 40) (h 16) (delay-time 0.08) (iterations 20))
+  "Run the effect; (run-matrix-effect 60 20 0.05 0) runs until Ctrl ."
+  (unwind-protect
+       (matrix-effect w h delay-time iterations)
+    (reset-color)))
+
+(run-matrix-effect)
+`,
+    expectedOutput: `;; ansi screen: 16 rows x 40 columns of green characters, refreshed
+;; ~12 frames/s for 20 frames (~1.6 s), then the color resets and the
+;; cell returns 0 (the LOOP's fall-through value). No plain stdout.`,
+  },
+  {
     slug: 'fractal-plots',
     title: 'Fractal plots',
     category: 'Algorithms',

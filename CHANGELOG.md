@@ -9,7 +9,17 @@ test-and-fix log and a proposal for the next one.
 ## [Unreleased]
 
 `dev` carries version `1.0.0-beta.3` since the release, so builds after
-it install their own service-worker cache. Nothing unreleased yet.
+it install their own service-worker cache.
+
+### Added
+- **ANSI screen in cells** for escape-code-driven output (cursor
+  addressing, clear, SGR colors): a live terminal grid rendered while
+  the cell runs (`pnpm test:ansi`). The SBCL worker flushes
+  escape-carrying partial lines so such programs animate; ECL flushes
+  per newline only, so its screen stays blank (engine-side limitation).
+- **Example: Matrix effect on the ANSI screen** — the classic falling
+  characters, bounded to 20 frames by default
+  (`(run-matrix-effect 60 20 0.05 0)` runs until Ctrl .).
 
 ## [1.0.0-beta.2] — 2026-09-16
 

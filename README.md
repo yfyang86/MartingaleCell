@@ -22,8 +22,9 @@ leaves your machine.
     editor, cells and project tooling either way.
 - **A notebook session**: evaluate a form or a whole buffer (`Ctrl+Enter`),
   get one result cell per run with values, printed output, warnings,
-  errors with condition details, timing, and gnuplot plots rendered as
-  SVG in the page.
+  errors with condition details, timing, gnuplot plots rendered as SVG
+  in the page, and — for escape-code-driven programs — a live ANSI
+  terminal screen (see the *Matrix effect* example).
 - **A real editor**: CodeMirror with Lisp syntax highlighting, paren
   matching, per-buffer undo, dirty tracking, autosave, buffer tabs,
   outline of definitions (`Ctrl+Shift+O`) and workspace search

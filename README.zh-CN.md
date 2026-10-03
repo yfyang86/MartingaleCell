@@ -20,7 +20,8 @@
     器、cell 与项目工具完全一致。
 - **Notebook 会话**：求值一个 form 或整个 buffer（`Ctrl+Enter`），每次
   运行生成一个结果 cell —— 返回值、打印输出、警告、带 condition 细节
-  的错误、耗时，以及渲染为 SVG 的 gnuplot 图形。
+  的错误、耗时、渲染为 SVG 的 gnuplot 图形，以及面向转义码驱动程序的
+  实时 ANSI 终端画面（见 *Matrix effect* 示例）。
 - **真正的编辑器**：CodeMirror，Lisp 语法高亮、括号匹配、按 buffer 的
   undo、脏标记、自动保存、buffer 标签页、定义大纲（`Ctrl+Shift+O`）与
   工作区搜索（`Ctrl+Shift+F`）。
