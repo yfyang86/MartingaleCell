@@ -12,6 +12,15 @@ test-and-fix log and a proposal for the next one.
 it install their own service-worker cache.
 
 ### Added
+- **Smarter autocomplete**: context-aware (only callables after `(`;
+  everything in argument position; functions after `#'`; package
+  symbols after a `foo:` prefix; buffer keywords after `:`), ranked
+  (exact prefix > word-start > substring > subsequence, with boosts for
+  locals, buffer and project symbols) instead of alphabetical, and
+  backed by the live image — the full external-symbol alphabet of
+  COMMON-LISP (~800 symbols with real kinds and, from the curated set,
+  arglists/doc popovers) is dumped from the running engine at ready.
+  `let`/`lambda`-list locals of the enclosing form are offered.
 - **ANSI screen in cells** for escape-code-driven output (cursor
   addressing, clear, SGR colors): a live terminal grid rendered while
   the cell runs (`pnpm test:ansi`). The SBCL worker flushes
