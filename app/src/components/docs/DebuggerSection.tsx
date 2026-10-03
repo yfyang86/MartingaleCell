@@ -120,7 +120,7 @@ export default function DebuggerSection() {
     <section id="debugger" className="scroll-mt-20">
       <SectionHeading
         title="Errors you can talk back to."
-        lead="When a condition is signaled, ConsCell renders the restart list inline. Choosing a restart resumes evaluation — no re-run required. This is the full ANSI condition system, not a try/catch shim."
+        lead="When a condition is signaled, MartingaleCell renders the restart list inline. Choosing a restart resumes evaluation — no re-run required. This is the full ANSI condition system, not a try/catch shim."
       />
 
       <div className="mt-12 grid items-start gap-10 xl:grid-cols-[1fr_260px]">

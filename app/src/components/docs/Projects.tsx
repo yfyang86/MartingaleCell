@@ -7,7 +7,7 @@ const CARDS = [
   {
     Icon: FolderOpen,
     title: 'A project is a folder',
-    body: 'Open any local folder with the File System Access API (Chrome/Edge) — ConsCell remembers the handle and offers to reopen it next visit. Firefox/Safari get a virtual project instead: import a ZIP or upload a folder, edit in memory, and Export ZIP to save.',
+    body: 'Open any local folder with the File System Access API (Chrome/Edge) — MartingaleCell remembers the handle and offers to reopen it next visit. Firefox/Safari get a virtual project instead: import a ZIP or upload a folder, edit in memory, and Export ZIP to save.',
   },
   {
     Icon: FileCode2,
@@ -36,7 +36,7 @@ export default function Projects() {
     <section id="projects" className="scroll-mt-20">
       <SectionHeading
         title="Projects, not just snippets."
-        lead="Point ConsCell at a real folder of Common Lisp and treat the browser like a local IDE: browse, edit, save, then load the entire tree into the runtime and call it."
+        lead="Point MartingaleCell at a real folder of Common Lisp and treat the browser like a local IDE: browse, edit, save, then load the entire tree into the runtime and call it."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
@@ -67,7 +67,7 @@ export default function Projects() {
         <p className="text-[13px] leading-relaxed text-secondary">
           <span className="font-semibold text-primary">gnuplot, emulated:</span> cl-plot builds a
           gnuplot script and shells out to the <code className="font-mono text-[12px]">gnuplot</code> binary —{' '}
-          impossible inside WebAssembly. ConsCell intercepts that hand-off in the worker, ships the
+          impossible inside WebAssembly. MartingaleCell intercepts that hand-off in the worker, ships the
           script and its data files to the page, and renders a gnuplot-subset as dark-themed{' '}
           <span className="font-semibold text-primary">SVG right inside the session cell</span> that
           triggered it. Every plot carries Download SVG / Download PNG buttons (PNG is rasterized

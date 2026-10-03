@@ -1,4 +1,4 @@
-# ConsCell
+# MartingaleCell
 
 **一个完全运行在浏览器里的 notebook 风格 Common Lisp IDE。**
 真正的 Common Lisp，编译为 WebAssembly —— 无服务器、免安装、数据不出本机。
@@ -107,7 +107,7 @@ cell 可能先于其上方的 defun cell 执行，对已定义的函数报
 
 ## 授权说明
 
-- **ConsCell 自身代码** —— MIT，见 [LICENSE](LICENSE)。覆盖 IDE、
+- **MartingaleCell 自身代码** —— MIT，见 [LICENSE](LICENSE)。覆盖 IDE、
   worker 以及本仓库中的 WebAssembly 移植工作。
 - **SBCL**（默认引擎）—— 主体为公有领域，部分文件为 MIT 式与 BSD 式
   授权；以 SBCL 源码树中的 `COPYING` 为准。此处使用的 `wasm32-wasip1`
@@ -115,9 +115,9 @@ cell 可能先于其上方的 defun cell 执行，对已定义的函数报
   （[yfyang86/sbcl](https://github.com/yfyang86/sbcl)）；
   `app/public/sbcl/` 下的 `.gz` 构件由它构建。
 - **ECL / WECL** —— LGPL-2.1+（Daniel Kochmański 的 Embeddable Common
-  Lisp WebAssembly 构建）。ConsCell 原样分发 WECL 二进制作为 fallback
+  Lisp WebAssembly 构建）。MartingaleCell 原样分发 WECL 二进制作为 fallback
   引擎，保留其授权声明，且不与之链接：IDE 通过 worker 消息协议与其
-  通信。源码可从 ECL 项目获得；ConsCell 不以它为核心依赖。
+  通信。源码可从 ECL 项目获得；MartingaleCell 不以它为核心依赖。
 - **cl-plot**（内置示例）—— MIT，© Martin Kersner（其 LICENSE 文件在
   示例 zip 内）。
 

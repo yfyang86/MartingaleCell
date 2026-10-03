@@ -1,4 +1,4 @@
-# ConsCell — Developer Manual
+# MartingaleCell — Developer Manual
 
 Everything a contributor needs: layout, architecture, the two Lisp
 engines, the worker protocol, tests, artifacts and the release process.
@@ -213,7 +213,7 @@ The checklist is [RELEASE.md](RELEASE.md); in short:
   live (the worker flushes escape-carrying partial lines). ECL's wasm
   build only flushes stdout per newline, which escape-driven programs
   never emit — the screen stays blank there; that needs an ECL-side
-  flush, not a ConsCell fix.
+  flush, not a MartingaleCell fix.
 
 - Ctrl-C delivery to Lisp is unimplemented in the sbcl port itself
   (`wasm-arch.c`) — `interrupt()` respawns the SBCL image; drop the

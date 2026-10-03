@@ -1,4 +1,4 @@
-/* Pure SVG string builder for PlotSpec — dark-themed to the ConsCell design
+/* Pure SVG string builder for PlotSpec — dark-themed to the MartingaleCell design
  * tokens. No DOM/React so the node harness can smoke-test it, and "Download
  * SVG" is just this function's output wrapped in a Blob. */
 

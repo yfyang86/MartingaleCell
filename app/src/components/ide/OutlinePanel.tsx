@@ -127,7 +127,7 @@ export default function OutlinePanel() {
         ))}
         <Section title="session box" count={sessionDefs.length}>
           {sessionDefs.map((d) => (
-            <Row key={`cell:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`[${d.cellN}]`} onClick={() => { if (d.cellN != null) window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: d.cellN })) }} />
+            <Row key={`cell:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`[${d.cellN}]`} onClick={() => { if (d.cellN != null) window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: d.cellN })) }} />
           ))}
         </Section>
         {bufferDefinitions.some((d) => d.cellN == null && d.bufferId !== active?.id && matches(d.name)) && (

@@ -78,7 +78,7 @@ export default function CtaBand() {
             className="group inline-flex items-center gap-2 rounded-md px-7 py-3.5 text-[15px] font-semibold text-abyss animate-glow-pulse transition-transform [transition-duration:120ms] ease-snap hover:-translate-y-px active:scale-[0.97]"
             style={{ background: 'var(--brand-gradient)' }}
           >
-            Launch ConsCell
+            Launch MartingaleCell
             <ArrowRight
               size={16}
               strokeWidth={2}

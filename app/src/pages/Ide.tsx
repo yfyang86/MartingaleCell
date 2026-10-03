@@ -1,4 +1,4 @@
-/* /ide — the ConsCell workspace shell.
+/* /ide — the MartingaleCell workspace shell.
  * 48px toolbar · resizable editor | (session / log) splits · 28px status bar.
  * Boots the WECL runtime with a full-screen transcript, falls back to
  * JSCL → mock so the IDE always evaluates something. */
@@ -269,7 +269,7 @@ export default function Ide() {
 
         {isTiny && !bannerDismissed && (
           <div className="flex items-center justify-between gap-3 border-b border-hairline bg-raised px-3 py-2 text-[12px] text-secondary">
-            <span>ConsCell is built for keyboards — best experienced on desktop.</span>
+            <span>MartingaleCell is built for keyboards — best experienced on desktop.</span>
             <button className="text-muted hover:text-primary" onClick={() => useUi.getState().dismissBanner()} aria-label="Dismiss">
               <X size={13} />
             </button>

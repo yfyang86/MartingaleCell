@@ -40,7 +40,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
           className="absolute -inset-8 rounded-full opacity-40 blur-2xl"
           style={{ background: 'radial-gradient(circle, rgba(110,168,220,.35) 0%, rgba(167,139,250,.25) 60%, transparent 100%)' }}
         />
-        <img src="/logo.svg" alt="ConsCell" className="relative h-16 w-16" />
+        <img src="/logo.svg" alt="MartingaleCell" className="relative h-16 w-16" />
       </motion.div>
 
       <h1 className="mb-5 font-display text-[20px] font-semibold text-primary">
@@ -52,7 +52,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
         ref={termRef}
         className="scrollbar-thin h-[160px] w-[420px] max-w-[92vw] overflow-y-auto rounded-lg border border-hairline bg-inset px-3.5 py-3 font-mono text-[12px] leading-[1.7]"
       >
-        <div className="text-lisp-purple">λ conscell boot v{__APP_VERSION__}</div>
+        <div className="text-lisp-purple">λ martingalecell boot v{__APP_VERSION__}</div>
         {lines.map((l, i) => (
           <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="flex items-baseline gap-2">
             <Check size={11} className="shrink-0 translate-y-px text-success" />

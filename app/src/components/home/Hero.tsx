@@ -128,7 +128,7 @@ export default function Hero() {
         </h1>
 
         <p className="hero-subhead mt-6 max-w-2xl text-[18px] leading-[1.65] text-secondary opacity-0">
-          ConsCell runs SBCL (and ECL as a fallback) compiled to WebAssembly and wraps it in a notebook-style IDE —
+          MartingaleCell runs SBCL (and ECL as a fallback) compiled to WebAssembly and wraps it in a notebook-style IDE —
           syntax-highlighted editor, persistent result cells, a real condition system with
           restarts. No servers. No setup. Your code never leaves the tab.
         </p>

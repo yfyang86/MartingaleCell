@@ -269,8 +269,8 @@ export default function SessionPanel() {
         setTimeout(() => setFlashCell(null), 1200)
       }
     }
-    window.addEventListener('conscell:goto-cell', handler)
-    return () => window.removeEventListener('conscell:goto-cell', handler)
+    window.addEventListener('martingalecell:goto-cell', handler)
+    return () => window.removeEventListener('martingalecell:goto-cell', handler)
   }, [])
 
   return (

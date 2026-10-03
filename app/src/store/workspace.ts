@@ -134,7 +134,7 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   debugOnError: true,
 }
 
-export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled to WASM.
+export const WELCOME_CODE = `;;;; Welcome to MartingaleCell — Common Lisp, compiled to WASM.
 ;;;; Press Ctrl+Enter to evaluate the form at point.
 
 (defun fib (n)
@@ -146,7 +146,7 @@ export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled 
 (fib 15)
 `
 
-const IDB_KEY = 'conscell-workspace-v1'
+const IDB_KEY = 'martingalecell-workspace-v1'
 const MAX_CELLS = 1000
 const MAX_LOGS = 2000
 

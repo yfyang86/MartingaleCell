@@ -1,4 +1,4 @@
-# ConsCell
+# MartingaleCell
 
 **A notebook-style Common Lisp IDE that runs entirely in your browser.**
 Real Common Lisp, compiled to WebAssembly — no server, no install, nothing
@@ -118,7 +118,7 @@ explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` 
 
 ## Licence notes
 
-- **ConsCell's own code** — MIT; see [LICENSE](LICENSE). This covers
+- **MartingaleCell's own code** — MIT; see [LICENSE](LICENSE). This covers
   the IDE, the workers and the WebAssembly port work in this repository.
 - **SBCL** (the default engine) — mostly public domain, with some parts
   under MIT-style and BSD-style licences; the authoritative text is the
@@ -127,10 +127,10 @@ explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` 
   ([yfyang86/sbcl](https://github.com/yfyang86/sbcl)); the `.gz`
   artifacts under `app/public/sbcl/` are built from it.
 - **ECL / WECL** — LGPL-2.1+ (Daniel Kochmański's WebAssembly build of
-  Embeddable Common Lisp). ConsCell ships the WECL binary unmodified as
+  Embeddable Common Lisp). MartingaleCell ships the WECL binary unmodified as
   the fallback engine, keeps its licence notice, and does not link
   against it: the IDE talks to it through a worker message protocol. The
-  source is available from the ECL project; ConsCell does not depend on
+  source is available from the ECL project; MartingaleCell does not depend on
   it as its core engine.
 - **cl-plot** (bundled sample) — MIT, © Martin Kersner (its LICENSE
   file is inside the sample zip).
@@ -138,5 +138,5 @@ explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` 
 ---
 
 Status: **beta** (v1.0.0-beta.0) — see [CHANGELOG.md](CHANGELOG.md).
-For hacking on ConsCell itself, see [Developer-Manual.md](Developer-Manual.md);
+For hacking on MartingaleCell itself, see [Developer-Manual.md](Developer-Manual.md);
 for cutting a release, [RELEASE.md](RELEASE.md).

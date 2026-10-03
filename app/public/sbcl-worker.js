@@ -1,4 +1,4 @@
-/* ConsCell — SBCL (wasm32-wasip1) Web Worker.
+/* MartingaleCell — SBCL (wasm32-wasip1) Web Worker.
  *
  * Hand-written, NOT bundled. Runs the SBCL WebAssembly port
  * (github.com/yfyang86/sbcl, branch wasm-dev — see SBCL-Handoff.md) as a

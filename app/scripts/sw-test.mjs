@@ -1,6 +1,6 @@
 /* Service worker test, in Node (Sprint 34): evaluates public/sw.js in a vm
  * context with a fake Cache API, fetch, Response and event listeners, and
- * checks install (precache), activate (older conscell-* caches dropped,
+ * checks install (precache), activate (older martingalecell-* caches dropped,
  * clients claimed), navigations (network first, the cached index.html when
  * offline, a 503 when nothing was ever cached), cache-first for same-origin
  * GETs, cross-origin / non-GET / sw.js pass-through, and the `warm` message
@@ -93,18 +93,20 @@ const routes = {
 
 /* 1. install precaches the scope root and index.html, then skipWaiting */
 let w = makeWorld({ routes })
-w.stores.set('conscell-1.0.0-beta.0', new Map([[SCOPE + 'old', new Response('old')]]))
+w.stores.set('martingalecell-1.0.0-beta.0', new Map([[SCOPE + 'old', new Response('old')]]))
 await w.dispatch('install', {})
-check('install precaches the scope root and index.html and calls skipWaiting', w.stores.get('conscell-1.0.0-beta.1')?.has(SCOPE) && w.stores.get('conscell-1.0.0-beta.1')?.has(SCOPE + 'index.html') && w.self.skipped === true, [...(w.stores.get('conscell-1.0.0-beta.1')?.keys() ?? [])].join(','))
+check('install precaches the scope root and index.html and calls skipWaiting', w.stores.get('martingalecell-1.0.0-beta.1')?.has(SCOPE) && w.stores.get('martingalecell-1.0.0-beta.1')?.has(SCOPE + 'index.html') && w.self.skipped === true, [...(w.stores.get('martingalecell-1.0.0-beta.1')?.keys() ?? [])].join(','))
 
-/* 2. activate drops the older conscell-* cache, keeps the current one, claims clients */
+/* 2. activate drops the older martingalecell-* cache, keeps the current one, claims clients */
+w.stores.set('conscell-0.9.0', new Map([[SCOPE + 'legacy', new Response('legacy')]]))
 await w.dispatch('activate', {})
-check('activate deletes conscell-1.0.0-beta.0, keeps conscell-1.0.0-beta.1, claims the clients', !w.stores.has('conscell-1.0.0-beta.0') && w.stores.has('conscell-1.0.0-beta.1') && w.self.claimed === true, [...w.stores.keys()].join(','))
+check('activate deletes martingalecell-1.0.0-beta.0, keeps martingalecell-1.0.0-beta.1, claims the clients', !w.stores.has('martingalecell-1.0.0-beta.0') && w.stores.has('martingalecell-1.0.0-beta.1') && w.self.claimed === true, [...w.stores.keys()].join(','))
+check('activate also deletes pre-rename conscell-* caches', !w.stores.has('conscell-0.9.0'), [...w.stores.keys()].join(','))
 
 /* 3. a navigation online: network response returned and stored as index.html (headers kept) */
 let res = await w.dispatch('fetch', nav('/ide'))
 check('a navigation online returns the network response', res && res.status === 200 && (await res.clone().text()) === '<html>shell</html>')
-const storedIndex = await w.stores.get('conscell-1.0.0-beta.1').get(SCOPE + 'index.html')
+const storedIndex = await w.stores.get('martingalecell-1.0.0-beta.1').get(SCOPE + 'index.html')
 check('the navigation response was stored as index.html, COOP header included', storedIndex && storedIndex.headers.get('cross-origin-opener-policy') === 'same-origin')
 
 /* 4. a navigation offline: the cached index.html (any SPA route) */
@@ -115,7 +117,7 @@ w.setOnline(true)
 
 /* 5. same-origin GET: cache-first, stored on the way through */
 res = await w.fetchEvent('/assets/app-abc.js')
-check('a same-origin asset is fetched once and stored', res && (await res.clone().text()) === 'js' && w.stores.get('conscell-1.0.0-beta.1').has(SCOPE + 'assets/app-abc.js'))
+check('a same-origin asset is fetched once and stored', res && (await res.clone().text()) === 'js' && w.stores.get('martingalecell-1.0.0-beta.1').has(SCOPE + 'assets/app-abc.js'))
 const before = w.fetchLog.length
 res = await w.fetchEvent('/assets/app-abc.js')
 check('the second request for it is served from the cache (no fetch)', res && w.fetchLog.length === before)
@@ -141,7 +143,7 @@ check('cross-origin, non-GET and sw.js requests are left to the browser (no resp
 let reply = null
 const source = { postMessage: (m) => { reply = m } }
 await w.dispatch('message', { data: { type: 'warm', urls: [SCOPE + 'sbcl/sbcl.wasm.gz', SCOPE + 'sbcl/sbcl.core.gz', SCOPE + 'assets/app-abc.js', SCOPE + 'missing.bin', 'https://evil.example/x'] }, source })
-const store = w.stores.get('conscell-1.0.0-beta.1')
+const store = w.stores.get('martingalecell-1.0.0-beta.1')
 check('warm stores the artifacts that were missing', store.has(SCOPE + 'sbcl/sbcl.wasm.gz') && store.has(SCOPE + 'sbcl/sbcl.core.gz'))
 check('warm skips a URL already in the cache and drops cross-origin URLs', reply && !reply.added.includes(SCOPE + 'assets/app-abc.js') && !reply.urls.some((u) => u.startsWith('https://evil')), JSON.stringify(reply))
 check('warm replies with added and failed lists', reply && reply.type === 'warmed' && reply.added.length === 2 && reply.failed.join(',') === SCOPE + 'missing.bin', JSON.stringify(reply))
@@ -162,7 +164,7 @@ check('with nothing cached, an offline navigation answers 503 instead of throwin
 /* 10. the cache name follows the registration version */
 const w3 = makeWorld({ routes, version: '9.9.9' })
 await w3.dispatch('install', {})
-check('the cache is named after the ?v= registration query', w3.stores.has('conscell-9.9.9'))
+check('the cache is named after the ?v= registration query', w3.stores.has('martingalecell-9.9.9'))
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

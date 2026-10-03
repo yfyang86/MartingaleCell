@@ -41,7 +41,7 @@ export default function Navbar() {
     >
       <nav className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Left: logo + wordmark + WASM badge */}
-        <Link to="/" className="flex items-center gap-2.5" aria-label="ConsCell home">
+        <Link to="/" className="flex items-center gap-2.5" aria-label="MartingaleCell home">
           <img src="/logo.svg" alt="" width={26} height={26} className="h-[26px] w-[26px]" />
           <Wordmark />
           <span className="rounded-sm border border-steel/50 px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-widest text-steel">

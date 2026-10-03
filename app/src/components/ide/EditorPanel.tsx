@@ -85,7 +85,7 @@ const lispIndent = indentService.of((context, pos) => {
 
 /* -------- context menu -------- */
 
-const EDITOR_STATES_KEY = 'conscell-editor-states-v1'
+const EDITOR_STATES_KEY = 'martingalecell-editor-states-v1'
 /** state fields serialised per buffer: undo history (Sprint 18) and folds (Sprint 20) */
 const PERSISTED_FIELDS = { history: historyField, fold: foldState }
 

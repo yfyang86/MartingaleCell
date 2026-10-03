@@ -67,7 +67,7 @@ export default function FeatureGrid() {
           className="max-w-2xl"
         >
           <p className="font-mono text-[11px] font-medium tracking-[0.2em] text-steel">
-            WHY CONSCELL
+            WHY MARTINGALECELL
           </p>
           <h2 className="mt-4 font-display text-[clamp(30px,4vw,44px)] font-semibold leading-[1.1] tracking-[-0.02em] text-primary">
             A Lisp machine with a browser address

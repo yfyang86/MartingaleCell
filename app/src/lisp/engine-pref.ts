@@ -9,7 +9,7 @@
  * it synchronously before the store has hydrated. */
 export type EnginePref = 'auto' | 'ecl' | 'sbcl'
 
-const ENGINE_PREF_KEY = 'conscell-engine-pref'
+const ENGINE_PREF_KEY = 'martingalecell-engine-pref'
 
 export function getEnginePref(): EnginePref {
   try {
@@ -29,7 +29,7 @@ export function setEnginePref(p: EnginePref) {
  * effect on the next SBCL boot. */
 export type SbclMemory = 'off' | 512 | 768
 
-const SBCL_MEM_KEY = 'conscell-sbcl-mem'
+const SBCL_MEM_KEY = 'martingalecell-sbcl-mem'
 
 export function getSbclMemory(): SbclMemory {
   try {

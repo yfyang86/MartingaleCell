@@ -16,7 +16,7 @@ import { parsePlotMarker, PLOT_MARKER, type PlotAttachment } from '@/plot/gnuplo
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 
 const BOOT_TIMEOUT_MS = 120_000 /* sbcl boots ~112 MB of artifacts; wecl is well under the old 30 s */
-const MODULES_IDB_KEY = 'conscell-modules-v1'
+const MODULES_IDB_KEY = 'martingalecell-modules-v1'
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
@@ -345,7 +345,7 @@ class LispRuntime {
         return
       }
       this.worker = worker
-      this.emitBoot(`λ conscell boot — spawning runtime worker (${engine})`)
+      this.emitBoot(`λ martingalecell boot — spawning runtime worker (${engine})`)
       worker.onerror = (ev) => {
         if (!settled) { settled = true; clearTimeout(timer); reject(new Error(ev.message || 'worker error')) }
         else this.onCrash('worker error: ' + (ev.message || 'unknown'))

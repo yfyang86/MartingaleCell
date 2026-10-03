@@ -1,5 +1,5 @@
 /**
- * ConsCell shared snippet catalog.
+ * MartingaleCell shared snippet catalog.
  *
  * Consumed by the Examples gallery (`/examples`) and by the IDE page via
  * dynamic import (`/ide?example=<slug>`). All snippets are real, runnable
@@ -975,7 +975,7 @@ Add your own: (setf (gethash :my-shape *fractal-generators*) generator)."
     description:
       'Call a function that does not exist yet, then define it from inside the debugger and let the form finish.',
     code: `;;;; Two mistakes every REPL session makes — and the two restarts
-;;;; ConsCell adds for them. Neither exists in the image itself.
+;;;; MartingaleCell adds for them. Neither exists in the image itself.
 
 ;; 1. Undefined function. The cell pauses with DEFINE-FUNCTION: type a
 ;;    lambda (or the name of an existing function) and the form re-runs.

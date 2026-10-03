@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ConsCell. The format follows
+All notable changes to MartingaleCell. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 uses [Semantic Versioning](https://semver.org/). Work lands in sprints
 (`Sprints/SprintN/`), each with a goal, implementation notes, a
@@ -10,6 +10,13 @@ test-and-fix log and a proposal for the next one.
 
 `dev` carries version `1.0.0-beta.3` since the release, so builds after
 it install their own service-worker cache.
+
+### Changed
+- **Renamed ConsCell to MartingaleCell** across the UI, docs, package
+  metadata, storage keys and the service-worker cache. Existing users'
+  localStorage (engine preference, memory quota, editor states, workspace,
+  session transcripts) is migrated one-shot on load; pre-rename
+  `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
 - **Smarter autocomplete**: context-aware (only callables after `(`;
@@ -198,5 +205,5 @@ the sprints below and was never tagged.
 | 31 | Function series drawn; Ctrl+R over cell inputs; service worker for offline use |
 | 32 | Code cut: version `1.0.0-beta.0`, this changelog, documents pass, release checklist |
 
-[Unreleased]: https://github.com/yfyang86/ConsCell/compare/v1.0.0-beta.0...dev
-[1.0.0-beta.0]: https://github.com/yfyang86/ConsCell/releases/tag/v1.0.0-beta.0
+[Unreleased]: https://github.com/yfyang86/MartingaleCell/compare/v1.0.0-beta.0...dev
+[1.0.0-beta.0]: https://github.com/yfyang86/MartingaleCell/releases/tag/v1.0.0-beta.0

@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const entry = path.join(os.tmpdir(), `conscell-ansi-entry-${process.pid}.ts`)
-const outfile = path.join(os.tmpdir(), `conscell-ansi-bundle-${process.pid}.mjs`)
+const entry = path.join(os.tmpdir(), `martingalecell-ansi-entry-${process.pid}.ts`)
+const outfile = path.join(os.tmpdir(), `martingalecell-ansi-bundle-${process.pid}.mjs`)
 fs.writeFileSync(entry, `export { AnsiScreen, hasAnsi } from ${JSON.stringify(path.join(root, 'src/terminal/ansi'))}\n`)
 esbuild.buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent' })
 const { AnsiScreen, hasAnsi } = await import(outfile)

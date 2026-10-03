@@ -58,7 +58,7 @@ function MemoryGauge() {
 function LogRow({ entry, showTs }: { entry: LogEntry; showTs: boolean }) {
   const [open, setOpen] = useState(false)
   const gotoCell = () => {
-    if (entry.cellRef != null) window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: entry.cellRef }))
+    if (entry.cellRef != null) window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: entry.cellRef }))
   }
   return (
     <motion.div
@@ -163,7 +163,7 @@ export default function LogPanel() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'conscell-log.txt'
+    a.download = 'martingalecell-log.txt'
     a.click()
     URL.revokeObjectURL(url)
   }

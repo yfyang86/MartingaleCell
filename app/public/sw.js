@@ -1,4 +1,4 @@
-/* ConsCell service worker (Sprint 31): the IDE works offline after its first
+/* MartingaleCell service worker (Sprint 31): the IDE works offline after its first
  * load. The cache is named after the app version the page registered us
  * with (./sw.js?v=<version>): a new build installs a new worker, which drops
  * the older cache when it activates, so artifacts are re-fetched once per
@@ -13,7 +13,7 @@
  * - cross-origin requests (the fonts stylesheet) are left to the browser. */
 
 var VERSION = new URL(self.location.href).searchParams.get('v') || 'dev'
-var CACHE = 'conscell-' + VERSION
+var CACHE = 'martingalecell-' + VERSION
 var SCOPE = self.registration.scope
 var INDEX = SCOPE + 'index.html'
 
@@ -29,7 +29,8 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
       .then(function (keys) {
-        return Promise.all(keys.filter(function (k) { return k.indexOf('conscell-') === 0 && k !== CACHE }).map(function (k) { return caches.delete(k) }))
+        /* drop stale versions and the pre-rename ConsCell caches */
+        return Promise.all(keys.filter(function (k) { return (k.indexOf('martingalecell-') === 0 && k !== CACHE) || k.indexOf('conscell-') === 0 }).map(function (k) { return caches.delete(k) }))
       })
       .then(function () { return self.clients.claim() })
   )
@@ -46,7 +47,7 @@ function networkFirstNavigation(request) {
     })
     .catch(function () {
       return caches.match(INDEX, MATCH).then(function (cached) {
-        return cached || new Response('ConsCell is offline and has not been loaded before.', { status: 503, headers: { 'Content-Type': 'text/plain' } })
+        return cached || new Response('MartingaleCell is offline and has not been loaded before.', { status: 503, headers: { 'Content-Type': 'text/plain' } })
       })
     })
 }
@@ -70,7 +71,7 @@ function cacheFirst(request) {
       return response
     }).catch(function () {
       /* offline and not cached: an explicit gateway-timeout answer instead of a rejected respondWith */
-      return new Response('ConsCell is offline and this file is not cached.', { status: 504, headers: { 'Content-Type': 'text/plain' } })
+      return new Response('MartingaleCell is offline and this file is not cached.', { status: 504, headers: { 'Content-Type': 'text/plain' } })
     })
   })
 }

@@ -109,7 +109,7 @@ export default function Footer() {
       <div className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-5 sm:flex-row sm:justify-between sm:px-6">
           <p className="font-mono text-[11px] text-muted">
-            © 2025 ConsCell — runs 100% client-side. No code ever leaves your machine.
+            © 2025 MartingaleCell — runs 100% client-side. No code ever leaves your machine.
           </p>
           <p className="font-mono text-[11px] text-muted" aria-hidden>
             ((()))<span className="text-lisp">λ</span>((()))

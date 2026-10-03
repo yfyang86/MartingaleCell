@@ -5,7 +5,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        /* ConsCell design tokens (CSS variables defined in index.css) */
+        /* MartingaleCell design tokens (CSS variables defined in index.css) */
         abyss: "var(--bg-abyss)",
         panel: "var(--bg-panel)",
         editor: "var(--bg-editor)",

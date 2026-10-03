@@ -267,7 +267,7 @@ export default function Toolbar() {
       <Dropdown
         trigger={
           <button className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 transition-colors duration-100 hover:bg-raised">
-            <img src="/logo.svg" alt="ConsCell" className="h-[22px] w-[22px]" />
+            <img src="/logo.svg" alt="MartingaleCell" className="h-[22px] w-[22px]" />
             <span className="font-display text-[14px] font-semibold">
               <span className="text-primary">Cons</span>
               <span className="text-steel">Cell</span>
@@ -281,7 +281,7 @@ export default function Toolbar() {
             <MenuItem label="Back to home" href="/" />
             <MenuItem label="Examples" href="/examples" />
             <MenuItem label="Docs" href="/docs" />
-            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', `ConsCell v${__APP_VERSION__} — ANSI Common Lisp in the browser (SBCL or ECL, compiled to WebAssembly)`)} />
+            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', `MartingaleCell v${__APP_VERSION__} — ANSI Common Lisp in the browser (SBCL or ECL, compiled to WebAssembly)`)} />
           </>
         )}
       </Dropdown>

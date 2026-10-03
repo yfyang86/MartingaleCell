@@ -26,7 +26,7 @@ export default function Persistence() {
     <section id="persistence" className="scroll-mt-20">
       <SectionHeading
         title="Your code never leaves the tab."
-        lead="ConsCell runs 100% client-side. The Lisp engine — SBCL or ECL — executes in a Web Worker inside your browser; evaluation, compilation, and persistence are all local."
+        lead="MartingaleCell runs 100% client-side. The Lisp engine — SBCL or ECL — executes in a Web Worker inside your browser; evaluation, compilation, and persistence are all local."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-3">

@@ -1,10 +1,10 @@
-# ConsCell
+# MartingaleCell
 
 A notebook-style Common Lisp IDE that runs entirely in the browser, with
 **two real engines**: **SBCL** (compiled to `wasm32-wasip1`) boots by
 default, and **ECL** (ANSI CL, compiled to WebAssembly as
 [WECL](https://turtleware.eu/)) takes over when SBCL cannot boot or when
-chosen in Settings. ConsCell wraps either in a CodeMirror editor,
+chosen in Settings. MartingaleCell wraps either in a CodeMirror editor,
 Jupyter-like result cells, a log console, a project explorer and an
 in-runtime package manager. Nothing leaves the browser.
 
@@ -121,7 +121,7 @@ sprint, and lands on `dev` through a pull request that must be green in CI.
 
 ## Licence notes
 
-ConsCell's own code is MIT (root `LICENSE`). The default engine is SBCL
+MartingaleCell's own code is MIT (root `LICENSE`). The default engine is SBCL
 (mostly public domain, with MIT-style and BSD-style parts — see SBCL's
 `COPYING`); ECL / WECL (LGPL-2.1+) ships unmodified as the fallback
 engine with its notice kept. The bundled sample project cl-plot is MIT

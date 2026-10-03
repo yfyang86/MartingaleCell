@@ -11,7 +11,7 @@ import { EASE_OUT } from './motion'
 const FAQS = [
   {
     q: 'Is this real Common Lisp?',
-    a: 'Yes — two full ANSI Common Lisp implementations compiled to WebAssembly and self-hosted in a Web Worker: SBCL (the default, wasm32-wasip1) and ECL (cross-compiled by the WECL project, the fallback). If neither wasm image loads, ConsCell falls back to JSCL, then to a small demo evaluator — every engine speaks the same session protocol.',
+    a: 'Yes — two full ANSI Common Lisp implementations compiled to WebAssembly and self-hosted in a Web Worker: SBCL (the default, wasm32-wasip1) and ECL (cross-compiled by the WECL project, the fallback). If neither wasm image loads, MartingaleCell falls back to JSCL, then to a small demo evaluator — every engine speaks the same session protocol.',
   },
   {
     q: 'How big is the download?',

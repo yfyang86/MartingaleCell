@@ -50,9 +50,9 @@ export interface BufferDefinition {
   cellN?: number
 }
 
-const IDB_HANDLE = 'conscell-dir-handle'
-const IDB_DEFS = 'conscell-definitions-v1'
-const IDB_VIRTUAL = 'conscell-virtual-project-v1'
+const IDB_HANDLE = 'martingalecell-dir-handle'
+const IDB_DEFS = 'martingalecell-definitions-v1'
+const IDB_VIRTUAL = 'martingalecell-virtual-project-v1'
 
 /** The live FS-Access root handle (not serializable into state — module scope). */
 let rootHandle: FileSystemDirectoryHandle | null = null

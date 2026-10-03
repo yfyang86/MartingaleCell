@@ -41,7 +41,7 @@ export default function Engines() {
     <section id="engines" className="scroll-mt-20">
       <SectionHeading
         title="Two engines, one session."
-        lead="ConsCell boots SBCL by default and falls back to ECL when SBCL cannot come up. Both are real ANSI Common Lisp implementations compiled to WebAssembly and run in a Web Worker; JSCL and a small demo interpreter sit further down the ladder for pages where neither wasm image loads."
+        lead="MartingaleCell boots SBCL by default and falls back to ECL when SBCL cannot come up. Both are real ANSI Common Lisp implementations compiled to WebAssembly and run in a Web Worker; JSCL and a small demo interpreter sit further down the ladder for pages where neither wasm image loads."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">

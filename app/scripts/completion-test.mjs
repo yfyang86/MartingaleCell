@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const entry = path.join(os.tmpdir(), `conscell-completion-entry-${process.pid}.ts`)
-const outfile = path.join(os.tmpdir(), `conscell-completion-bundle-${process.pid}.mjs`)
+const entry = path.join(os.tmpdir(), `martingalecell-completion-entry-${process.pid}.ts`)
+const outfile = path.join(os.tmpdir(), `martingalecell-completion-bundle-${process.pid}.mjs`)
 fs.writeFileSync(entry, `export { analyzeContext, scoreMatch, localsInForm, bufferSymbols, parseSymbolDump, registerLiveSymbols, haveLiveSymbols } from ${JSON.stringify(path.join(root, 'src/components/ide/completion'))}\n`)
 esbuild.buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent' })
 const mod = await import(outfile)

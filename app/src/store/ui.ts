@@ -5,7 +5,7 @@ import type { SearchOptions } from '@/search/workspace-search'
 
 export interface SearchPreset { query: string; opts?: SearchOptions }
 
-const SEARCH_OPTS_KEY = 'conscell-search-opts'
+const SEARCH_OPTS_KEY = 'martingalecell-search-opts'
 function loadSearchOpts(): SearchOptions {
   try { return JSON.parse(localStorage.getItem(SEARCH_OPTS_KEY) ?? '{}') as SearchOptions } catch { return {} }
 }
@@ -63,7 +63,7 @@ export const useUi = create<UiState>((set) => ({
   shortcutsOpen: false,
   shareUrl: null,
   confirm: null,
-  bannerDismissed: typeof localStorage !== 'undefined' && localStorage.getItem('conscell-banner-dismissed') === '1',
+  bannerDismissed: typeof localStorage !== 'undefined' && localStorage.getItem('martingalecell-banner-dismissed') === '1',
   explorerOpen: true,
   searchOpen: false,
   outlineOpen: false,
@@ -91,7 +91,7 @@ export const useUi = create<UiState>((set) => ({
   setSearchOpts: (patch) => set((s) => ({ searchOpts: saveSearchOpts({ ...s.searchOpts, ...patch }) })),
   setConfirmCloseBuffer: (confirmCloseBufferId) => set({ confirmCloseBufferId }),
   dismissBanner: () => {
-    localStorage.setItem('conscell-banner-dismissed', '1')
+    localStorage.setItem('martingalecell-banner-dismissed', '1')
     set({ bannerDismissed: true })
   },
 }))
