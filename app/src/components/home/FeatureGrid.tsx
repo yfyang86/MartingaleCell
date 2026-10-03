@@ -9,6 +9,7 @@ import {
   FolderOpen,
   type LucideIcon,
 } from 'lucide-react'
+import { useI18n } from '@/i18n/context'
 
 interface Feature {
   icon: LucideIcon
@@ -56,6 +57,7 @@ const FEATURES: Feature[] = [
 
 /** Feature grid (home.md §4): 6 cell-styled cards, stagger in on scroll */
 export default function FeatureGrid() {
+  const { t } = useI18n()
   return (
     <section id="features" className="relative px-4 py-28 sm:px-6 md:py-36">
       <div className="mx-auto max-w-6xl">
@@ -67,14 +69,13 @@ export default function FeatureGrid() {
           className="max-w-2xl"
         >
           <p className="font-mono text-[11px] font-medium tracking-[0.2em] text-steel">
-            WHY MARTINGALECELL
+            {t('WHY MARTINGALECELL')}
           </p>
           <h2 className="mt-4 font-display text-[clamp(30px,4vw,44px)] font-semibold leading-[1.1] tracking-[-0.02em] text-primary">
-            A Lisp machine with a browser address
+            {t('A Lisp machine with a browser address')}
           </h2>
           <p className="mt-4 text-[17px] leading-[1.65] text-secondary">
-            Everything you'd expect from a serious Common Lisp environment — reimagined as a
-            single web page.
+            {t("Everything you'd expect from a serious Common Lisp environment — reimagined as a single web page.")}
           </p>
         </motion.div>
 
@@ -105,9 +106,9 @@ export default function FeatureGrid() {
                 <feature.icon size={18} strokeWidth={1.75} className="text-steel-bright" />
               </div>
               <h3 className="mt-5 font-display text-[18px] font-semibold text-primary">
-                {feature.title}
+                {t(feature.title)}
               </h3>
-              <p className="mt-2.5 text-[14px] leading-[1.65] text-secondary">{feature.copy}</p>
+              <p className="mt-2.5 text-[14px] leading-[1.65] text-secondary">{t(feature.copy)}</p>
             </motion.article>
           ))}
         </motion.div>

@@ -9,6 +9,7 @@ import {
   FileUp, FolderInput, RotateCw, Search, ListTree,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import SearchPanel from './SearchPanel'
@@ -36,6 +37,7 @@ function IconBtn({ icon, title, onClick, disabled }: { icon: React.ReactNode; ti
 }
 
 function Menu({ x, y, items, close }: { x: number; y: number; items: { label: string; run: () => void; danger?: boolean; disabled?: boolean; hint?: string }[]; close: () => void }) {
+  const { t } = useI18n()
   useEffect(() => {
     const onDown = () => close()
     window.addEventListener('mousedown', onDown)
@@ -62,8 +64,8 @@ function Menu({ x, y, items, close }: { x: number; y: number; items: { label: st
           title={it.hint}
           onClick={() => { close(); if (!it.disabled) it.run() }}
         >
-          <span>{it.label}</span>
-          {it.hint && it.disabled && <span className="font-mono text-[9px] text-muted">unavailable</span>}
+          <span>{t(it.label)}</span>
+          {it.hint && it.disabled && <span className="font-mono text-[9px] text-muted">{t('unavailable')}</span>}
         </button>
       ))}
     </motion.div>
@@ -82,6 +84,7 @@ interface TreeCtx {
 }
 
 function TreeNode({ node, ctx }: { node: ProjectNode; ctx: TreeCtx }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(ctx.depth < 1)
   const activePath = useWorkspace((s) => {
     const b = s.buffers.find((x) => x.id === s.activeBufferId)
@@ -120,7 +123,7 @@ function TreeNode({ node, ctx }: { node: ProjectNode; ctx: TreeCtx }) {
               ))}
               {(node.children ?? []).length === 0 && (
                 <div className="py-[3px] font-mono text-[10.5px] text-muted/60" style={{ paddingLeft: 20 + (ctx.depth + 1) * 12 }}>
-                  (empty)
+                  {t('(empty)')}
                 </div>
               )}
             </motion.div>
@@ -166,6 +169,7 @@ function TreeNode({ node, ctx }: { node: ProjectNode; ctx: TreeCtx }) {
 /* -------- empty state -------- */
 
 function EmptyExplorer({ onImportZip, onUploadFolder }: { onImportZip: (f: File) => void; onUploadFolder: (fl: FileList) => void }) {
+  const { t } = useI18n()
   const zipRef = useRef<HTMLInputElement>(null)
   const dirRef = useRef<HTMLInputElement>(null)
   const canReopen = useProject((s) => s.canReopen)
@@ -176,21 +180,21 @@ function EmptyExplorer({ onImportZip, onUploadFolder }: { onImportZip: (f: File)
   const btn = 'flex w-full items-center gap-2 rounded-md border border-hairline px-3 py-2 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary'
   return (
     <div className="flex flex-1 flex-col gap-2 px-3 py-4">
-      <p className="text-[12px] leading-relaxed text-muted">No project open. A project is just a folder of Lisp files.</p>
+      <p className="text-[12px] leading-relaxed text-muted">{t('No project open. A project is just a folder of Lisp files.')}</p>
       {fsAccessSupported && (
         <button className={btn} onClick={() => void openFolder()} disabled={busy}>
-          <FolderOpen size={13} className="text-steel" /> Open Folder…
+          <FolderOpen size={13} className="text-steel" /> {t('Open Folder…')}
         </button>
       )}
       <button className={btn} onClick={() => zipRef.current?.click()} disabled={busy}>
-        <FileUp size={13} className="text-steel" /> Import ZIP…
+        <FileUp size={13} className="text-steel" /> {t('Import ZIP…')}
       </button>
       <button className={btn} onClick={() => dirRef.current?.click()} disabled={busy}>
-        <FolderInput size={13} className="text-steel" /> Upload Folder…
+        <FolderInput size={13} className="text-steel" /> {t('Upload Folder…')}
       </button>
       {canReopen && (
         <button className={btn} onClick={() => void reopenLast()} disabled={busy}>
-          <RotateCw size={13} className="text-steel" /> Reopen last project
+          <RotateCw size={13} className="text-steel" /> {t('Reopen last project')}
         </button>
       )}
       <button
@@ -198,7 +202,7 @@ function EmptyExplorer({ onImportZip, onUploadFolder }: { onImportZip: (f: File)
         onClick={() => void openSample()}
         disabled={busy}
       >
-        Open sample project: cl-plot (MIT)
+        {t('Open sample project: cl-plot (MIT)')}
       </button>
       <input ref={zipRef} type="file" accept=".zip,application/zip" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportZip(f); e.target.value = '' }} />
@@ -213,6 +217,7 @@ function EmptyExplorer({ onImportZip, onUploadFolder }: { onImportZip: (f: File)
 /* -------- main panel -------- */
 
 export default function ExplorerPanel() {
+  const { t } = useI18n()
   const kind = useProject((s) => s.kind)
   const name = useProject((s) => s.name)
   const tree = useProject((s) => s.tree)
@@ -257,21 +262,21 @@ export default function ExplorerPanel() {
     >
       {/* header */}
       <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-hairline px-2">
-        <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Explorer</span>
+        <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{t('Explorer')}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-secondary" title={name ?? undefined}>
           {name ?? ''}
         </span>
         <IconBtn
           icon={<PackageOpen size={13} />}
-          title={kind ? 'Load Project into Runtime (recursive, then call it)' : 'Open a project first'}
+          title={kind ? t('Load Project into Runtime (recursive, then call it)') : t('Open a project first')}
           onClick={() => void loadProjectIntoRuntime()}
           disabled={loadDisabled}
         />
-        <IconBtn icon={<Search size={13} />} title="Search workspace (Ctrl⇧F)" onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())} />
-        <IconBtn icon={<ListTree size={13} />} title="Outline of definitions (Ctrl⇧O)" onClick={toggleOutline} />
-        <IconBtn icon={<FilePlus size={13} />} title="New file" onClick={() => setCreating({ dir: '', kind: 'file' })} disabled={!kind} />
-        <IconBtn icon={<FolderPlus size={13} />} title="New folder" onClick={() => setCreating({ dir: '', kind: 'folder' })} disabled={!kind} />
-        <IconBtn icon={<MoreHorizontal size={13} />} title="Project actions" onClick={(e) => setMoreMenu({ x: (e.target as HTMLElement).getBoundingClientRect().left, y: (e.target as HTMLElement).getBoundingClientRect().bottom + 4 })} />
+        <IconBtn icon={<Search size={13} />} title={t('Search workspace (Ctrl⇧F)')} onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())} />
+        <IconBtn icon={<ListTree size={13} />} title={t('Outline of definitions (Ctrl⇧O)')} onClick={toggleOutline} />
+        <IconBtn icon={<FilePlus size={13} />} title={t('New file')} onClick={() => setCreating({ dir: '', kind: 'file' })} disabled={!kind} />
+        <IconBtn icon={<FolderPlus size={13} />} title={t('New folder')} onClick={() => setCreating({ dir: '', kind: 'folder' })} disabled={!kind} />
+        <IconBtn icon={<MoreHorizontal size={13} />} title={t('Project actions')} onClick={(e) => setMoreMenu({ x: (e.target as HTMLElement).getBoundingClientRect().left, y: (e.target as HTMLElement).getBoundingClientRect().bottom + 4 })} />
       </div>
 
       {searchOpen && <SearchPanel />}
@@ -318,7 +323,7 @@ export default function ExplorerPanel() {
       ) : (
         <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-1 py-1">
           {tree.map((n) => <TreeNode key={n.path} node={n} ctx={ctx} />)}
-          {tree.length === 0 && <p className="px-2 py-3 font-mono text-[11px] text-muted">(empty project)</p>}
+          {tree.length === 0 && <p className="px-2 py-3 font-mono text-[11px] text-muted">{t('(empty project)')}</p>}
         </div>
       )}
 
@@ -327,15 +332,15 @@ export default function ExplorerPanel() {
         <div className="shrink-0 border-t border-hairline px-3 py-1.5">
           <div className="flex items-center gap-2">
             <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[9.5px] text-muted">
-              {kind === 'fsaccess' ? 'on disk' : 'virtual'}
+              {kind === 'fsaccess' ? t('on disk') : t('virtual')}
             </span>
             {kind === 'virtual' && (
               <button
                 className="font-mono text-[10px] text-steel hover:text-steel-bright"
                 onClick={() => void ps().exportZip()}
-                title="Download the project as a ZIP (this is how virtual projects are saved)"
+                title={t('Download the project as a ZIP (this is how virtual projects are saved)')}
               >
-                Export ZIP
+                {t('Export ZIP')}
               </button>
             )}
           </div>

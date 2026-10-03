@@ -29,6 +29,7 @@ import {
   evaluateFormAtPoint, evaluateAllForms, newBuffer, saveBuffers,
   decodeShareHash, loadExamples, loadExampleIntoBuffer, findReferences } from '@/components/ide/actions'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
@@ -63,6 +64,7 @@ function Gutter({ vertical, onReset }: { vertical?: boolean; onReset: () => void
 }
 
 export default function Ide() {
+  const { t } = useI18n()
   const location = useLocation()
   const hydrated = useWorkspace((s) => s.hydrated)
   const engineStatus = useWorkspace((s) => s.engineStatus)
@@ -269,8 +271,8 @@ export default function Ide() {
 
         {isTiny && !bannerDismissed && (
           <div className="flex items-center justify-between gap-3 border-b border-hairline bg-raised px-3 py-2 text-[12px] text-secondary">
-            <span>MartingaleCell is built for keyboards — best experienced on desktop.</span>
-            <button className="text-muted hover:text-primary" onClick={() => useUi.getState().dismissBanner()} aria-label="Dismiss">
+            <span>{t('MartingaleCell is built for keyboards — best experienced on desktop.')}</span>
+            <button className="text-muted hover:text-primary" onClick={() => useUi.getState().dismissBanner()} aria-label={t('Dismiss')}>
               <X size={13} />
             </button>
           </div>

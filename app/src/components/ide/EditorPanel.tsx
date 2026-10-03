@@ -17,6 +17,7 @@ import {
 } from '@codemirror/autocomplete'
 import { foldGutter, foldKeymap, foldState, indentService, indentUnit } from '@codemirror/language'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { BufferStates, scheduleScrollRestore, statesToJSON, statesFromJSON, type SerializeCache } from '@/editor/buffer-states'
@@ -92,6 +93,7 @@ const PERSISTED_FIELDS = { history: historyField, fold: foldState }
 interface MenuState { x: number; y: number }
 
 function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
+  const { t } = useI18n()
   const items: { label: string; kbd?: string; run: () => void }[] = [
     { label: 'Evaluate form at point', kbd: 'Ctrl↵', run: evaluateFormAtPoint },
     { label: 'Evaluate region', run: evaluateRegion },
@@ -101,7 +103,7 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
     { label: 'Find references', kbd: '⇧F12', run: () => findReferences() },
     { label: 'Copy', kbd: 'Ctrl C', run: () => {
         const v = getViewSafe()
-        if (v) { const s = v.state.selection.main; if (!s.empty) void copyText(v.state.sliceDoc(s.from, s.to), 'Copied selection') }
+        if (v) { const s = v.state.selection.main; if (!s.empty) void copyText(v.state.sliceDoc(s.from, s.to), t('Copied selection')) }
       } },
     { label: 'Paste', kbd: 'Ctrl V', run: () => void pasteIntoEditor() },
   ]
@@ -120,7 +122,7 @@ function ContextMenu({ menu, close }: { menu: MenuState; close: () => void }) {
           className="flex w-full items-center justify-between gap-6 px-3 py-1.5 text-left text-[12.5px] text-secondary transition-colors duration-100 hover:bg-panel hover:text-primary"
           onClick={() => { close(); it.run() }}
         >
-          <span>{it.label}</span>
+          <span>{t(it.label)}</span>
           {it.kbd && <span className="font-mono text-[10px] text-muted">{it.kbd}</span>}
         </button>
       ))}
@@ -134,6 +136,7 @@ const viewRef: { current: EditorView | null } = { current: null }
 /* -------- tab bar -------- */
 
 function TabBar() {
+  const { t } = useI18n()
   const buffers = useWorkspace((s) => s.buffers)
   const activeBufferId = useWorkspace((s) => s.activeBufferId)
   const setActiveBuffer = useWorkspace((s) => s.setActiveBuffer)
@@ -191,7 +194,7 @@ function TabBar() {
                 {b.origin?.type === 'cell' && <span className="rounded-sm bg-steel-dim px-1 text-[9.5px] text-steel-bright" aria-label={`from cell ${b.origin.n}`}>[{b.origin.n}]</span>}
               </>
             )}
-            {b.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-steel" title="unsaved changes" />}
+            {b.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-steel" title={t('unsaved changes')} />}
             <button
               className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded-sm text-muted hover:bg-panel hover:text-primary group-hover:flex"
               onClick={(e) => { e.stopPropagation(); requestCloseBuffer(b.id) }}
@@ -206,7 +209,7 @@ function TabBar() {
       <button
         className="flex w-8 shrink-0 items-center justify-center text-muted transition-colors duration-100 hover:bg-raised hover:text-primary"
         onClick={() => newBuffer()}
-        title="New buffer (Ctrl N)"
+        title={t('New buffer (Ctrl N)')}
       >
         <Plus size={14} />
       </button>
@@ -233,7 +236,7 @@ function TabBar() {
                 className="block w-full px-3 py-1.5 text-left text-[12.5px] text-secondary hover:bg-panel hover:text-primary"
                 onClick={() => { setTabMenu(null); it.run() }}
               >
-                {it.label}
+                {t(it.label)}
               </button>
             ))}
           </motion.div>
@@ -584,16 +587,17 @@ function SignatureBar() {
 /* -------- empty state -------- */
 
 function EmptyEditor() {
+  const { t } = useI18n()
   const newBuffer = useWorkspace((s) => s.newBuffer)
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
       <span className="font-mono text-[72px] leading-none text-strong">λ</span>
-      <p className="text-[13px] text-secondary">No buffers open</p>
+      <p className="text-[13px] text-secondary">{t('No buffers open')}</p>
       <button
         className="rounded-md border border-hairline px-4 py-2 text-[13px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary"
         onClick={() => newBuffer()}
       >
-        New buffer <span className="cc-kbd ml-2">Ctrl N</span>
+        {t('New buffer')} <span className="cc-kbd ml-2">Ctrl N</span>
       </button>
     </div>
   )

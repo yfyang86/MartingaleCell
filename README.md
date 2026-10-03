@@ -41,6 +41,8 @@ leaves your machine.
 - **A package manager for the runtime**: install / list / load / uninstall
   projects as modules inside the image (`(package-install "name")`); they
   persist across reloads via IndexedDB.
+- **Bilingual UI (English / 中文)**: toggle in the navbar; the choice follows
+  the browser language by default and is remembered.
 - **Everything local**: projects, editor state and modules are stored in
   your browser. Evaluation happens in a Web Worker. No telemetry, no
   backend, no account — and after the first load the IDE opens and

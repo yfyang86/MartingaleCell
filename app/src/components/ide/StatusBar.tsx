@@ -4,16 +4,18 @@
 import { useEffect, useState } from 'react'
 import { Github } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useEditorMeta } from '@/store/editor-meta'
 import { parenBalance } from './lisp-utils'
 
 function DepthDiagram({ depth }: { depth: number }) {
+  const { t } = useI18n()
   // (•(•)) mini-diagram: 6 slots, current depth highlighted
   const max = Math.min(6, Math.max(3, depth + 1))
   return (
     <span className="flex items-center gap-1 font-mono text-[11.5px] text-muted" title={`sexp depth ${depth}`}>
-      <span className="hidden sm:inline">depth {depth}</span>
+      <span className="hidden sm:inline">{t('depth')} {depth}</span>
       <span className="hidden md:inline-flex items-center">
         {Array.from({ length: max }, (_, i) => (
           <span key={i} className="flex items-center">
@@ -28,6 +30,7 @@ function DepthDiagram({ depth }: { depth: number }) {
 }
 
 export default function StatusBar() {
+  const { t } = useI18n()
   const engineStatus = useWorkspace((s) => s.engineStatus)
   const engineLabel = useWorkspace((s) => s.engineLabel)
   const bootProgress = useWorkspace((s) => s.bootProgress)
@@ -67,7 +70,7 @@ export default function StatusBar() {
         <span className="text-muted">{packageName}</span>
         <button
           className="text-muted transition-colors hover:text-steel"
-          title="Evaluator mode (click to toggle eval/compile)"
+          title={t('Evaluator mode (click to toggle eval/compile)')}
           onClick={() => setSettings({ evalMode: evalMode === 'eval' ? 'compile' : 'eval' })}
         >
           {evalMode}
@@ -77,17 +80,17 @@ export default function StatusBar() {
         <DepthDiagram depth={depth} />
         <span
           className={cn('hidden whitespace-nowrap lg:inline', balance !== 0 ? 'text-error' : 'text-muted')}
-          title={balance === 0 ? 'Parens balanced' : balance > 0 ? `${balance} unclosed open paren(s)` : `${-balance} unmatched close paren(s)`}
+          title={balance === 0 ? t('Parens balanced') : balance > 0 ? `${balance} ${t('unclosed open paren(s)')}` : `${-balance} ${t('unmatched close paren(s)')}`}
         >
           {balance === 0 ? '() ✓' : balance > 0 ? `( ×${balance}` : `) ×${-balance}`}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        {!online && <span className="rounded-sm bg-raised px-1.5 py-px text-muted">offline</span>}
-        <span className="hidden text-muted md:inline">worker: {evaluating ? 'busy' : ready ? 'idle' : engineStatus}</span>
+        {!online && <span className="rounded-sm bg-raised px-1.5 py-px text-muted">{t('offline')}</span>}
+        <span className="hidden text-muted md:inline">{t('worker:')} {evaluating ? t('busy') : ready ? t('idle') : engineStatus}</span>
         {lastMs != null && <span className="hidden text-muted lg:inline">{lastMs < 1 ? '<1' : lastMs.toFixed(0)} ms</span>}
         <span className={cn('hidden sm:inline', saveState === 'saving' ? 'text-muted' : 'text-success/80')}>
-          {saveState === 'saving' ? 'saving…' : 'saved ✓'}
+          {saveState === 'saving' ? t('saving…') : t('saved ✓')}
         </span>
         <span className="hidden text-muted xl:inline">{fontSize}px</span>
         <span className="hidden text-muted xl:inline">UTF-8</span>

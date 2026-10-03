@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, CaseSensitive, Regex, WholeWord, Sigma, Replace, ReplaceAll } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useProject, collectLispFiles } from '@/store/project'
 import { useUi } from '@/store/ui'
@@ -47,6 +48,7 @@ function MatchRow({ m, onOpen, preview }: { m: SearchMatch; onOpen: () => void; 
 }
 
 export default function SearchPanel() {
+  const { t } = useI18n()
   const buffers = useWorkspace((s) => s.buffers)
   const projectKind = useProject((s) => s.kind)
   const projectName = useProject((s) => s.name)
@@ -147,11 +149,12 @@ export default function SearchPanel() {
   }, [confirming])
 
   const summary = useMemo(() => {
-    if (!query) return 'open buffers' + (projectKind ? ' + project files' : '')
+    if (!query) return t('open buffers') + (projectKind ? t(' + project files') : '')
     if (!shown) return ''
     if (shown.error) return shown.error
-    if (shown.totalMatches === 0) return 'no matches'
+    if (shown.totalMatches === 0) return t('no matches')
     return `${shown.totalMatches}${shown.truncated ? '+' : ''} in ${shown.files.length} file${shown.files.length === 1 ? '' : 's'}`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, shown, projectKind])
 
   const flip = (k: keyof SearchOptions) => setSearchOpts({ [k]: !opts[k] })
@@ -167,23 +170,23 @@ export default function SearchPanel() {
             if (e.key === 'Escape') { e.preventDefault(); setSearchOpen(false) }
             if (e.key === 'Enter' && shown?.files[0]) { e.preventDefault(); open(shown.files[0], shown.files[0].matches[0]) }
           }}
-          placeholder="Search workspace…"
+          placeholder={t('Search workspace…')}
           spellCheck={false}
-          aria-label="Search workspace"
+          aria-label={t('Search workspace')}
           className="h-6 w-full min-w-0 rounded-sm bg-inset px-2 font-mono text-[11.5px] text-primary outline-none ring-1 ring-hairline focus:ring-steel"
         />
-        <button type="button" title="Close search (Esc)" onClick={() => setSearchOpen(false)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">
+        <button type="button" title={t('Close search (Esc)')} onClick={() => setSearchOpen(false)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">
           <X size={12} />
         </button>
       </div>
       <div className="flex items-center gap-0.5 px-2 py-1">
-        <Toggle on={!!opts.caseSensitive} title="Match case" onClick={() => flip('caseSensitive')}><CaseSensitive size={12} /></Toggle>
-        <Toggle on={!!opts.wholeWord} title="Whole symbol" onClick={() => flip('wholeWord')}><WholeWord size={12} /></Toggle>
-        <Toggle on={!!opts.regex} title="Regular expression" onClick={() => flip('regex')}><Regex size={12} /></Toggle>
-        <Toggle on={!!opts.symbolsOnly} title="Code only — skip strings and comments" onClick={() => flip('symbolsOnly')}><Sigma size={12} /></Toggle>
-        <Toggle on={replaceOpen} title="Replace…" onClick={() => { setReplaceOpen((v) => !v); setConfirming(false) }}><Replace size={12} /></Toggle>
+        <Toggle on={!!opts.caseSensitive} title={t('Match case')} onClick={() => flip('caseSensitive')}><CaseSensitive size={12} /></Toggle>
+        <Toggle on={!!opts.wholeWord} title={t('Whole symbol')} onClick={() => flip('wholeWord')}><WholeWord size={12} /></Toggle>
+        <Toggle on={!!opts.regex} title={t('Regular expression')} onClick={() => flip('regex')}><Regex size={12} /></Toggle>
+        <Toggle on={!!opts.symbolsOnly} title={t('Code only — skip strings and comments')} onClick={() => flip('symbolsOnly')}><Sigma size={12} /></Toggle>
+        <Toggle on={replaceOpen} title={t('Replace…')} onClick={() => { setReplaceOpen((v) => !v); setConfirming(false) }}><Replace size={12} /></Toggle>
         <span className={cn('ml-auto truncate font-mono text-[10px]', shown?.error ? 'text-error' : 'text-muted')} title={summary}>
-          {searching ? 'searching…' : summary}
+          {searching ? t('searching…') : summary}
         </span>
       </div>
       {replaceOpen && (
@@ -192,9 +195,9 @@ export default function SearchPanel() {
             value={replacement}
             onChange={(e) => { setReplacement(e.target.value); setConfirming(false) }}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setReplaceOpen(false) } }}
-            placeholder={opts.regex ? 'replacement ($1 …)' : 'replacement'}
+            placeholder={opts.regex ? 'replacement ($1 …)' : t('replacement')}
             spellCheck={false}
-            aria-label="Replacement"
+            aria-label={t('Replacement')}
             className="h-6 w-full min-w-0 rounded-sm bg-inset px-2 font-mono text-[11.5px] text-primary outline-none ring-1 ring-hairline focus:ring-steel"
           />
           <button
@@ -204,7 +207,7 @@ export default function SearchPanel() {
             onClick={() => (confirming ? void applyReplace() : setConfirming(true))}
             className={cn('flex h-6 shrink-0 items-center gap-1 rounded-sm px-2 font-mono text-[10.5px] transition-colors duration-100 disabled:opacity-40', confirming ? 'bg-error/20 text-primary ring-1 ring-error/60' : 'text-secondary ring-1 ring-hairline hover:bg-raised hover:text-primary')}
           >
-            <ReplaceAll size={12} />{confirming ? 'confirm?' : 'all'}
+            <ReplaceAll size={12} />{confirming ? t('confirm?') : t('all')}
           </button>
         </div>
       )}
@@ -213,7 +216,7 @@ export default function SearchPanel() {
           <div key={(f.bufferId ?? '') + f.path}>
             <div className="sticky top-0 flex items-center gap-1 bg-panel px-2 py-[2px] font-mono text-[10.5px] text-secondary">
               <span className="truncate" title={f.path}>{f.path}</span>
-              {f.kind === 'buffer' && <span className="text-muted">· buffer</span>}
+              {f.kind === 'buffer' && <span className="text-muted">· {t('buffer')}</span>}
               <span className="ml-auto text-muted">{f.matches.length}</span>
               {replaceOpen && (
                 <button type="button" title={`Replace ${f.matches.length} in ${f.path}`} onClick={() => void applyReplace(f)} className="flex h-4 w-4 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">

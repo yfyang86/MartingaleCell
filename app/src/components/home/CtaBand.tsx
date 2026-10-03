@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
+import { useI18n } from '@/i18n/context'
 
 /** CTA band (home.md §7) */
 export default function CtaBand() {
+  const { t } = useI18n()
   return (
     <section className="relative overflow-hidden border-t border-hairline bg-panel px-4 py-32 sm:px-6">
       {/* noise overlay */}
@@ -54,7 +56,7 @@ export default function CtaBand() {
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           className="font-display text-[clamp(30px,4vw,44px)] font-semibold leading-[1.1] tracking-[-0.02em] text-primary"
         >
-          Your next REPL session is one click away.
+          {t('Your next REPL session is one click away.')}
         </motion.h2>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -63,8 +65,8 @@ export default function CtaBand() {
           transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           className="mt-4 text-[17px] leading-[1.65] text-secondary"
         >
-          Open the IDE, press <kbd className="cc-kbd">Ctrl</kbd> + <kbd className="cc-kbd">Enter</kbd>,
-          and you're programming Common Lisp.
+          {t('Open the IDE, press')} <kbd className="cc-kbd">Ctrl</kbd> + <kbd className="cc-kbd">Enter</kbd>
+          {t(", and you're programming Common Lisp.")}
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -78,7 +80,7 @@ export default function CtaBand() {
             className="group inline-flex items-center gap-2 rounded-md px-7 py-3.5 text-[15px] font-semibold text-abyss animate-glow-pulse transition-transform [transition-duration:120ms] ease-snap hover:-translate-y-px active:scale-[0.97]"
             style={{ background: 'var(--brand-gradient)' }}
           >
-            Launch MartingaleCell
+            {t('Launch MartingaleCell')}
             <ArrowRight
               size={16}
               strokeWidth={2}
@@ -86,7 +88,7 @@ export default function CtaBand() {
             />
           </Link>
           <p className="mt-4 font-mono text-[11.5px] text-muted">
-            no account · no install · no kidding
+            {t('no account · no install · no kidding')}
           </p>
         </motion.div>
       </div>

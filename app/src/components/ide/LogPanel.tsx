@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Magnet, Clock, Download, Trash2, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace, type LogEntry } from '@/store/workspace'
 import type { LogLevel } from '@/lisp/types'
 import { copyText, gotoLocation } from './actions'
@@ -56,6 +57,7 @@ function MemoryGauge() {
 }
 
 function LogRow({ entry, showTs }: { entry: LogEntry; showTs: boolean }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const gotoCell = () => {
     if (entry.cellRef != null) window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: entry.cellRef }))
@@ -80,7 +82,7 @@ function LogRow({ entry, showTs }: { entry: LogEntry; showTs: boolean }) {
         <span className="shrink-0 text-[10px] text-muted">{entry.source}</span>
         <span className="min-w-0 flex-1 break-words text-secondary">
           {entry.trace
-            ? <>eval · {entry.trace.forms} · {entry.trace.ms.toFixed(1)}ms{entry.trace.ms > 50 && <span className="ml-2 rounded-sm bg-warning/10 px-1 py-px text-[9px] text-warning">slow</span>}</>
+            ? <>eval · {entry.trace.forms} · {entry.trace.ms.toFixed(1)}ms{entry.trace.ms > 50 && <span className="ml-2 rounded-sm bg-warning/10 px-1 py-px text-[9px] text-warning">{t('slow')}</span>}</>
             : entry.message}
         </span>
         {entry.location && (
@@ -116,6 +118,7 @@ function LogRow({ entry, showTs }: { entry: LogEntry; showTs: boolean }) {
 }
 
 export default function LogPanel() {
+  const { t } = useI18n()
   const logs = useWorkspace((s) => s.logs)
   const clearLogs = useWorkspace((s) => s.clearLogs)
   const [tab, setTab] = useState<Tab>('log')
@@ -171,18 +174,18 @@ export default function LogPanel() {
   return (
     <section className="flex h-full min-h-0 flex-col bg-panel">
       <header className="flex h-8 shrink-0 items-center gap-1 border-b border-hairline px-3">
-        {(['log', 'trace', 'warnings'] as Tab[]).map((t) => {
-          const count = t === 'log' ? logs.length : t === 'trace' ? traceLogs.length : warnLogs.length
+        {(['log', 'trace', 'warnings'] as Tab[]).map((tb) => {
+          const count = tb === 'log' ? logs.length : tb === 'trace' ? traceLogs.length : warnLogs.length
           return (
             <button
-              key={t}
+              key={tb}
               className={cn(
                 'relative flex h-8 items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors duration-100',
-                tab === t ? 'text-primary' : 'text-muted hover:text-secondary',
+                tab === tb ? 'text-primary' : 'text-muted hover:text-secondary',
               )}
-              onClick={() => setTab(t)}
+              onClick={() => setTab(tb)}
             >
-              {t}
+              {tb}
               <motion.span
                 key={count}
                 initial={{ scale: 1.25 }}
@@ -190,12 +193,12 @@ export default function LogPanel() {
                 transition={{ duration: 0.18 }}
                 className={cn(
                   'rounded-full px-1.5 font-mono text-[10px] font-normal',
-                  t === 'warnings' && count > 0 ? 'bg-warning/10 text-warning' : 'bg-raised text-muted',
+                  tb === 'warnings' && count > 0 ? 'bg-warning/10 text-warning' : 'bg-raised text-muted',
                 )}
               >
                 {count}
               </motion.span>
-              {tab === t && <motion.span layoutId="log-tab-bar" className="absolute inset-x-1 bottom-0 h-[2px] bg-steel" transition={{ duration: 0.15 }} />}
+              {tab === tb && <motion.span layoutId="log-tab-bar" className="absolute inset-x-1 bottom-0 h-[2px] bg-steel" transition={{ duration: 0.15 }} />}
             </button>
           )
         })}
@@ -221,30 +224,30 @@ export default function LogPanel() {
           <input
             value={filterInput}
             onChange={(e) => setFilterInput(e.target.value)}
-            placeholder="filter"
+            placeholder={t('filter')}
             className="h-6 w-32 rounded-md border border-hairline bg-inset pl-6 pr-2 text-[12px] text-primary placeholder:text-muted focus:border-steel/50 focus:outline-none"
           />
         </div>
         <button
           className={cn('flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-100 hover:bg-raised', autoscroll ? 'text-steel' : 'text-secondary hover:text-primary')}
-          title="Autoscroll" onClick={() => setAutoscroll((v) => !v)}
+          title={t('Autoscroll')} onClick={() => setAutoscroll((v) => !v)}
         >
           <Magnet size={13} />
         </button>
         <button
           className={cn('flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-100 hover:bg-raised', showTs ? 'text-steel' : 'text-secondary hover:text-primary')}
-          title="Timestamps" onClick={() => setShowTs((v) => !v)}
+          title={t('Timestamps')} onClick={() => setShowTs((v) => !v)}
         >
           <Clock size={13} />
         </button>
-        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Copy log" onClick={() => void copyText(logs.map((l) => `${fmtTs(l.ts)} ${l.level} ${l.source} ${l.message}`).join('\n'), 'Log copied')}>
+        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Copy log')} onClick={() => void copyText(logs.map((l) => `${fmtTs(l.ts)} ${l.level} ${l.source} ${l.message}`).join('\n'), t('Log copied'))}>
           <Download size={13} className="hidden" />
-          <span className="font-mono text-[10px]">copy</span>
+          <span className="font-mono text-[10px]">{t('copy')}</span>
         </button>
-        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Export .log" onClick={exportLog}>
+        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Export .log')} onClick={exportLog}>
           <Download size={13} />
         </button>
-        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-error" title="Clear log" onClick={clearLogs}>
+        <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-error" title={t('Clear log')} onClick={clearLogs}>
           <Trash2 size={13} />
         </button>
         <MemoryGauge />
@@ -253,7 +256,7 @@ export default function LogPanel() {
       <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-1">
         {visible.length === 0 ? (
           <div className="flex h-full items-center justify-center font-mono text-[11.5px] text-muted">
-            {filter ? 'no rows match the filter' : 'quiet so far…'}
+            {filter ? t('no rows match the filter') : t('quiet so far…')}
           </div>
         ) : (
           visible.map((l) => <LogRow key={l.id} entry={l} showTs={showTs} />)

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { runtime, getSbclMemory, setSbclMemory } from '@/lisp/runtime'
@@ -84,6 +85,7 @@ export default function SettingsDrawer() {
   const setConfirm = useUi((s) => s.setConfirm)
   const engineLabel = useWorkspace((s) => s.engineLabel)
   const engineStatus = useWorkspace((s) => s.engineStatus)
+  const { t } = useI18n()
 
   const exportWorkspace = () => {
     const s = useWorkspace.getState()
@@ -92,7 +94,7 @@ export default function SettingsDrawer() {
     const a = document.createElement('a')
     a.href = url; a.download = 'martingalecell-workspace.json'; a.click()
     URL.revokeObjectURL(url)
-    toast('Workspace exported')
+    toast(t('Workspace exported'))
   }
 
   return (
@@ -110,50 +112,50 @@ export default function SettingsDrawer() {
             transition={{ type: 'spring', stiffness: 380, damping: 30 }}
           >
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-hairline px-5">
-              <span className="text-[13px] font-semibold">Settings</span>
+              <span className="text-[13px] font-semibold">{t('Settings')}</span>
               <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary hover:bg-raised hover:text-primary" onClick={() => setOpen(false)}>
                 <X size={14} />
               </button>
             </div>
             <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-              <Section title="Editor">
-                <Row label="Font size">
+              <Section title={t('Editor')}>
+                <Row label={t('Font size')}>
                   <Slider value={settings.fontSize} min={12} max={18} step={0.5} onChange={(v) => setSettings({ fontSize: v })} />
                 </Row>
                 <div className="rounded-md bg-inset px-3 py-2 font-mono text-muted" style={{ fontSize: settings.fontSize }}>
                   ;; (preview) (lambda (x) (* x x))
                 </div>
-                <Row label="Tab width">
+                <Row label={t('Tab width')}>
                   <Segmented value={settings.tabWidth} options={[2, 4] as (2 | 4)[]} onChange={(v) => setSettings({ tabWidth: v })} />
                 </Row>
-                <Row label="Rainbow parens">
+                <Row label={t('Rainbow parens')}>
                   <Toggle value={settings.rainbowParens} onChange={(v) => setSettings({ rainbowParens: v })} />
                 </Row>
-                <Row label="Ligatures">
+                <Row label={t('Ligatures')}>
                   <Toggle value={settings.ligatures} onChange={(v) => setSettings({ ligatures: v })} />
                 </Row>
-                <Row label="Line wrap">
+                <Row label={t('Line wrap')}>
                   <Toggle value={settings.lineWrap} onChange={(v) => setSettings({ lineWrap: v })} />
                 </Row>
               </Section>
-              <Section title="Evaluation">
-                <Row label="Default mode">
+              <Section title={t('Evaluation')}>
+                <Row label={t('Default mode')}>
                   <Segmented value={settings.evalMode} options={['eval', 'compile']} onChange={(v) => setSettings({ evalMode: v })} />
                 </Row>
-                <Row label="Auto-eval on save">
+                <Row label={t('Auto-eval on save')}>
                   <Toggle value={settings.autoEvalOnSave} onChange={(v) => setSettings({ autoEvalOnSave: v })} />
                 </Row>
-                <Row label="Pause in debugger on error">
+                <Row label={t('Pause in debugger on error')}>
                   <Toggle value={settings.debugOnError} onChange={(v) => setSettings({ debugOnError: v })} />
                 </Row>
-                <Row label="Print length">
+                <Row label={t('Print length')}>
                   <Slider
                     value={settings.printLength} min={0} max={1000} step={10}
                     format={(v) => (v === 0 ? 'nil' : String(v))}
                     onChange={(v) => setSettings({ printLength: v })}
                   />
                 </Row>
-                <Row label="Transcript value limit">
+                <Row label={t('Transcript value limit')}>
                   <Slider
                     value={settings.transcriptValueLimit ?? 0} min={0} max={2000} step={100}
                     format={(v) => (v === 0 ? 'whole' : `${v} chars`)}
@@ -161,16 +163,16 @@ export default function SettingsDrawer() {
                   />
                 </Row>
                 <p className="text-[11px] leading-snug text-muted">
-                  compile: each form goes through the bytecodes compiler first. Print length sets <code className="font-mono">*print-length*</code> in the image (nil = unlimited). The transcript value limit clips long values in exported transcripts (whole = as printed).
+                  {t('compile: each form goes through the bytecodes compiler first. Print length sets')} <code className="font-mono">*print-length*</code> {t('in the image (nil = unlimited). The transcript value limit clips long values in exported transcripts (whole = as printed).')}
                 </p>
               </Section>
-              <Section title="Runtime">
+              <Section title={t('Runtime')}>
                 <div className="rounded-md border border-hairline bg-inset px-3 py-2 font-mono text-[11.5px] text-secondary">
                   <div className="flex justify-between"><span className="text-muted">engine</span><span>{engineLabel || engineStatus}</span></div>
                   <div className="flex justify-between"><span className="text-muted">status</span><span>{engineStatus}</span></div>
                   <div className="flex justify-between"><span className="text-muted">source</span><span>{runtime.engine === 'ecl' ? '/wecl/ (self-hosted)' : runtime.engine === 'sbcl' ? '/sbcl/ (self-hosted)' : runtime.engine === 'jscl' ? 'CDN fallback' : 'built-in'}</span></div>
                 </div>
-                <Row label="Lisp implementation">
+                <Row label={t('Lisp implementation')}>
                   <Segmented
                     value={settings.engine}
                     options={['auto', 'ecl', 'sbcl']}
@@ -178,56 +180,56 @@ export default function SettingsDrawer() {
                       if (v === settings.engine) return
                       setSettings({ engine: v })
                       toast(
-                        v === 'sbcl' ? 'SBCL/wasm boots on the next restart (ECL if its artifacts are missing)'
-                          : v === 'ecl' ? 'ECL boots on the next restart — no fallback to another engine'
-                            : 'Automatic: SBCL, then ECL, then JSCL, then the demo interpreter',
-                        { action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') } },
+                        v === 'sbcl' ? t('SBCL/wasm boots on the next restart (ECL if its artifacts are missing)')
+                          : v === 'ecl' ? t('ECL boots on the next restart — no fallback to another engine')
+                            : t('Automatic: SBCL, then ECL, then JSCL, then the demo interpreter'),
+                        { action: { label: t('Restart now'), onClick: () => useUi.getState().setConfirm('restart') } },
                       )
                     }}
                   />
                 </Row>
                 <p className="mt-1 font-mono text-[10.5px] text-muted">
-                  auto: SBCL, then ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.
+                  {t('auto: SBCL, then ECL, then JSCL, then the demo · ecl: ECL only · sbcl: SBCL/wasm, ECL if it cannot boot. Takes effect on Restart Lisp image.')}
                 </p>
-                <Row label="SBCL memory">
+                <Row label={t('SBCL memory')}>
                   <Segmented<'off' | '512' | '768'>
                     value={String(getSbclMemory()) as 'off' | '512' | '768'}
                     options={['512', '768', 'off']}
                     onChange={(v) => {
                       setSbclMemory(v === 'off' ? 'off' : (Number(v) as 512 | 768))
                       toast(v === 'off'
-                        ? 'SBCL memory uncapped — applies on the next SBCL boot'
+                        ? t('SBCL memory uncapped — applies on the next SBCL boot')
                         : `SBCL capped at ${v} MB of linear memory — applies on the next SBCL boot`, {
-                        action: { label: 'Restart now', onClick: () => useUi.getState().setConfirm('restart') },
+                        action: { label: t('Restart now'), onClick: () => useUi.getState().setConfirm('restart') },
                       })
                     }}
                   />
                 </Row>
                 <p className="mt-1 font-mono text-[10.5px] text-muted">
-                  A total linear-memory ceiling for the SBCL engine (off by default). The image is ~230 MB at rest; cap it to keep embedded preview panes from being OOM-killed. Hitting the cap crashes the image with a clear message (raise it or switch to ECL).
+                  {t('A total linear-memory ceiling for the SBCL engine (off by default). The image is ~230 MB at rest; cap it to keep embedded preview panes from being OOM-killed. Hitting the cap crashes the image with a clear message (raise it or switch to ECL).')}
                 </p>
-                <Row label="Log verbosity">
+                <Row label={t('Log verbosity')}>
                   <Segmented value={settings.verbosity} options={['quiet', 'normal', 'verbose']} onChange={(v) => setSettings({ verbosity: v })} />
                 </Row>
                 <p className="text-[11px] leading-snug text-muted">
-                  quiet: boot lines at DEBUG · normal: INFO · verbose: also engine stderr noise. Heap size is fixed by the WECL build (memory grows on demand).
+                  {t('quiet: boot lines at DEBUG · normal: INFO · verbose: also engine stderr noise. Heap size is fixed by the WECL build (memory grows on demand).')}
                 </p>
               </Section>
-              <Section title="Workspace">
-                <Row label="Autosave">
+              <Section title={t('Workspace')}>
+                <Row label={t('Autosave')}>
                   <Toggle value={settings.autosave} onChange={(v) => setSettings({ autosave: v })} />
                 </Row>
                 <button
                   className="w-full rounded-md border border-hairline px-3 py-2 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary"
                   onClick={exportWorkspace}
                 >
-                  Export workspace (.json)
+                  {t('Export workspace (.json)')}
                 </button>
                 <button
                   className="w-full rounded-md border border-error/40 px-3 py-2 text-[12.5px] text-error transition-all duration-150 hover:bg-error/10"
                   onClick={() => { setOpen(false); setConfirm('reset-workspace') }}
                 >
-                  Reset workspace
+                  {t('Reset workspace')}
                 </button>
               </Section>
             </div>

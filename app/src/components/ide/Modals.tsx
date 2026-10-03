@@ -5,6 +5,7 @@ import { useEffect, useMemo, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Copy, X, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi, type ConfirmKind } from '@/store/ui'
 import { useProject } from '@/store/project'
@@ -37,17 +38,19 @@ function ModalShell({ onClose, children, wide }: { onClose: () => void; children
   )
 }
 
-const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => ReactNode; confirm: string; danger?: boolean; run: () => void }> = {
+type TFn = (s: string) => string
+
+const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: (t: TFn) => ReactNode; confirm: string; danger?: boolean; run: (t: TFn) => void }> = {
   restart: {
     title: 'Restart Lisp image?',
-    body: () => 'This clears all definitions. Session cells are kept.',
+    body: (t) => t('This clears all definitions. Session cells are kept.'),
     confirm: 'Restart',
     danger: true,
     run: () => void restartRuntime(),
   },
   interrupt: {
     title: 'Interrupt evaluation?',
-    body: () => 'WebAssembly cannot be preempted — the runtime worker will be restarted. The current evaluation resolves as aborted; definitions are lost.',
+    body: (t) => t('WebAssembly cannot be preempted — the runtime worker will be restarted. The current evaluation resolves as aborted; definitions are lost.'),
     confirm: 'Interrupt & restart worker',
     danger: true,
     run: () => void interruptEvaluation(),
@@ -61,7 +64,7 @@ const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => 
   },
   'import-replace': {
     title: 'Replace the session with the transcript?',
-    body: () => {
+    body: (t) => {
       const cur = useWorkspace.getState().cells.length
       const n = pendingImportCount()
       const preview = pendingImportPreview()
@@ -71,7 +74,7 @@ const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => 
           {preview.length > 0 && (
             <ul className="mt-2 space-y-0.5 font-mono text-[11.5px] text-muted">
               {preview.map((line, i) => <li key={i} className="truncate">In [{i + 1}] {line}</li>)}
-              {n > preview.length && <li>… {n - preview.length} more</li>}
+              {n > preview.length && <li>… {n - preview.length} {t('more')}</li>}
             </ul>
           )}
         </>
@@ -83,37 +86,38 @@ const CONFIRMS: Record<Exclude<ConfirmKind, null>, { title: string; body: () => 
   },
   'reset-workspace': {
     title: 'Reset workspace?',
-    body: () => 'All buffers, cells and settings will be wiped and restored to defaults. Export first if you care about the contents.',
+    body: (t) => t('All buffers, cells and settings will be wiped and restored to defaults. Export first if you care about the contents.'),
     confirm: 'Reset everything',
     danger: true,
-    run: () => { useWorkspace.getState().resetWorkspace(); toast('Workspace reset') },
+    run: (t) => { useWorkspace.getState().resetWorkspace(); toast(t('Workspace reset')) },
   },
 }
 
 function ConfirmModal() {
   const confirm = useUi((s) => s.confirm)
   const setConfirm = useUi((s) => s.setConfirm)
+  const { t } = useI18n()
   const spec = confirm ? CONFIRMS[confirm] : null
   return (
     <AnimatePresence>
       {spec && (
         <ModalShell onClose={() => setConfirm(null)}>
           <div className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-primary">{spec.title}</h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-secondary">{spec.body()}</p>
+            <h2 className="text-[15px] font-semibold text-primary">{t(spec.title)}</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-secondary">{spec.body(t)}</p>
           </div>
           <div className="flex justify-end gap-2 border-t border-hairline px-5 py-3">
             <button
               className="rounded-md border border-hairline px-4 py-2 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary"
               onClick={() => setConfirm(null)}
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               className="rounded-md border border-error/40 px-4 py-2 text-[12.5px] font-semibold text-error transition-all duration-150 hover:bg-error/10 active:scale-[0.97]"
-              onClick={() => { setConfirm(null); spec.run() }}
+              onClick={() => { setConfirm(null); spec.run(t) }}
             >
-              {spec.confirm}
+              {t(spec.confirm)}
             </button>
           </div>
         </ModalShell>
@@ -123,6 +127,7 @@ function ConfirmModal() {
 }
 
 function ShareModal() {
+  const { t } = useI18n()
   const shareUrl = useUi((s) => s.shareUrl)
   const setShareUrl = useUi((s) => s.setShareUrl)
   return (
@@ -130,21 +135,21 @@ function ShareModal() {
       {shareUrl && (
         <ModalShell onClose={() => setShareUrl(null)}>
           <div className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-primary">Share this buffer</h2>
-            <p className="mt-1.5 text-[12.5px] text-secondary">Contains your buffer, compressed. No server involved.</p>
+            <h2 className="text-[15px] font-semibold text-primary">{t('Share this buffer')}</h2>
+            <p className="mt-1.5 text-[12.5px] text-secondary">{t('Contains your buffer, compressed. No server involved.')}</p>
             <div className="mt-3 flex items-center gap-2 rounded-md border border-hairline bg-inset px-3 py-2">
               <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-steel">{shareUrl}</code>
               <button
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-secondary hover:bg-raised hover:text-primary"
-                onClick={() => void copyText(shareUrl, 'Share link copied')}
-                title="Copy"
+                onClick={() => void copyText(shareUrl, t('Share link copied'))}
+                title={t('Copy')}
               >
                 <Copy size={13} />
               </button>
             </div>
             <div className="mt-4 flex items-center gap-3">
               <img src="/logo.svg" alt="" className="h-8 w-8 opacity-70" />
-              <p className="font-mono text-[10.5px] text-muted">anyone opening the link gets the exact same editor state</p>
+              <p className="font-mono text-[10.5px] text-muted">{t('anyone opening the link gets the exact same editor state')}</p>
             </div>
           </div>
         </ModalShell>
@@ -154,6 +159,7 @@ function ShareModal() {
 }
 
 function CloseBufferModal() {
+  const { t } = useI18n()
   const id = useUi((s) => s.confirmCloseBufferId)
   const setId = useUi((s) => s.setConfirmCloseBuffer)
   const buf = useWorkspace((s) => s.buffers.find((b) => b.id === id))
@@ -163,9 +169,9 @@ function CloseBufferModal() {
       {id && buf && (
         <ModalShell onClose={close}>
           <div className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-primary">Unsaved changes in {buf.name}</h2>
+            <h2 className="text-[15px] font-semibold text-primary">{t('Unsaved changes in')} {buf.name}</h2>
             <p className="mt-2 text-[13px] leading-relaxed text-secondary">
-              This project file has unsaved changes. Save it before closing?
+              {t('This project file has unsaved changes. Save it before closing?')}
             </p>
           </div>
           <div className="flex justify-end gap-2 border-t border-hairline px-5 py-3">
@@ -173,13 +179,13 @@ function CloseBufferModal() {
               className="rounded-md border border-hairline px-4 py-2 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary"
               onClick={close}
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               className="rounded-md border border-error/40 px-4 py-2 text-[12.5px] font-semibold text-error transition-all duration-150 hover:bg-error/10 active:scale-[0.97]"
               onClick={() => { close(); useWorkspace.getState().closeBuffer(id) }}
             >
-              Close without saving
+              {t('Close without saving')}
             </button>
             <button
               className="rounded-md bg-steel px-4 py-2 text-[12.5px] font-semibold text-abyss transition-all duration-150 hover:bg-steel-bright active:scale-[0.97]"
@@ -188,7 +194,7 @@ function CloseBufferModal() {
                 void useProject.getState().saveBuffer(id).then(() => useWorkspace.getState().closeBuffer(id))
               }}
             >
-              Save &amp; close
+              {t('Save & close')}
             </button>
           </div>
         </ModalShell>
@@ -216,12 +222,13 @@ const SHORTCUTS: [string, string][] = [
 function ShortcutsModal() {
   const open = useUi((s) => s.shortcutsOpen)
   const setOpen = useUi((s) => s.setShortcutsOpen)
+  const { t } = useI18n()
   return (
     <AnimatePresence>
       {open && (
         <ModalShell onClose={() => setOpen(false)} wide>
           <div className="flex items-center justify-between px-5 pt-4">
-            <h2 className="text-[15px] font-semibold text-primary">Keyboard shortcuts</h2>
+            <h2 className="text-[15px] font-semibold text-primary">{t('Keyboard shortcuts')}</h2>
             <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary hover:bg-raised hover:text-primary" onClick={() => setOpen(false)}>
               <X size={14} />
             </button>
@@ -229,7 +236,7 @@ function ShortcutsModal() {
           <div className="grid grid-cols-1 gap-x-8 px-5 py-4 sm:grid-cols-2">
             {SHORTCUTS.map(([kbd, desc]) => (
               <div key={kbd} className="flex items-center justify-between gap-4 border-b border-hairline/50 py-2">
-                <span className="text-[12.5px] text-secondary">{desc}</span>
+                <span className="text-[12.5px] text-secondary">{t(desc)}</span>
                 <span className="cc-kbd shrink-0">{kbd}</span>
               </div>
             ))}
@@ -242,6 +249,7 @@ function ShortcutsModal() {
 
 /* the runs of a re-evaluated cell side by side, values compared with the run before (Sprint 21) */
 function CellHistoryModal() {
+  const { t } = useI18n()
   const lineage = useUi((s) => s.cellHistory)
   const setCellHistory = useUi((s) => s.setCellHistory)
   const cells = useWorkspace((s) => s.cells)
@@ -260,16 +268,16 @@ function CellHistoryModal() {
           <div data-testid="cell-history" className="flex max-h-[80vh] flex-col">
             <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
               <div>
-                <h2 className="text-[13px] font-medium text-primary">Run history</h2>
+                <h2 className="text-[13px] font-medium text-primary">{t('Run history')}</h2>
                 <p className="text-[11.5px] text-muted">{runs.length} run{runs.length === 1 ? '' : 's'} of cell [{runs[0]?.n ?? '?'}] — a value is marked when it differs from the run before</p>
               </div>
               <div className="flex items-center gap-1">
                 {latest && (
-                  <button className="cc-btn" onClick={() => { rerunCell(latest); close() }} title="Re-run the latest run again">
-                    <RotateCw className="size-3.5" /> Re-run
+                  <button className="cc-btn" onClick={() => { rerunCell(latest); close() }} title={t('Re-run the latest run again')}>
+                    <RotateCw className="size-3.5" /> {t('Re-run')}
                   </button>
                 )}
-                <button className="rounded-sm p-1 text-muted hover:bg-raised hover:text-primary" onClick={close} aria-label="Close"><X className="size-4" /></button>
+                <button className="rounded-sm p-1 text-muted hover:bg-raised hover:text-primary" onClick={close} aria-label={t('Close')}><X className="size-4" /></button>
               </div>
             </div>
             <div className="overflow-auto">
@@ -282,7 +290,7 @@ function CellHistoryModal() {
                         <button
                           type="button"
                           className="rounded-sm bg-steel-dim px-1.5 py-0.5 font-mono text-[10.5px] text-steel-bright hover:text-primary"
-                          title="Go to this cell"
+                          title={t('Go to this cell')}
                           onClick={() => { close(); gotoCell(r.n) }}
                         >
                           In [{r.n}]
@@ -293,24 +301,24 @@ function CellHistoryModal() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-hairline">
-                    <td className={`${td} text-muted`}>when</td>
+                    <td className={`${td} text-muted`}>{t('when')}</td>
                     {runs.map((r) => <td key={r.id} className={`${td} text-secondary`}>{when(r.startedAt)}</td>)}
                   </tr>
                   <tr>
-                    <td className={`${td} text-muted`}>status</td>
+                    <td className={`${td} text-muted`}>{t('status')}</td>
                     {runs.map((r, i) => (
                       <td key={r.id} className={`${td} ${r.status === 'error' || r.status === 'aborted' ? 'text-error' : 'text-secondary'}`}>
-                        {r.status}{cmp[i].statusChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-status-changed">changed</span>}
+                        {r.status}{cmp[i].statusChanged && <span className="ml-1 text-[10px] text-warning" data-testid="run-status-changed">{t('changed')}</span>}
                         {r.durationMs > 0 && <span className="ml-1 text-muted">· {r.durationMs < 1 ? '<1' : r.durationMs.toFixed(0)} ms</span>}
                       </td>
                     ))}
                   </tr>
                   <tr className="border-t border-hairline">
-                    <td className={`${td} text-muted`}>input</td>
+                    <td className={`${td} text-muted`}>{t('input')}</td>
                     {runs.map((r, i) => (
                       <td key={r.id} className={`${td} text-secondary`}>
                         {i > 0 && !cmp[i].inputChanged ? (
-                          <span className="text-muted">same as [{runs[i - 1].n}]</span>
+                          <span className="text-muted">{t('same as')} [{runs[i - 1].n}]</span>
                         ) : cmp[i].inputChanged ? (
                           /* Sprint 22: what changed since the run before, line by line */
                           <pre data-testid="run-input-diff" className="max-h-40 max-w-[260px] overflow-auto whitespace-pre-wrap break-words">
@@ -329,7 +337,7 @@ function CellHistoryModal() {
                   </tr>
                   {Array.from({ length: valueRows }, (_, vi) => (
                     <tr key={vi} className={vi === 0 ? 'border-t border-hairline' : ''}>
-                      <td className={`${td} text-muted`}>{vi === 0 ? 'values' : ''}</td>
+                      <td className={`${td} text-muted`}>{vi === 0 ? t('values') : ''}</td>
                       {runs.map((r, i) => {
                         const v = r.values[vi]
                         const changed = v !== undefined && cmp[i].valueChanged[vi]
@@ -353,7 +361,7 @@ function CellHistoryModal() {
                   ))}
                   {runs.some((r) => r.error) && (
                     <tr className="border-t border-hairline">
-                      <td className={`${td} text-muted`}>error</td>
+                      <td className={`${td} text-muted`}>{t('error')}</td>
                       {runs.map((r) => <td key={r.id} className={`${td} text-error`}>{r.error ? <span className="whitespace-pre-wrap break-words">{r.error}</span> : <span className="text-muted">—</span>}</td>)}
                     </tr>
                   )}

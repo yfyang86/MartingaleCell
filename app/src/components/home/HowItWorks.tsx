@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -46,11 +47,12 @@ function GreetFormHighlighted() {
 }
 
 function PanelWrite({ typedChars }: { typedChars: number }) {
+  const { t } = useI18n()
   const done = typedChars >= STEP1_CODE.length
   return (
     <div className="p-4">
       <p className="mb-3 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        Editor — scratch.lisp
+        {t('Editor — scratch.lisp')}
       </p>
       <div className="rounded-md border border-hairline bg-editor p-4">
         {done ? (
@@ -67,10 +69,11 @@ function PanelWrite({ typedChars }: { typedChars: number }) {
 }
 
 function PanelEvaluate({ resolved }: { resolved: boolean }) {
+  const { t } = useI18n()
   return (
     <div className="p-4">
       <p className="mb-3 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        Session — CL-USER
+        {t('Session — CL-USER')}
       </p>
       <div className="cc-cell cc-cell-input p-3.5 pl-5">
         <span className="font-mono text-[12px] text-muted">CL-USER&gt; </span>
@@ -80,7 +83,7 @@ function PanelEvaluate({ resolved }: { resolved: boolean }) {
         {!resolved ? (
           <span className="flex items-center gap-2 font-mono text-[12px] text-secondary">
             <Loader2 size={13} className="animate-spin text-steel" />
-            Evaluating…
+            {t('Evaluating…')}
           </span>
         ) : (
           <div className="space-y-1.5">
@@ -103,10 +106,11 @@ function PanelEvaluate({ resolved }: { resolved: boolean }) {
 }
 
 function PanelInspect({ phase }: { phase: 'warn' | 'error' | 'resolved' }) {
+  const { t } = useI18n()
   return (
     <div className="p-4">
       <p className="mb-3 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        Session — debugger
+        {t('Session — debugger')}
       </p>
       <div className="cc-cell cc-cell-warning p-3 pl-5">
         <span className="font-mono text-[12px] text-warning">;;! </span>
@@ -122,7 +126,7 @@ function PanelInspect({ phase }: { phase: 'warn' | 'error' | 'resolved' }) {
           <div className="mt-3 space-y-1">
             {['[0] ABORT — return to top level', '[1] RETRY — re-evaluate the form'].map((r) => (
               <p key={r} className="font-mono text-[12px] text-secondary">
-                {r}
+                {t(r)}
               </p>
             ))}
             <p
@@ -131,7 +135,7 @@ function PanelInspect({ phase }: { phase: 'warn' | 'error' | 'resolved' }) {
                 phase === 'resolved' ? 'bg-steel-dim text-steel-bright' : 'text-secondary'
               )}
             >
-              [2] USE-VALUE — supply a value to use
+              {t('[2] USE-VALUE — supply a value to use')}
             </p>
           </div>
           {phase === 'resolved' && (
@@ -149,6 +153,7 @@ function PanelInspect({ phase }: { phase: 'warn' | 'error' | 'resolved' }) {
  * driven by scroll progress. Discrete scene state — no per-frame re-renders.
  */
 export default function HowItWorks() {
+  const { t } = useI18n()
   const rootRef = useRef<HTMLElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
   const [scene, setScene] = useState(0)
@@ -189,7 +194,7 @@ export default function HowItWorks() {
             />
           </div>
           <p className="font-mono text-[11px] font-medium tracking-[0.2em] text-steel">
-            HOW IT WORKS
+            {t('HOW IT WORKS')}
           </p>
           <div className="mt-8 space-y-10">
             {STEPS.map((s, i) => (
@@ -214,9 +219,9 @@ export default function HowItWorks() {
                     step === i ? 'text-white' : 'text-secondary'
                   )}
                 >
-                  {s.title}
+                  {t(s.title)}
                 </h3>
-                <p className="mt-2 max-w-sm text-[14px] leading-[1.65] text-secondary">{s.copy}</p>
+                <p className="mt-2 max-w-sm text-[14px] leading-[1.65] text-secondary">{t(s.copy)}</p>
               </div>
             ))}
           </div>

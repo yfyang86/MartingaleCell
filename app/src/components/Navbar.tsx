@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Github, Menu, X, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 const NAV_LINKS = [
   { label: 'Features', to: '/#features' },
@@ -12,15 +13,32 @@ const NAV_LINKS = [
 function Wordmark() {
   return (
     <span className="font-display text-[17px] font-semibold tracking-tight">
-      <span className="text-primary">Cons</span>
+      <span className="text-primary">Martingale</span>
       <span className="text-steel">Cell</span>
     </span>
+  )
+}
+
+/** EN | 中文 toggle — the only language control on marketing pages */
+function LangToggle() {
+  const { lang, setLang } = useI18n()
+  return (
+    <button
+      onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+      aria-label="Switch language / 切换语言"
+      className="flex h-8 items-center rounded-md border border-hairline px-2 font-mono text-[11px] font-medium text-secondary transition-colors duration-150 ease-snap hover:bg-raised hover:text-white"
+    >
+      <span className={cn(lang === 'en' ? 'text-white' : 'text-muted')}>EN</span>
+      <span className="mx-1 text-muted">·</span>
+      <span className={cn(lang === 'zh' ? 'text-white' : 'text-muted')}>中文</span>
+    </button>
   )
 }
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(() => window.scrollY > 24)
   const [open, setOpen] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)
@@ -58,7 +76,7 @@ export default function Navbar() {
                 to={link.to}
                 className="group relative text-[13.5px] font-medium text-secondary transition-colors duration-150 ease-snap hover:text-white"
               >
-                {link.label}
+                {t(link.label)}
                 <span className="absolute -bottom-1 left-0 h-[2px] w-0 bg-steel transition-all duration-150 ease-snap group-hover:w-full" />
               </Link>
             ) : (
@@ -72,15 +90,16 @@ export default function Navbar() {
                   )
                 }
               >
-                {link.label}
+                {t(link.label)}
                 <span className="absolute -bottom-1 left-0 h-[2px] w-0 bg-steel transition-all duration-150 ease-snap group-hover:w-full" />
               </NavLink>
             )
           )}
         </div>
 
-        {/* Right: GitHub + Launch IDE */}
+        {/* Right: language + GitHub + Launch IDE */}
         <div className="hidden items-center gap-3 md:flex">
+          <LangToggle />
           <a
             href="https://github.com"
             target="_blank"
@@ -94,7 +113,7 @@ export default function Navbar() {
             to="/ide"
             className="group flex items-center gap-1.5 rounded-md bg-steel px-4 py-2 text-[13px] font-semibold text-abyss transition-all [transition-duration:120ms] ease-snap hover:-translate-y-px hover:bg-steel-bright active:scale-[0.97]"
           >
-            Launch IDE
+            {t('Launch IDE')}
             <ArrowRight
               size={14}
               strokeWidth={2}
@@ -107,7 +126,7 @@ export default function Navbar() {
         <button
           className="flex h-9 w-9 items-center justify-center rounded-md text-secondary hover:bg-raised hover:text-white md:hidden"
           onClick={() => setOpen((v) => !v)}
-          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-label={open ? t('Close menu') : t('Open menu')}
         >
           {open ? <X size={20} strokeWidth={1.75} /> : <Menu size={20} strokeWidth={1.75} />}
         </button>
@@ -123,7 +142,7 @@ export default function Navbar() {
                 onClick={close}
                 className="block rounded-md px-3 py-2.5 text-[15px] font-medium text-secondary hover:bg-raised hover:text-white"
               >
-                {link.label}
+                {t(link.label)}
               </Link>
             </div>
           ))}
@@ -133,7 +152,7 @@ export default function Navbar() {
               onClick={close}
               className="flex items-center justify-center gap-1.5 rounded-md bg-steel px-4 py-2.5 text-[14px] font-semibold text-abyss hover:bg-steel-bright"
             >
-              Launch IDE
+              {t('Launch IDE')}
               <ArrowRight size={15} strokeWidth={2} />
             </Link>
           </div>

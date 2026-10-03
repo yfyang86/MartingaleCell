@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Check, TriangleAlert } from 'lucide-react'
+import { useI18n } from '@/i18n/context'
 
 export default function BootScreen({ lines, progress, failed, onRetry, onDemo }: {
   lines: string[]
@@ -14,6 +15,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
   onDemo: () => void
 }) {
   const termRef = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight })
@@ -44,7 +46,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
       </motion.div>
 
       <h1 className="mb-5 font-display text-[20px] font-semibold text-primary">
-        {failed ? 'Runtime failed to boot' : 'Compiling the environment…'}
+        {failed ? t('Runtime failed to boot') : t('Compiling the environment…')}
       </h1>
 
       {/* boot terminal */}
@@ -62,7 +64,7 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
         {failed && (
           <div className="flex items-baseline gap-2 text-error">
             <TriangleAlert size={11} className="shrink-0 translate-y-px" />
-            <span>boot failed — see options below</span>
+            <span>{t('boot failed — see options below')}</span>
           </div>
         )}
       </div>
@@ -94,26 +96,26 @@ export default function BootScreen({ lines, progress, failed, onRetry, onDemo }:
           className="mt-6 flex w-[420px] max-w-[92vw] flex-col gap-3 rounded-lg border border-error/40 bg-error/10 px-4 py-4"
         >
           <p className="text-[13px] text-primary/90">
-            The WASM runtime could not start in this browser (missing WebAssembly support, blocked fetch, or a crash during boot).
+            {t('The WASM runtime could not start in this browser (missing WebAssembly support, blocked fetch, or a crash during boot).')}
           </p>
           <div className="flex gap-2">
             <button
               className="rounded-md bg-steel px-4 py-2 text-[12.5px] font-semibold text-abyss transition-all duration-150 hover:-translate-y-px hover:bg-steel-bright active:scale-[0.97]"
               onClick={onRetry}
             >
-              Retry
+              {t('Retry')}
             </button>
             <button
               className="rounded-md border border-hairline px-4 py-2 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary"
               onClick={onDemo}
             >
-              Continue with demo runtime
+              {t('Continue with demo runtime')}
             </button>
           </div>
         </motion.div>
       )}
 
-      <p className="mt-8 font-mono text-[11px] text-muted">runs 100% client-side — no code ever leaves your machine</p>
+      <p className="mt-8 font-mono text-[11px] text-muted">{t('runs 100% client-side — no code ever leaves your machine')}</p>
     </motion.div>
   )
 }
