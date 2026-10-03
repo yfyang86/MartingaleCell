@@ -23,8 +23,9 @@ it install their own service-worker cache.
   (and the language follows the browser default, remembered across
   visits). English strings are the dictionary keys, so a missing
   translation degrades to English; the IDE chrome, home page, examples
-  gallery, settings, debugger and modals are fully translated (the
-  long-form in-app Docs pages remain English for now). The hero
+  gallery, settings, debugger, modals and the full in-app Docs pages
+  (all eleven sections, feature matrix and FAQ included) are
+  translated. The hero
   headline remounts on language change so the GSAP SplitText animation
   re-runs on the translated text.
 - **Smarter autocomplete**: context-aware (only callables after `(`;

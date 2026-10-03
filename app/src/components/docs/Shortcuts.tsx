@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Search } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 interface Shortcut {
   keys: string[]
@@ -86,6 +87,7 @@ function Keys({ keys }: { keys: string[] }) {
 }
 
 export default function Shortcuts() {
+  const { t } = useI18n()
   const [raw, setRaw] = useState('')
   const [query, setQuery] = useState('')
 
@@ -134,7 +136,7 @@ export default function Shortcuts() {
           type="text"
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder="Filter shortcuts…"
+          placeholder={t('Filter shortcuts…')}
           className="w-full rounded-md border border-hairline bg-inset py-2 pl-9 pr-3 text-[13px] text-primary placeholder:text-muted focus:border-strong focus:outline-none"
         />
       </motion.div>
@@ -148,7 +150,7 @@ export default function Shortcuts() {
             {filtered.length === 0 && (
               <tr>
                 <td className="px-4 py-8 text-center text-[13px] text-muted">
-                  No shortcuts match “{query}”.
+                  {t('No shortcuts match')} “{query}”.
                 </td>
               </tr>
             )}
@@ -164,6 +166,7 @@ function ShortcutGroupRows({
 }: {
   group: { name: string; shortcuts: Shortcut[] }
 }) {
+  const { t } = useI18n()
   return (
     <>
       <tr className="border-b border-hairline bg-panel">
@@ -171,7 +174,7 @@ function ShortcutGroupRows({
           colSpan={2}
           className="px-4 py-2 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted"
         >
-          {group.name}
+          {t(group.name)}
         </td>
       </tr>
       {group.shortcuts.map((s, i) => (
@@ -186,7 +189,7 @@ function ShortcutGroupRows({
           <td className="w-[42%] px-4 py-2.5">
             <Keys keys={s.keys} />
           </td>
-          <td className="px-4 py-2.5 text-[13px] text-secondary">{s.action}</td>
+          <td className="px-4 py-2.5 text-[13px] text-secondary">{t(s.action)}</td>
         </motion.tr>
       ))}
     </>

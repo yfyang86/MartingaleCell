@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { HardDrive, Link2, EyeOff } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 const CARDS = [
   {
@@ -22,6 +23,7 @@ const CARDS = [
 ]
 
 export default function Persistence() {
+  const { t } = useI18n()
   return (
     <section id="persistence" className="scroll-mt-20">
       <SectionHeading
@@ -40,9 +42,9 @@ export default function Persistence() {
             className="cc-cell cc-cell-input p-6 transition-all [transition-duration:160ms] ease-snap hover:-translate-y-[3px] hover:border-strong hover:shadow-[0_8px_32px_rgba(110,168,220,0.08)]"
           >
             <card.Icon size={18} strokeWidth={1.75} className="text-steel" />
-            <p className="mt-3 text-[14px] font-semibold text-primary">{card.title}</p>
+            <p className="mt-3 text-[14px] font-semibold text-primary">{t(card.title)}</p>
             <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">
-              {card.body}
+              {t(card.body)}
             </p>
           </motion.div>
         ))}

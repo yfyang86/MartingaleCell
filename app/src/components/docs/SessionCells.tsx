@@ -3,6 +3,7 @@ import { TriangleAlert } from 'lucide-react'
 import { SectionHeading, CalloutDot, CalloutList } from './shared'
 import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
+import { useI18n } from '@/i18n/context'
 
 const CALLOUTS = [
   {
@@ -55,6 +56,7 @@ const SPECS = [
 ]
 
 function CellReplica() {
+  const { t } = useI18n()
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
@@ -75,7 +77,7 @@ function CellReplica() {
       <div className="cc-cell cc-cell-warning m-3 mb-0 flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning/5 px-3 py-2.5">
         <TriangleAlert size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-warning" />
         <div className="flex-1 text-[12px] leading-relaxed text-warning/90">
-          STYLE-WARNING: redefining FIB — previously defined in cell #3
+          STYLE-WARNING: {t('redefining FIB — previously defined in cell #3')}
         </div>
         <CalloutDot n={5} delay={0.6} />
       </div>
@@ -84,7 +86,7 @@ function CellReplica() {
       <div className="flex items-start justify-between gap-3 px-4 pt-3">
         <div className="text-[12.5px]">
           <span className="tok-comment">;; OUT</span>
-          <div className="text-secondary">computing the 25th Fibonacci number…</div>
+          <div className="text-secondary">{t('computing the 25th Fibonacci number…')}</div>
         </div>
         <CalloutDot n={2} delay={0.15} />
       </div>
@@ -100,7 +102,7 @@ function CellReplica() {
 
       {/* [4] meta footer */}
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-hairline bg-panel/60 px-4 py-2">
-        <span className="text-[11px] text-muted">12 ms · 1 value · package CL-USER</span>
+        <span className="text-[11px] text-muted">12 ms · {t('1 value')} · package CL-USER</span>
         <CalloutDot n={4} delay={0.45} />
       </div>
     </motion.div>
@@ -108,6 +110,7 @@ function CellReplica() {
 }
 
 export default function SessionCells() {
+  const { t } = useI18n()
   return (
     <section id="session" className="scroll-mt-20">
       <SectionHeading
@@ -130,9 +133,9 @@ export default function SessionCells() {
             transition={{ delay: 0.08 * i, duration: 0.4, ease: EASE_OUT }}
             className="cc-panel p-5"
           >
-            <p className="text-[13px] font-semibold text-primary">{spec.title}</p>
+            <p className="text-[13px] font-semibold text-primary">{t(spec.title)}</p>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-secondary">
-              {spec.body}
+              {t(spec.body)}
             </p>
           </motion.div>
         ))}

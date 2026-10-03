@@ -3,6 +3,7 @@ import { Package, Layers, FileCode2, Sparkles, AlertTriangle } from 'lucide-reac
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
 import { CodeBlock } from './cl-highlight'
+import { useI18n } from '@/i18n/context'
 
 const CARDS = [
   {
@@ -94,6 +95,7 @@ const STEPS = [
 ]
 
 export default function Modules() {
+  const { t } = useI18n()
   return (
     <section id="modules" className="scroll-mt-20">
       <SectionHeading
@@ -112,8 +114,8 @@ export default function Modules() {
             className="cc-cell cc-cell-input p-6 transition-all [transition-duration:160ms] ease-snap hover:-translate-y-[3px] hover:border-strong hover:shadow-[0_8px_32px_rgba(110,168,220,0.08)]"
           >
             <card.Icon size={18} strokeWidth={1.75} className="text-steel" />
-            <p className="mt-3 text-[14px] font-semibold text-primary">{card.title}</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{card.body}</p>
+            <p className="mt-3 text-[14px] font-semibold text-primary">{t(card.title)}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{t(card.body)}</p>
           </motion.div>
         ))}
       </div>
@@ -125,11 +127,11 @@ export default function Modules() {
         transition={{ delay: 0.15, duration: 0.45, ease: EASE_OUT }}
         className="mt-4 rounded-lg border border-hairline bg-inset p-5"
       >
-        <p className="text-[13px] font-semibold text-primary">Package management, in Lisp</p>
+        <p className="text-[13px] font-semibold text-primary">{t('Package management, in Lisp')}</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">
-          Once a project is loaded, promote it to a reusable module — files are copied to{' '}
-          <code className="font-mono text-[12px]">/modules/&lt;name&gt;/</code> (name taken from the{' '}
-          <code className="font-mono text-[12px]">.asd</code> defsystem) and loaded from there:
+          {t('Once a project is loaded, promote it to a reusable module — files are copied to')}{' '}
+          <code className="font-mono text-[12px]">/modules/&lt;name&gt;/</code> {t('(name taken from the')}{' '}
+          <code className="font-mono text-[12px]">.asd</code> {t('defsystem) and loaded from there:')}
         </p>
         <div className="mt-3">
           <CodeBlock
@@ -137,12 +139,10 @@ export default function Modules() {
           />
         </div>
         <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-          The module tree is snapshotted to IndexedDB after every install/uninstall and restored
-          on the next boot, so <code className="font-mono text-[12px]">package-list</code> survives a
-          reload. Definitions are not auto-loaded into the fresh image — evaluate{' '}
-          <code className="font-mono text-[12px]">(package-load "name")</code> to load them from the
-          restored files, and note that uninstalling removes files while already-loaded
-          definitions honestly stay until the runtime restarts (Common Lisp has no unload).
+          {t('The module tree is snapshotted to IndexedDB after every install/uninstall and restored on the next boot, so')} <code className="font-mono text-[12px]">package-list</code>{' '}
+          {t('survives a reload. Definitions are not auto-loaded into the fresh image — evaluate')}{' '}
+          <code className="font-mono text-[12px]">(package-load "name")</code>{' '}
+          {t('to load them from the restored files, and note that uninstalling removes files while already-loaded definitions honestly stay until the runtime restarts (Common Lisp has no unload).')}
         </p>
       </motion.div>
 
@@ -158,9 +158,9 @@ export default function Modules() {
           >
             <div className="flex items-baseline gap-3">
               <span className="font-mono text-[12px] text-steel-bright">0{i + 1}</span>
-              <p className="text-[14px] font-semibold text-primary">{step.title}</p>
+              <p className="text-[14px] font-semibold text-primary">{t(step.title)}</p>
             </div>
-            <p className="max-w-2xl text-[13px] leading-relaxed text-secondary">{step.body}</p>
+            <p className="max-w-2xl text-[13px] leading-relaxed text-secondary">{t(step.body)}</p>
             {i === 0 && (
               <CodeBlock
                 code={`my-module/\n├── my-module.asd   ; package + system definition\n├── utils.lisp      ; internal helpers\n├── counter.lisp    ; exported API\n└── init.lisp       ; entry point, loaded last`}
@@ -188,14 +188,15 @@ export default function Modules() {
       >
         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
         <p className="text-[13px] leading-relaxed text-secondary">
-          <span className="font-semibold text-primary">Sources load uncompiled:</span> the runtime
-          loads modules via <code className="font-mono text-[12px]">asdf:load-source-op</code> —
-          ECL&apos;s C-compile path can&apos;t exist inside WebAssembly, so{' '}
-          <code className="font-mono text-[12px]">eval-when</code> subtleties that only show up at{' '}
-          <code className="font-mono text-[12px]">compile-time</code> won&apos;t bite, but neither
-          will compile-time macros run ahead of time. Every file is guarded: one bad file logs a{' '}
-          <code className="font-mono text-[12px]">✗</code> in the load cell and the rest of the
-          module still loads.
+          <span className="font-semibold text-primary">{t('Sources load uncompiled:')}</span>{' '}
+          {t('the runtime loads modules via')} <code className="font-mono text-[12px]">asdf:load-source-op</code>{' '}
+          {t('— ECL’s C-compile path can’t exist inside WebAssembly, so')}{' '}
+          <code className="font-mono text-[12px]">eval-when</code>{' '}
+          {t('subtleties that only show up at')}{' '}
+          <code className="font-mono text-[12px]">compile-time</code>{' '}
+          {t('won’t bite, but neither will compile-time macros run ahead of time. Every file is guarded: one bad file logs a')}{' '}
+          <code className="font-mono text-[12px]">✗</code>{' '}
+          {t('in the load cell and the rest of the module still loads.')}
         </p>
       </motion.div>
     </section>

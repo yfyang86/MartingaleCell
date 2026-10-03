@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 /** Section heading: H2 + optional lead, rises on entry. */
 export function SectionHeading({
@@ -12,6 +13,7 @@ export function SectionHeading({
   lead?: string
   children?: ReactNode
 }) {
+  const { t } = useI18n()
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -20,11 +22,11 @@ export function SectionHeading({
       transition={{ duration: 0.6, ease: EASE_OUT }}
     >
       <h2 className="font-display text-[clamp(26px,3.4vw,36px)] font-semibold leading-[1.1] tracking-[-0.02em] text-primary">
-        {title}
+        {t(title)}
       </h2>
       {lead && (
         <p className="mt-3 max-w-xl text-[16px] leading-[1.65] text-secondary">
-          {lead}
+          {t(lead)}
         </p>
       )}
       {children}
@@ -67,6 +69,7 @@ export function CalloutList({
   items: { title: string; body: ReactNode }[]
   className?: string
 }) {
+  const { t } = useI18n()
   return (
     <div className={`relative pl-1 ${className}`}>
       {/* connecting 1px line drawing top→bottom */}
@@ -91,9 +94,9 @@ export function CalloutList({
           >
             <CalloutDot n={i + 1} delay={0.15 * i} />
             <div>
-              <p className="text-[13px] font-semibold text-primary">{item.title}</p>
+              <p className="text-[13px] font-semibold text-primary">{t(item.title)}</p>
               <p className="mt-0.5 text-[12.5px] leading-relaxed text-secondary">
-                {item.body}
+                {typeof item.body === 'string' ? t(item.body) : item.body}
               </p>
             </div>
           </motion.li>

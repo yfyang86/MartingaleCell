@@ -3,6 +3,7 @@ import { ChevronRight, CircleAlert } from 'lucide-react'
 import { SectionHeading, CalloutDot, CalloutList } from './shared'
 import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
+import { useI18n } from '@/i18n/context'
 
 const CALLOUTS = [
   {
@@ -38,6 +39,7 @@ const CODE_LINES = [
 ]
 
 function DebuggerReplica() {
+  const { t } = useI18n()
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
@@ -55,7 +57,7 @@ function DebuggerReplica() {
               DIVISION-BY-ZERO
             </p>
             <p className="mt-0.5 text-[12px] leading-relaxed text-secondary">
-              signaled in <span className="tok-symbol">SAFE-DIVIDE</span> with arguments{' '}
+              {t('signaled in')} <span className="tok-symbol">SAFE-DIVIDE</span> {t('with arguments')}{' '}
               <span className="tok-number">10</span>, <span className="tok-number">0</span>
             </p>
           </div>
@@ -67,7 +69,7 @@ function DebuggerReplica() {
       <div className="border-t border-hairline px-4 py-3">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[11px] uppercase tracking-[0.12em] text-muted">
-            Available restarts
+            {t('Available restarts')}
           </span>
           <CalloutDot n={2} delay={0.15} />
         </div>
@@ -85,7 +87,7 @@ function DebuggerReplica() {
               <span className={r.active ? 'font-semibold text-steel-bright' : 'text-primary'}>
                 {r.name}
               </span>
-              <span className="text-[12px] text-secondary">— {r.desc}</span>
+              <span className="text-[12px] text-secondary">— {t(r.desc)}</span>
             </div>
           ))}
         </div>
@@ -98,7 +100,7 @@ function DebuggerReplica() {
           className="flex items-center gap-1.5 text-[12px] text-secondary transition-colors duration-150 ease-snap hover:text-white"
         >
           <ChevronRight size={13} strokeWidth={2} />
-          Backtrace — 7 frames
+          {t('Backtrace — 7 frames')}
         </button>
         <CalloutDot n={3} delay={0.3} />
       </div>
@@ -106,8 +108,8 @@ function DebuggerReplica() {
       {/* [4] resolution line */}
       <div className="flex items-center justify-between gap-3 border-t border-hairline bg-panel/60 px-4 py-2">
         <span className="text-[11.5px] text-muted">
-          <span className="text-success">✓</span> resolved via{' '}
-          <span className="text-steel-bright">CONTINUE</span> — evaluation resumed · 3 ms
+          <span className="text-success">✓</span> {t('resolved via')}{' '}
+          <span className="text-steel-bright">CONTINUE</span> — {t('evaluation resumed')} · 3 ms
         </span>
         <CalloutDot n={4} delay={0.45} />
       </div>
@@ -116,6 +118,7 @@ function DebuggerReplica() {
 }
 
 export default function DebuggerSection() {
+  const { t } = useI18n()
   return (
     <section id="debugger" className="scroll-mt-20">
       <SectionHeading
@@ -129,11 +132,11 @@ export default function DebuggerSection() {
       </div>
 
       <p className="mt-12 text-[14px] leading-relaxed text-secondary">
-        Establish your own restarts with{' '}
+        {t('Establish your own restarts with')}{' '}
         <code className="font-mono text-[12.5px]">
           <ClCode code="restart-case" />
         </code>{' '}
-        — paste this into the IDE and divide by zero:
+        {t('— paste this into the IDE and divide by zero:')}
       </p>
 
       <motion.pre

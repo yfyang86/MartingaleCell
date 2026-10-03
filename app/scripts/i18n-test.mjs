@@ -28,7 +28,7 @@ await build({
 const { ZH } = await import(pathToFileURL(`${out}/zh.mjs`).href)
 
 /* 1. structural checks on the dictionary */
-const PROPER = new Set(['Common Lisp', 'HyperSpec', 'ECL', 'SBCL', 'JSCL', 'IDE', 'Examples', 'Docs', 'buffer', ' Outline'])
+const PROPER = new Set(['Common Lisp', 'HyperSpec', 'ECL', 'SBCL', 'JSCL', 'IDE', 'Examples', 'Docs', 'buffer', 'CLOS', 'MOP', 'WASM', 'REPL', 'FFI', 'ASDF'])
 for (const [k, v] of Object.entries(ZH)) {
   check(typeof v === 'string' && v.trim().length > 0, `zh entry non-empty: ${JSON.stringify(k)}`)
   check(v !== k || PROPER.has(k), `zh entry differs from key: ${JSON.stringify(k)}`)
@@ -57,7 +57,8 @@ check(missing.length === 0, 'every t() key has a zh entry', `missing ${missing.l
 
 /* 3. no dead entries: each zh key occurs as a literal somewhere in src
  * (either inside t('…') or as the label constant fed to t(variable)) */
-const dead = Object.keys(ZH).filter((k) => !all.includes(JSON.stringify(k).slice(1, -1)) && !all.includes(k))
+const esc = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+const dead = Object.keys(ZH).filter((k) => !all.includes(k) && !all.includes(esc(k)) && !all.includes(JSON.stringify(k).slice(1, -1)))
 check(dead.length === 0, 'no dead zh entries', `unused: ${dead.slice(0, 5).join(' | ')}`)
 
 console.log(failures === 0 ? `PASS: i18n (${checks} checks, ${Object.keys(ZH).length} zh entries, ${used.size} t() keys)` : `FAIL: i18n (${failures}/${checks})`)

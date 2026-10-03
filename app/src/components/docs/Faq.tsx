@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/accordion'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 const FAQS = [
   {
@@ -27,7 +28,7 @@ const FAQS = [
   },
   {
     q: 'Does it work offline?',
-    a: 'Yes, after the first load. A service worker keeps the app shell and, once an engine has booted, that engine\u2019s artifacts, so the IDE opens and boots without a network from the very next visit; a new version downloads its artifacts once and replaces the old cache.',
+    a: 'Yes, after the first load. A service worker keeps the app shell and, once an engine has booted, that engine’s artifacts, so the IDE opens and boots without a network from the very next visit; a new version downloads its artifacts once and replaces the old cache.',
   },
   {
     q: 'Which browsers?',
@@ -40,6 +41,7 @@ const FAQS = [
 ]
 
 export default function Faq() {
+  const { t } = useI18n()
   return (
     <section id="faq" className="scroll-mt-20">
       <SectionHeading title="Frequently asked." />
@@ -62,10 +64,10 @@ export default function Faq() {
             >
               <AccordionItem value={`faq-${i}`} className="border-hairline">
                 <AccordionTrigger className="py-4 text-[15px] font-semibold text-primary hover:no-underline hover:text-steel-bright [&[data-state=open]>svg]:text-steel">
-                  {faq.q}
+                  {t(faq.q)}
                 </AccordionTrigger>
                 <AccordionContent className="text-[14px] leading-relaxed text-secondary">
-                  {faq.a}
+                  {t(faq.a)}
                 </AccordionContent>
               </AccordionItem>
             </motion.div>
