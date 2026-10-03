@@ -654,16 +654,24 @@ var SBCL_HELPER_SRC = [
   '      (let ((provider (lambda (module &optional paths)',
   '                        (declare (ignore paths))',
   '                        (and (string-equal (string module) "asdf")',
-  '                             (find-package :asdf)))))',
+  '                             (find-package :asdf)',
+  '                             ;; only speak for the dummy — with the real',
+  '                             ;; contribs SBCL\'s own provider loads it',
+  '                             (not (probe-file "/sbcl/sbcl-home/contrib/asdf.fasl"))))))',
   '        (pushnew provider sb-ext:*module-provider-functions* :test (function eq))',
   '        t)',
   '    (serious-condition () nil)))',
+  '(defun %real-asdf-p ()',
+  '  (and (find-package :asdf) (fboundp (find-symbol "LOAD-SYSTEM" (find-package :asdf)))))',
   '(defun load-project (files &key debug)',
   '  (setf *load-aborted* nil)',
   '  (setf *project-files* (mapcar (function parse-namestring) files))',
   '  ;; infrastructure first: the shims must exist before the package',
-  '  ;; snapshot, so ASDF is never reported as a project package',
-  '  (%ensure-dummy-asdf)',
+  '  ;; snapshot, so ASDF is never reported as a project package. With the',
+  '  ;; real contribs in the image (require :asdf) loads them and no',
+  '  ;; dummy is installed; the provider only answers when it does.',
+  '  (handler-case (require :asdf) (serious-condition () nil))',
+  '  (unless (%real-asdf-p) (%ensure-dummy-asdf))',
   '  (%ensure-require-provider)',
   '  (let* ((*debug-enabled* debug)',
   '         (*debug-condition* nil)',
@@ -677,7 +685,17 @@ var SBCL_HELPER_SRC = [
   '    (%install-io sin)',
   '    (when (or asds lisps)',
   '      (setf *default-pathname-defaults*',
-  '            (make-pathname :directory (pathname-directory (pathname (or (car asds) (car lisps)))))))',
+  '            (make-pathname :directory (pathname-directory (pathname (or (car asds) (car lisps))))))',
+  '      ;; with the real ASDF: register every .asd directly — the',
+  '      ;; registry search needs (directory ...), which this port cannot',
+  '      ;; do — so init-style files can (asdf:load-system ...) them.',
+  '      ;; find-symbol: the ASDF package does not exist at helper-read',
+  '      ;; time, so a plain ASDF: prefix would not even read',
+  '      (when (%real-asdf-p)',
+  '        (let ((load-asd (find-symbol "LOAD-ASD" (find-package :asdf))))',
+  '          (when load-asd',
+  '            (dolist (a asds)',
+  '              (handler-case (funcall load-asd a) (serious-condition () nil)))))))',
   '    ;; an ext-compat.lisp defines the ECL-only EXT:SHELL/EXT:CD this',
   '    ;; image lacks — load it FIRST so the system files read cleanly',
   '    (when (and (find "ext-compat" lisps :key (function pathname-name) :test (function string-equal))',
@@ -1852,6 +1870,45 @@ function fetchGzipArtifact(path) {
   }).catch(function () { return null })
 }
 
+/* the contrib bundle (sbcl-home.tar.gz, ~1.2 MB): gunzip + untar into
+ * the VFS so SBCL_HOME works and (require :asdf) &co load the real
+ * contribs instead of the dummy */
+function untarIntoVfs(bytes, baseDir) {
+  var off = 0
+  while (off + 512 <= bytes.length) {
+    var hdr = bytes.subarray(off, off + 512)
+    if (hdr[0] === 0) break
+    var name = ''
+    for (var i = 0; i < 100 && hdr[i] !== 0; i++) name += String.fromCharCode(hdr[i])
+    var prefix = ''
+    for (var j = 345; j < 500 && hdr[j] !== 0; j++) prefix += String.fromCharCode(hdr[j])
+    if (prefix) name = prefix + '/' + name
+    var size = 0
+    for (var k = 124; k < 136 && hdr[k] !== 0 && hdr[k] !== 32; k++) size = size * 8 + (hdr[k] - 48)
+    var type = String.fromCharCode(hdr[156] || 48)
+    off += 512
+    var path = baseDir + '/' + name.replace(/\/$/, '')
+    if (type === '5') vfs.dirs.add(path)
+    else if (type === '0' || type === '\0') vfsWriteFile(path, bytes.subarray(off, off + size))
+    off += Math.ceil(size / 512) * 512
+  }
+}
+
+function loadContribBundle() {
+  var get = typeof self.__ccSbclLoadBytes === 'function'
+    ? Promise.resolve(self.__ccSbclLoadBytes('sbcl-home.tar.gz')).catch(function () { return null })
+    : fetch('/sbcl/sbcl-home.tar.gz').then(function (r) { return r.ok ? r.arrayBuffer() : null }).catch(function () { return null })
+  return get.then(function (raw) {
+    if (!raw) return false
+    var u8in = new Uint8Array(raw)
+    var stream = new Blob([u8in]).stream().pipeThrough(new DecompressionStream('gzip'))
+    return new Response(stream).arrayBuffer().then(function (out) {
+      untarIntoVfs(new Uint8Array(out), '/sbcl')
+      return true
+    })
+  })
+}
+
 function loadArtifactBytes(path) {
   /* harness hook: Node can hand us the bytes without fetch */
   if (typeof self.__ccSbclLoadBytes === 'function') return Promise.resolve(self.__ccSbclLoadBytes(path))
@@ -1885,7 +1942,7 @@ function boot() {
       coreBytes = fetched('sbcl.core', b)
       return loadArtifactBytes(artifactBase + 'sbcl-core.wasm')
     })
-    .then(function (b) {
+    .then(async function (b) {
       coreModuleBytes = fetched('sbcl-core.wasm', b)
       bootLine('artifacts loaded (' +
         ((runtimeBytes.byteLength + coreBytes.byteLength + coreModuleBytes.byteLength) / 1e6).toFixed(1) +
@@ -1893,6 +1950,8 @@ function boot() {
 
       vfsWriteFile('/sbcl/sbcl.core', new Uint8Array(coreBytes))
       vfsWriteFile('/sbcl/sbcl-core.wasm', new Uint8Array(coreModuleBytes))
+      var haveContribs = await loadContribBundle().catch(function () { return false })
+      if (haveContribs) bootLine('contribs loaded — (require :asdf) and friends are real')
 
       /* the Lisp heap quota (dynamic space, MB): from the worker URL's
        * ?mem= (the page's SBCL memory setting) or a harness hook; the
@@ -1917,7 +1976,8 @@ function boot() {
       ARGS = ['sbcl.wasm', '--core', '/sbcl/sbcl.core', '--dynamic-space-size', String(flagMb),
         '--noinform', '--no-sysinit', '--no-userinit', '--disable-debugger']
       if (quotaMb > 0) memoryQuotaBytes = quotaMb * 1024 * 1024
-      ENVS = ['PWD=/', 'HOME=/', 'SBCL_WASM_HOST=sbcl-worker', 'SBCL_WASM_RUNTIME=/sbcl/sbcl.wasm']
+      ENVS = ['PWD=/', 'HOME=/', 'SBCL_WASM_HOST=sbcl-worker', 'SBCL_WASM_RUNTIME=/sbcl/sbcl.wasm',
+        ...(vfs.dirs.has('/sbcl/sbcl-home') ? ['SBCL_HOME=/sbcl/sbcl-home'] : [])]
 
       var mod = new WebAssembly.Module(new Uint8Array(runtimeBytes))
       wasm = new WebAssembly.Instance(mod, {
