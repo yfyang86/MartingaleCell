@@ -19,6 +19,14 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **MOP coverage probe** (`pnpm run test:mop`): a 34-check AMOP battery
+  (class protocol, slot metaobjects, the slot-*-using-class family,
+  ensure-generic-function variants, method combinations, funcallable
+  instances) run against the real SBCL wasm image through the worker
+  protocol. Result: the port is at native-SBCL parity — 33/34 pass on
+  both, the single failure (programmatic `ensure-class` `:direct-slots`)
+  is an upstream SBCL gap, tolerated explicitly and enforced once fixed.
+  Findings and both-teams plan in `MOP-Coverage.md`.
 - **Bilingual UI (English / 中文)**: an EN · 中文 toggle in the navbar
   (and the language follows the browser default, remembered across
   visits). English strings are the dictionary keys, so a missing
