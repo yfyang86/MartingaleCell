@@ -99,5 +99,15 @@ const check = (ok, label) => { console.log((ok ? '✓ ' : '✗ ') + label); if (
   check(mod.haveLiveSymbols(), 'live symbols registered')
 }
 
+
+{
+  /* SB-MOP live dump: qualified names parse, register, and match after the ':' */
+  const dump = mod.parseSymbolDump('((CAR 0) (SB-MOP:SLOT-VALUE-USING-CLASS 0) (SB-MOP:SLOT-EXISTS-P-USING-CLASS 0))')
+  check(dump.length === 3 && dump[1].name === 'sb-mop:slot-value-using-class', 'qualified symbol dump parses')
+  mod.registerLiveSymbols(dump)
+  check(mod.scoreMatch('sb-mop:slot-value-using-class', 'slot-value-u') >= 600, 'bare prefix matches after sb-mop: separator')
+  check(mod.scoreMatch('sb-mop:slot-value-using-class', 'sb-mop:slot') >= 700, 'package-prefixed exact-prefix scores high')
+}
+
 console.log(fails ? `\nFAIL: ${fails} check(s)` : '\nPASS: completion logic')
 process.exit(fails ? 1 : 0)

@@ -22,7 +22,7 @@ const ROWS: Row[] = [
   { area: 'Sequences, arrays, hash tables', status: 'full', notes: 'Including displaced & adjustable arrays' },
   { area: 'LOOP / FORMAT / pretty printer', status: 'full', notes: 'format via gray streams into the OUT block' },
   { area: 'Packages & symbols', status: 'full', notes: 'defpackage; in-package persists across cells and drives the package pill; project symbols feed completion; go-to-definition knows every form the loader loaded and every form you evaluated' },
-  { area: 'MOP', status: 'partial', notes: 'slot-value-using-class etc.; ensure-generic-function edge cases pending' },
+  { area: 'MOP', status: 'full', notes: 'Full sb-mop: class protocol, slot metaobjects, the slot-value-using-class family, ensure-generic-function variants, long-form method combinations, funcallable instances; the wasm build also fixes ensure-class with :direct-slots and adds slot-exists-p-using-class (upstream SBCL lacks both) — verified by a 34-check battery in CI' },
   { area: 'Gray streams', status: 'partial', notes: 'Core protocol; *standard-input* is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)' },
   { area: 'Pathnames & files', status: 'partial', notes: 'In-memory FS persisted to IndexedDB; no host filesystem access' },
   { area: 'gnuplot plots (cl-plot)', status: 'partial', notes: 'ext:shell capture rendered as SVG: data series, multi-file plots, function expressions with gnuplot’s operators, user-defined functions and variables, integer arithmetic; no ternaries, strings or 3-D' },

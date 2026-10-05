@@ -75,7 +75,7 @@ const LIVE_KIND_BY_CODE: Record<number, LiveKind> = { 1: 'macro', 0: 'function',
 /** Parse the printed ((NAME kind-code) …) dump of the image. */
 export function parseSymbolDump(printed: string): { name: string; kind: LiveKind }[] {
   const out: { name: string; kind: LiveKind }[] = []
-  const re = /\(([A-Z0-9*+/<>=!?$%&.-]+)\s+(\d)\)/g
+  const re = /\(([A-Z0-9*+/<>=!?$%&.:-]+)\s+(\d)\)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(printed))) out.push({ name: m[1].toLowerCase(), kind: LIVE_KIND_BY_CODE[Number(m[2])] ?? 'other' })
   return out
@@ -88,10 +88,11 @@ export function registerLiveSymbols(dump: { name: string; kind: LiveKind }[]): v
   for (const d of dump) {
     liveKinds.set(d.name, d.kind)
     if (curated.has(d.name)) continue /* the curated entry has docs */
+    const qualified = d.name.includes(':')
     merged.push({
       label: d.name,
       type: KIND_TO_TYPE[d.kind === 'other' ? 'fn' : d.kind],
-      detail: 'CL · live image',
+      detail: qualified ? `${d.name.slice(0, d.name.indexOf(':')).toUpperCase()} · live image` : 'CL · live image',
     })
   }
   for (const c of coreCompletions) if (!byName.has(c.label)) merged.push(c)
@@ -101,13 +102,17 @@ export function registerLiveSymbols(dump: { name: string; kind: LiveKind }[]): v
 /** The form dumped by dumpCoreSymbolsForm, for hidden evaluation. */
 export const dumpCoreSymbolsForm =
   '(let ((*print-length* nil) (*print-level* nil) (*print-pretty* nil))' +
-  '  (loop for s being each external-symbol (find-package "COMMON-LISP")' +
-  '        collect (list (symbol-name s)' +
-  '                      (cond ((macro-function s) 1)' +
-  '                            ((fboundp s) 0)' +
-  '                            ((find-class s nil) 3)' +
-  '                            ((boundp s) 2)' +
-  '                            (t 4)))))'
+  '  (loop for pkg in (list "COMMON-LISP" "SB-MOP")' +
+  '        when (find-package pkg)' +
+  '        append (loop for s being each external-symbol (find-package pkg)' +
+  '                     collect (list (if (string= pkg "COMMON-LISP")' +
+  '                                      (symbol-name s)' +
+  `                                      (concatenate 'string pkg ":" (symbol-name s)))` +
+  '                                   (cond ((macro-function s) 1)' +
+  '                                         ((fboundp s) 0)' +
+  '                                         ((find-class s nil) 3)' +
+  '                                         ((boundp s) 2)' +
+  '                                         (t 4))))))'
 
 /** Whether the live dump has run (first completion can trigger it lazily). */
 export function haveLiveSymbols(): boolean {
@@ -237,7 +242,7 @@ export function scoreMatch(candidate: string, prefix: string): number {
   if (candidate === prefix) return 1000
   if (candidate.startsWith(prefix)) return 800 - candidate.length * 0.1
   const ws = candidate.indexOf(prefix, 1) /* after a separator, e.g. hash-table-… */
-  if (ws > 0 && /[-*./]/.test(candidate[ws - 1])) return 650 - candidate.length * 0.1
+  if (ws > 0 && /[-*./:]/.test(candidate[ws - 1])) return 650 - candidate.length * 0.1
   const sub = candidate.indexOf(prefix)
   if (sub > 0) return 400 - sub
   /* subsequence (fuzzy): every prefix char in order */

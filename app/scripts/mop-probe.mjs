@@ -86,17 +86,13 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
       const real = results.filter((l) => !l.includes(';;MOP: done'))
       const pass = real.filter((l) => / OK\s*$/.test(l)).length
       const fails = real.filter((l) => !/ OK\s*$/.test(l))
-      /* the programmatic ensure-class :direct-slots spec is a KNOWN upstream
-       * SBCL gap (fails on native SBCL the same way) — tolerate exactly it */
-      const known = fails.filter((l) => l.includes('KNOWN-SBCL-GAP'))
-      const unexpected = fails.filter((l) => !l.includes('KNOWN-SBCL-GAP'))
-      const summary = `MOP probe: ${pass} passed, ${known.length} known upstream gap(s), ${unexpected.length} unexpected`
+      const summary = `MOP probe: ${pass} passed, ${fails.length} failed`
       console.log(`\n${summary}`)
-      unexpected.length === 0
+      fails.length === 0
         ? console.log(`PASS: ${summary}`)
-        : console.log(`FAIL: ${summary}\n  ${unexpected.join('\n  ')}`)
+        : console.log(`FAIL: ${summary}\n  ${fails.join('\n  ')}`)
       if (worker) worker.terminate()
-      process.exit(unexpected.length === 0 ? 0 : 1)
+      process.exit(fails.length === 0 ? 0 : 1)
     }
     if (m.type === 'crash') finish(false, 'crash: ' + m.message)
   })
@@ -129,8 +125,8 @@ const BATTERY = String.raw`(progn
 (mop-test "class-slots-effective" '(and (consp (sb-mop:class-slots (find-class 'mop-a))) (sb-mop:slot-definition-name (first (sb-mop:class-slots (find-class 'mop-a))))))
 (mop-test "slot-definition-readers/writers" '(let* ((d (first (sb-mop:class-direct-slots (find-class 'mop-a))))) (and (listp (sb-mop:slot-definition-readers d)) (listp (sb-mop:slot-definition-writers d)))))
 ;; -- ensure-class + instance protocol
-(mop-test "ensure-class-with-:direct-slots-(KNOWN-SBCL-GAP)" '(progn (sb-mop:ensure-class 'mop-b :direct-superclasses (list (find-class 'mop-a)) :direct-slots (list (list 'y :initarg :y :initform 7))) (slot-value (make-instance 'mop-b) 'y)))
-(mop-test "slot-boundp/makunbound/exists-p" '(progn (defclass mop-b (mop-a) ((y :initarg :y :initform 7))) (let* ((i (make-instance 'mop-b)) (c (class-of i)) (sd (find 'y (sb-mop:class-slots c) :key 'sb-mop:slot-definition-name))) (and (sb-mop:slot-boundp-using-class c i sd) (progn (sb-mop:slot-makunbound-using-class c i sd) (not (sb-mop:slot-boundp-using-class c i sd))) (slot-exists-p i 'y) t))))
+(mop-test "ensure-class-with-:direct-slots" '(progn (sb-mop:ensure-class 'mop-b :direct-superclasses (list (find-class 'mop-a)) :direct-slots (list (list 'y :initarg :y :initform 7))) (slot-value (make-instance 'mop-b) 'y)))
+(mop-test "slot-boundp/makunbound/exists-p" '(progn (defclass mop-b (mop-a) ((y :initarg :y :initform 7))) (let* ((i (make-instance 'mop-b)) (c (class-of i)) (sd (find 'y (sb-mop:class-slots c) :key 'sb-mop:slot-definition-name))) (and (sb-mop:slot-boundp-using-class c i sd) (progn (sb-mop:slot-makunbound-using-class c i sd) (not (sb-mop:slot-boundp-using-class c i sd))) (sb-mop:slot-exists-p-using-class c i (quote y)) t))))
 (mop-test "validate-superclass-default" '(progn (defclass mop-b (mop-a) ((y :initarg :y :initform 7))) (sb-mop:validate-superclass (find-class 'mop-b) (find-class 'mop-a))))
 ;; -- slot-value-using-class customization (proxy slot)
 (mop-test-eq "slot-value-using-class-:around" '(progn

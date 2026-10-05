@@ -271,6 +271,65 @@ export const EXAMPLES: Example[] = [
 ;;=> 120`,
   },
   {
+    slug: 'mop-toolkit',
+    title: 'The Metaobject Protocol',
+    category: 'CLOS',
+    difficulty: 3,
+    description:
+      'Proxy slots via slot-value-using-class, custom slot-unbound, funcallable instances, and a programmatic ensure-class.',
+    code: `;;;; The Metaobject Protocol — customize CLOS itself.
+
+;;; 1. Proxy slots: an :around method on SLOT-VALUE-USING-CLASS sees every
+;;; read of every slot of a standard instance. Multiply one slot by 10.
+(defclass temperature ()
+  ((celsius :initarg :celsius :initform 0)))
+
+(defmethod sb-mop:slot-value-using-class :around
+    ((class standard-class) (obj temperature)
+     (slot sb-mop:standard-effective-slot-definition))
+  (let ((raw (call-next-method)))
+    (if (eq (sb-mop:slot-definition-name slot) 'celsius)
+        (* 10 raw)   ; e.g. "tenths of a degree" storage
+        raw)))
+
+(defvar *t* (make-instance 'temperature :celsius 21))
+(slot-value *t* 'celsius)
+
+;;; 2. slot-unbound — reading a never-set slot can recover, not error.
+(defclass cache () ((hit :reader cache-hit) (miss :reader cache-miss)))
+
+(defmethod slot-unbound ((class standard-class) (obj cache) name)
+  (declare (ignore class name))
+  'cold)
+
+(list (cache-hit (make-instance 'cache))
+      (cache-miss (make-instance 'cache)))
+
+;;; 3. programmatic class creation — ENSURE-CLASS with canonicalized
+;;; :direct-slots (the wasm build's fix; upstream SBCL rejects this).
+(sb-mop:ensure-class 'point
+  :direct-superclasses (list (find-class 'standard-object))
+  :direct-slots (list (list 'x :initarg :x :initform 0)
+                      (list 'y :initarg :y :initform 0)))
+(slot-value (make-instance 'point :x 3 :y 4) 'x)
+
+;;; 4. funcallable instances — an object you can CALL.
+(defclass predicate-item ()
+  ((threshold :initarg :threshold :reader threshold))
+  (:metaclass sb-mop:funcallable-standard-class))
+
+(defmethod initialize-instance :after ((p predicate-item) &key)
+  (sb-mop:set-funcallable-instance-function
+   p (lambda (n) (> n (threshold p)))))
+
+(defparameter *big* (make-instance 'predicate-item :threshold 100))
+(mapcar *big* '(20 150 1000))`,
+    expectedOutput: `;;=> 210
+;;=> (COLD COLD)
+;;=> 3
+;;=> (NIL T T)`,
+  },
+  {
     slug: 'shape-dispatch',
     title: 'Multiple dispatch',
     category: 'CLOS',

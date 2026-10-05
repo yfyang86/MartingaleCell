@@ -10,9 +10,32 @@ new failure fails CI, and the moment the upstream gap is fixed we can flip
 the expectation.
 
 The feature-matrix row `slot-value-using-class etc.;
-ensure-generic-function edge cases pending` is therefore stale — the port is
+ensure-generic-function edge cases pending` was stale — the port is
 at **native-SBCL parity** for the MOP; what remains are upstream SBCL
 limitations that every SBCL shares.
+
+## Update — both teams landed
+
+**SBCL team** (branch `sbcl-wasm-proposal`, commits `ee56dc3b5`,
+`3008bd8f4`): `ensure-class` now accepts DEFCLASS-source `:direct-slots`
+(canonicalized slot specs), and `sb-mop:slot-exists-p-using-class` exists
+(Closer-mop semantics: `(slot-exists-p-using-class class object
+slot-name)`). The battery is now their `tests/mop-coverage.impure.lisp`.
+After syncing the Oct-4 build into `public/sbcl/` (only `.gz` copies
+tracked): **34/34 pass on the wasm image**, and the probe's
+`KNOWN-SBCL-GAP` tolerance is removed — CI enforces the fix from here on.
+
+**Our team** (this change): feature-matrix MOP row moved to *full* with an
+honest note; autocomplete now also dumps `SB-MOP` externals on engine
+ready (qualified `sb-mop:` labels, matched after the `:` separator too);
+a "Metaobject Protocol" example notebook (proxy slots, slot-unbound
+recovery, programmatic ensure-class, funcallable instances — verified
+against the real image); and an ECL parity probe (`test:ecl-mop`,
+16 checks). ECL parity: 14 hard passes; the WECL build lacks/breaks
+`slot-value-using-class` customization (unbound in this image) and
+funcallable-standard-class instances (forward-referenced-superclass bug)
+— recorded as engine gaps by the tolerant tests, and noted per-engine in
+the matrix.
 
 ## 1. What works (both native and wasm) — 33 checks
 

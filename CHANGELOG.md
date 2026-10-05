@@ -19,6 +19,13 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **MOP: SBCL team's fixes synced, our side landed** — the new wasm build
+  fixes programmatic `ensure-class` `:direct-slots` and adds
+  `sb-mop:slot-exists-p-using-class`; the 34-check battery now passes
+  34/34 with the gap tolerance removed. Feature-matrix MOP row is *full*;
+  autocomplete offers `SB-MOP` externals; a "Metaobject Protocol" example
+  notebook; an ECL parity probe (16 checks; WECL's slot-value-using-class
+  customization and funcallable instances recorded as engine gaps).
 - **MOP coverage probe** (`pnpm run test:mop`): a 34-check AMOP battery
   (class protocol, slot metaobjects, the slot-*-using-class family,
   ensure-generic-function variants, method combinations, funcallable

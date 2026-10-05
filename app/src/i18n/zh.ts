@@ -498,8 +498,9 @@ export const ZH: Record<string, string> = {
   '; in-package persists across cells and drives the package pill; project symbols feed completion; go-to-definition knows every form the loader loaded and every form you evaluated':
     '；in-package 跨 cell 生效并驱动 package 药丸；项目符号进入补全；转到定义知道加载器载入的每一个表达式和你求值过的每一个表达式',
   'MOP': 'MOP',
-  ' etc.; ': ' 等；',
-  ' edge cases pending': '的边角情况待完善',
+  'Full sb-mop: class protocol, slot metaobjects, the ': '完整的 sb-mop：类协议、slot 元对象、',
+  ' family, ': ' 家族、',
+  ' variants, long-form method combinations, funcallable instances; the wasm build also fixes ensure-class with :direct-slots and adds slot-exists-p-using-class (upstream SBCL lacks both) — verified by a 34-check battery in CI': ' 的各种变体、长式 method combination、可调用实例；wasm 构建还修复了带 :direct-slots 的 ensure-class 并新增 slot-exists-p-using-class（上游 SBCL 两者皆无）—— 由 CI 中的 34 项检查验证',
   'Gray streams': 'Gray 流',
   'Core protocol; ': '核心协议；',
   ' is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)': '是一个 Gray 流，会暂停 cell 等待一行输入（read-line、read、y-or-n-p）',
