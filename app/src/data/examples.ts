@@ -271,6 +271,63 @@ export const EXAMPLES: Example[] = [
 ;;=> 120`,
   },
   {
+    slug: 'chemistry',
+    title: 'Molecules (chemicl)',
+    category: 'Chemistry',
+    difficulty: 3,
+    description:
+      'Bundled chemicl port: build molecules, look up elements, compute formulas and molar masses.',
+    code: `;;;; Molecules with the bundled chemicl port (Explorer → Open sample
+;;;; project: chemicl). After loading it, evaluate these forms.
+
+;;; the periodic table — element lookup by symbol or atomic number
+(list (chemicl:name (chemicl:get-element 26))
+      (chemicl:mass (chemicl:get-element "Fe"))
+      (chemicl:electronegativity (chemicl:get-element :o)))
+
+;;; water, by hand: two H, one O, two bonds
+(defparameter *water*
+  (let ((mol (chemicl:make-molecule :name "water")))
+    (chemicl:add-atom mol 8 "O")
+    (chemicl:add-atom mol 1 "H1")
+    (chemicl:add-atom mol 1 "H2")
+    (chemicl:add-bond mol "O" "H1")
+    (chemicl:add-bond mol "O" "H2")
+    mol))
+
+(list (chemicl:molecular-formula *water*)
+      (chemicl:mass *water*)
+      (chemicl:exact-mass *water*))
+
+;;; caffeine ships with the sample project (init.lisp) — C8H10N4O2
+(list (chemicl:molecular-formula *caffeine*)
+      (chemicl:mass *caffeine*))
+
+;;; ring perception on cyclohexane
+(defparameter *cyclohexane*
+  (let ((mol (chemicl:make-molecule :name "cyclohexane")))
+    (loop for i from 1 to 6 do (chemicl:add-atom mol 6 (format nil "C~A" i)))
+    (loop for i from 1 to 12 do (chemicl:add-atom mol 1 (format nil "H~A" i)))
+    (loop for i from 1 to 6
+          do (chemicl:add-bond mol
+                               (format nil "C~A" (1+ (mod (1- i) 6)))
+                               (format nil "C~A" (1+ (mod i 6))))
+             (chemicl:add-bond mol (format nil "C~A" i)
+                               (format nil "H~A" (1+ (* (1- i) 2))))
+             (chemicl:add-bond mol (format nil "C~A" i)
+                               (format nil "H~A" (+ (* (1- i) 2) 2))))
+    mol))
+
+(list (chemicl:molecular-formula *cyclohexane*)
+      (mapcar #'length (chemicl:minimal-rings (chemicl:hanser-rings *cyclohexane*))))`,
+    expectedOutput: `;;=> ("iron" 55.845 3.44)
+;;=> *WATER*
+;;=> ("H2O1" 18.01528 18.010565)
+;;=> ("C8H10N4O2" 194.1906)
+;;=> *CYCLOHEXANE*
+;;=> ("C6H12" (7))`,
+  },
+  {
     slug: 'mop-toolkit',
     title: 'The Metaobject Protocol',
     category: 'CLOS',

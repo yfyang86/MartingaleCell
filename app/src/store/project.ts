@@ -85,7 +85,7 @@ interface ProjectState {
   reopenLast: () => Promise<void>
   importZip: (file: Blob, name?: string, attribution?: string | null) => Promise<void>
   importFolderUpload: (fileList: FileList) => Promise<void>
-  openSample: () => Promise<void>
+  openSample: (which?: 'cl-plot' | 'chemicl') => Promise<void>
   exportZip: () => Promise<void>
   closeProject: () => void
   refreshTree: () => Promise<void>
@@ -297,13 +297,18 @@ export const useProject = create<ProjectState>((set, get) => {
       toast(`Imported ${Object.keys(s.files).length} files — virtual project`)
     },
 
-    openSample: async () => {
+    /* the bundled sample projects; cl-plot is the gnuplot one, chemicl the
+     * chemical-structures one (Cyrus Harmon, BSD — see its PORT-NOTES.md) */
+    openSample: async (which: 'cl-plot' | 'chemicl' = 'cl-plot') => {
       try {
         set({ busy: true })
-        const res = await fetch('/sample-projects/cl-plot.zip')
+        const res = await fetch(`/sample-projects/${which}.zip`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const blob = await res.blob()
-        await get().importZip(blob, 'cl-plot (sample)', 'cl-plot © Martin Kersner, MIT')
+        const label = which === 'cl-plot'
+          ? { name: 'cl-plot (sample)', credit: 'cl-plot © Martin Kersner, MIT' }
+          : { name: 'chemicl (sample)', credit: 'chemicl + epigraph © Cyrus Harmon, BSD' }
+        await get().importZip(blob, label.name, label.credit)
       } catch (e) {
         logErr(`Sample project failed: ${(e as Error)?.message ?? e}`)
         toast('Could not load the sample project')

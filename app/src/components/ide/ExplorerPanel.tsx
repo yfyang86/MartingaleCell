@@ -197,13 +197,16 @@ function EmptyExplorer({ onImportZip, onUploadFolder }: { onImportZip: (f: File)
           <RotateCw size={13} className="text-steel" /> {t('Reopen last project')}
         </button>
       )}
-      <button
-        className="mt-1 text-left font-mono text-[11.5px] text-steel underline decoration-dotted underline-offset-2 hover:text-steel-bright"
-        onClick={() => void openSample()}
-        disabled={busy}
-      >
-        {t('Open sample project: cl-plot (MIT)')}
-      </button>
+      {(['cl-plot', 'chemicl'] as const).map((which) => (
+        <button
+          key={which}
+          className="mt-1 text-left font-mono text-[11.5px] text-steel underline decoration-dotted underline-offset-2 hover:text-steel-bright"
+          onClick={() => void openSample(which)}
+          disabled={busy}
+        >
+          {t(which === 'cl-plot' ? 'Open sample project: cl-plot (MIT)' : 'Open sample project: chemicl (BSD)')}
+        </button>
+      ))}
       <input ref={zipRef} type="file" accept=".zip,application/zip" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportZip(f); e.target.value = '' }} />
       <input ref={dirRef} type="file" className="hidden"
@@ -383,7 +386,8 @@ export default function ExplorerPanel() {
               { label: 'Reopen last project', run: () => void ps().reopenLast(), disabled: !useProject.getState().canReopen },
               { label: 'Import ZIP…', run: () => zipRef.current?.click() },
               { label: 'Upload Folder…', run: () => dirUploadRef.current?.click() },
-              { label: 'Open sample project: cl-plot (MIT)', run: () => void ps().openSample() },
+              { label: 'Open sample project: cl-plot (MIT)', run: () => void ps().openSample('cl-plot') },
+              { label: 'Open sample project: chemicl (BSD)', run: () => void ps().openSample('chemicl') },
               { label: 'Close project', run: () => ps().closeProject(), disabled: !kind, danger: true },
             ]}
           />

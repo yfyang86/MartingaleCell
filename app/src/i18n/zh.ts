@@ -318,6 +318,7 @@ export const ZH: Record<string, string> = {
   'Upload Folder…': '上传文件夹…',
   'Reopen last project': '重新打开最近的项目',
   'Open sample project: cl-plot (MIT)': '打开示例项目：cl-plot (MIT)',
+  'Open sample project: chemicl (BSD)': '打开示例项目：chemicl (BSD)',
   'Explorer': '浏览器',
   'Load Project into Runtime (recursive, then call it)': '将项目载入运行时（递归载入后即可调用）',
   'Open a project first': '请先打开一个项目',

@@ -19,6 +19,18 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **chemicl — chemical structures sample project** (port of Cyrus
+  Harmon's chemicl, BSD): molecules as atom/bond graphs, periodic-table
+  element and isotope data, molecular formulas, molar and exact masses,
+  ring perception, canonicalization. Bundled like cl-plot (Explorer →
+  *Open sample project: chemicl*); element/isotope data converted from
+  the upstream XML to a sexp file (no cxml dependency), epigraph vendored
+  with a two-function alexandria shim, one modern-CL fix in epigraph's
+  sequence helpers; SMILES parsing (needs parser-combinators + fset) is
+  not ported — details in the zip's PORT-NOTES.md. New "Molecules
+  (chemicl)" example notebook and `test:chemicl` CI check; verified
+  end-to-end on both the SBCL and ECL wasm images (caffeine
+  C8H10N4O2 / 194.1906 on both).
 - **Per-cell interrupt**: while a cell runs, its status row now carries an
   Interrupt button (not just the global Ctrl . / toolbar flow). One click
   resolves that evaluation as aborted and safely replaces the WASM worker
