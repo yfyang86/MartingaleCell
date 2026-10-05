@@ -19,6 +19,13 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **Per-cell interrupt**: while a cell runs, its status row now carries an
+  Interrupt button (not just the global Ctrl . / toolbar flow). One click
+  resolves that evaluation as aborted and safely replaces the WASM worker
+  behind it — nothing inside the image keeps running; the respawn boots in
+  the background and the next evaluation works on the fresh image. Browser-
+  verified: an endless `(loop)` cell aborted on click and `(+ 40 2)`
+  evaluated to 42 on the respawned image.
 - **MOP: SBCL team's fixes synced, our side landed** — the new wasm build
   fixes programmatic `ensure-class` `:direct-slots` and adds
   `sb-mop:slot-exists-p-using-class`; the 34-check battery now passes

@@ -110,6 +110,9 @@ export const ZH: Record<string, string> = {
   'unsaved changes': '未保存的修改',
   'Toggle project explorer (Ctrl B)': '切换项目浏览器 (Ctrl B)',
   'Evaluate form at point': '求值光标处的表达式',
+  'Interrupt this cell — the evaluation resolves as aborted and the worker restarts (definitions are lost)':
+    '中断这个 cell —— 求值以中止收场，worker 会重启（定义会丢失）',
+  'Interrupting…': '中断中…',
   'Interrupt evaluation (Ctrl .)': '中断求值 (Ctrl .)',
   'Restart Lisp image': '重启 Lisp 镜像',
   'Share (copies URL)': '分享（复制 URL）',

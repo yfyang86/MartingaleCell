@@ -6,6 +6,7 @@ import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, RotateCw, CornerDownLeft, ChevronDown, X, OctagonX, Loader2, FilePlus2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { runtime } from '@/lisp/runtime'
 import { useI18n } from '@/i18n/context'
 import type { Cell } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
@@ -313,6 +314,7 @@ function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?
   /* (updateCell: warning dismissal) */
   const [collapsed, setCollapsed] = useState(false)
   const [inputExpanded, setInputExpanded] = useState(false)
+  const [interrupting, setInterrupting] = useState(false)
   const running = cell.status === 'running'
   const paused = cell.status === 'paused'
   const isProject = cell.kind === 'project'
@@ -343,6 +345,21 @@ function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?
     const pos = view.state.selection.main.head
     view.dispatch({ changes: { from: pos, insert: cell.input }, selection: { anchor: pos + cell.input.length } })
     view.focus()
+  }
+
+  /* per-cell interrupt — runtime.interrupt() resolves the running job as
+   * aborted (this cell lands in status 'aborted') and replaces the worker
+   * so nothing inside the image keeps running */
+  const interruptCell = async () => {
+    setInterrupting(true)
+    useWorkspace.getState().addLog('WARN', 'EVAL', `interrupt requested from cell [${cell.n}] — worker will be replaced`, { cellRef: cell.n })
+    try {
+      await runtime.interrupt()
+    } catch (e) {
+      useWorkspace.getState().addLog('ERROR', 'EVAL', `interrupt failed: ${String(e)}`, { cellRef: cell.n })
+    } finally {
+      setInterrupting(false)
+    }
   }
 
   const isError = cell.status === 'error'
@@ -440,7 +457,19 @@ function CellComponent({ cell, flash, run }: { cell: Cell; flash?: boolean; run?
             <div className="mt-2 flex items-center gap-2 font-mono text-[11px] text-steel">
               <Loader2 size={12} className="animate-spin" />
               <span>{(elapsed / 1000).toFixed(1)}s</span>
-              {elapsed > 5000 && <span className="text-muted">{t('Taking long? Interrupt with')} <span className="cc-kbd">Ctrl .</span></span>}
+              {/* per-cell interrupt: resolves the running job as aborted and
+               * replaces the WASM worker behind it (no preemption inside the
+               * image) — the boot pill shows the respawn */}
+              <button
+                className="flex items-center gap-1 rounded-md border border-error/40 px-1.5 py-0.5 text-error transition-all duration-100 hover:bg-error/10 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+                title={t('Interrupt this cell — the evaluation resolves as aborted and the worker restarts (definitions are lost)')}
+                disabled={interrupting}
+                onClick={() => void interruptCell()}
+              >
+                {interrupting ? <Loader2 size={11} className="animate-spin" /> : <OctagonX size={11} />}
+                {interrupting ? t('Interrupting…') : t('Interrupt')}
+              </button>
+              {elapsed > 5000 && !interrupting && <span className="text-muted">{t('Taking long? Interrupt with')} <span className="cc-kbd">Ctrl .</span></span>}
             </div>
           )}
 
