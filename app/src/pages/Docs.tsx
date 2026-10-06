@@ -8,6 +8,7 @@ import Editor from '@/components/docs/Editor'
 import DebuggerSection from '@/components/docs/DebuggerSection'
 import Projects from '@/components/docs/Projects'
 import Modules from '@/components/docs/Modules'
+import Chemicl from '@/components/docs/Chemicl'
 import Shortcuts from '@/components/docs/Shortcuts'
 import Persistence from '@/components/docs/Persistence'
 import Faq from '@/components/docs/Faq'
@@ -33,6 +34,8 @@ export default function Docs() {
         <Projects />
         <SectionDivider />
         <Modules />
+        <SectionDivider />
+        <Chemicl />
         <SectionDivider />
         <Shortcuts />
         <SectionDivider />

@@ -345,6 +345,53 @@ export const EXAMPLES: Example[] = [
 ;;=> ("C6H12" (7))`,
   },
   {
+    slug: 'smiles-gallery',
+    title: 'SMILES gallery',
+    category: 'Chemistry',
+    difficulty: 2,
+    description:
+      'Parse a shelf of known molecules from their SMILES strings; formulas, masses and one ring count each.',
+    code: `;;;; A small shelf of molecules, straight from SMILES. The chemicl
+;;;; sample project must be loaded (Explorer → Open sample project:
+;;;; chemicl), then evaluate.
+
+(defparameter *shelf*
+  '(("ethanol"     "CCO")
+    ("benzene"    "c1ccccc1")
+    ("caffeine"   "Cn1cnc2c1c(=O)n(C)c(=O)n2C")
+    ("aspirin"    "CC(=O)Oc1ccccc1C(=O)O")
+    ("pyrrole"    "[nH]1cccc1")
+    ("cyclohexane" "C1CCCCC1")
+    ("saccharin"  "N#Cc1ccc(cc1)S(=O)(=O)N")))
+
+;;; name → formula, average mass, and the number of rings
+(mapcar (lambda (pair)
+          (let* ((mol (chemicl:parse-smiles-string (second pair)
+                                                   :name (first pair))))
+            (list (first pair)
+                  (chemicl:molecular-formula mol)
+                  (chemicl:mass mol)
+                  (length (chemicl:minimal-rings
+                            (chemicl:hanser-rings mol))))))
+        *shelf*)
+
+;;; and the heaviest one on the shelf
+(let ((mols (mapcar (lambda (p) (chemicl:parse-smiles-string (second p)
+                                                         :name (first p)))
+                    *shelf*)))
+  (chemicl:name
+    (first (sort (copy-list mols) #'> :key #'chemicl:mass))))`,
+    expectedOutput: `;;=> *SHELF*
+;;=> (("ethanol" "C2H6O1" 46.06844091415405 0)
+;;=>  ("benzene" "C6H6" 78.11184167861938 1)
+;;=>  ("caffeine" "C8H10N4O2" 194.1906008720398 2)
+;;=>  ("aspirin" "C9H8O4" 180.15742301940918 1)
+;;=>  ("pyrrole" "C4H5N1" 67.08920073509216 1)
+;;=>  ("cyclohexane" "C6H12" 84.1594820022583 1)
+;;=>  ("saccharin" "C7H6N2O2S1" 182.19973993301392 1))
+;;=> "caffeine"`,
+  },
+  {
     slug: 'mop-toolkit',
     title: 'The Metaobject Protocol',
     category: 'CLOS',

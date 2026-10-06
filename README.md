@@ -99,9 +99,13 @@ pause-on-error debugger blocking the rest of the session.)*
 4. `Ctrl+K` → *Open sample project: cl-plot* → *Load Project into Runtime*:
    seven files load in system order, and the example's gnuplot figure is
    captured and rendered as an SVG plot right in the session.
-5. `(/ 1 0)` — a proper condition cell: type, message, operands.
+5. Or *Open sample project: chemicl* for chemistry: molecules straight
+   from SMILES —
+   `(chemicl:molecular-formula (chemicl:parse-smiles-string "Cn1cnc2c1c(=O)n(C)c(=O)n2C"))`
+   → caffeine, `C8H10N4O2`. See the in-app docs section *Chemistry
+   (chemicl)* and the *Molecules* / *SMILES gallery* examples.
+6. `(/ 1 0)` — a proper condition cell: type, message, operands.
    With *pause on error* on, you get the live restarts instead.
-
 Useful shortcuts: `Ctrl+Enter` evaluate · `Ctrl+Shift+Enter` evaluate
 buffer · `Ctrl+.` interrupt · `Ctrl+K` command palette · `Ctrl+B` project
 explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` search ·
@@ -134,6 +138,7 @@ explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` 
   against it: the IDE talks to it through a worker message protocol. The
   source is available from the ECL project; MartingaleCell does not depend on
   it as its core engine.
+- **chemicl + epigraph** (bundled sample) — BSD, © Cyrus Harmon
 - **cl-plot** (bundled sample) — MIT, © Martin Kersner (its LICENSE
   file is inside the sample zip).
 

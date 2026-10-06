@@ -14,6 +14,7 @@ export const DOC_SECTIONS = [
   { id: 'debugger', label: 'Debugger & restarts' },
   { id: 'projects', label: 'Projects' },
   { id: 'modules', label: 'Modules' },
+  { id: 'chemicl', label: 'Chemistry (chemicl)' },
   { id: 'shortcuts', label: 'Keyboard shortcuts' },
   { id: 'persistence', label: 'Persistence & privacy' },
   { id: 'faq', label: 'FAQ' },

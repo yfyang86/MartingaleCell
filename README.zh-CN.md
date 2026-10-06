@@ -28,7 +28,9 @@
 - **项目管理**：打开本地文件夹（或导入 ZIP / 一组文件），编辑保存，然
   后 **Load Project into Runtime** —— ASDF system 按 `:components` 顺序
   加载，每个文件逐个 top-level form 加载，一个坏 form 不会中断整个加
-  载。试试内置示例：*Open sample project: cl-plot*。
+  载。试试内置示例：*Open sample project: cl-plot*。化学可选
+  *Open sample project: chemicl*：直接从 SMILES 构建分子，详见应用内
+  文档《化学（chemicl）》与 *Molecules*、*SMILES gallery* 示例。
 - **交互式调试**：出错时 image 可以暂停并给出当前可用的 restart
   （retry、store-value、define-function、abort，项目加载时还有
   skip-form）。标准输入同样可用：`(read-line)` 会暂停 cell 等你输入一

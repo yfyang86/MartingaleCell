@@ -409,6 +409,25 @@ export const ZH: Record<string, string> = {
   'Find references': '查找引用',
   'Paste': '粘贴',
 /* -------- docs: sidebar -------- */
+  'Chemistry (chemicl)': '化学（chemicl）',
+  'Chemistry: the chemicl sample project.': '化学：chemicl 示例项目。',
+  'A port of Cyrus Harmon\'s chemicl (BSD) is bundled as a sample project — the same mechanism cl-plot uses. Open it from the Explorer, load it into the runtime, and the CHEMICL package (plus a few ready molecules) is one evaluation away.':
+    'Cyrus Harmon 的 chemicl（BSD）移植版作为示例项目内置 —— 与 cl-plot 同一机制。在浏览器中打开它、载入运行时，CHEMICL 包（以及几个现成的分子）只需一次求值。',
+  'Molecules from SMILES': '从 SMILES 构建分子',
+  'The bundled chemicl port parses SMILES — organic and bracket atoms, bonds, branches, ring closures, fragments — and completes the hydrogens implied by normal valences, so formulas count them. Formulas print the element count even when it is one (H2O1 — upstream behavior).':
+    '内置的 chemicl 移植解析 SMILES —— 有机子集与方括号原子、键、分支、环闭合、片段 —— 并按正常化合价补全隐式氢，因此分子式会计入它们。分子式即使数量为 1 也会打印（H2O1 —— 上游行为）。',
+  'Round-trip writing': '往返写出',
+  'write-smiles-string emits a non-canonical SMILES (insertion-order DFS, ring digits paired, brackets where needed). Parsing it back reproduces the formula and mass exactly — verified against RDKit over an 18-molecule battery.':
+    'write-smiles-string 输出非规范化的 SMILES（按插入序 DFS、环数字成对、必要时加方括号）。重新解析可精确还原分子式与质量 —— 已用 RDKit 在 18 个分子上验证。',
+  'Element & isotope data': '元素与同位素数据',
+  'The full periodic table and IUPAC isotope data ship inside the port (converted once from the upstream XML). Look elements up by atomic number, string or keyword symbol; exact-mass uses the isotope table.':
+    '完整元素周期表与 IUPAC 同位素数据随移植内置（由上游 XML 一次性转换而来）。可按原子序数、字符串或关键字符号查询元素；exact-mass 使用同位素表。',
+  'Graphs all the way down': '底层全是图',
+  'A molecule is an atom/bond graph (epigraph underneath): map-atoms, find-bonds-containing, ring perception (hanser-rings, minimal-rings), and canonicalization are all available for your own traversals.':
+    '分子就是原子/键的图（底层是 epigraph）：map-atoms、find-bonds-containing、环识别（hanser-rings、minimal-rings）与规范化都可用于你自己的遍历。',
+  'Not chemistry-complete:': '并非完整的化学工具：',
+  'chemicl models atoms and bonds, not 3-D structure — stereochemistry parses but is dropped, and there is no force field, conformer search or depiction. The SMILES implementation replaces the upstream parser (which needs parser-combinators and fset); every deviation is documented in PORT-NOTES.md inside the sample zip.':
+    'chemicl 建模原子与键，而非三维结构 —— 立体化学可以解析但会被丢弃，也没有力场、构象搜索或结构绘制。SMILES 实现替换了上游解析器（后者需要 parser-combinators 与 fset）；所有差异都记录在示例 zip 内的 PORT-NOTES.md 中。',
   'Getting started': '快速上手',
   'Feature support matrix': '特性支持对照表',
   'The session & cells': '会话与 cell',

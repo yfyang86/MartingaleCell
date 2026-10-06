@@ -19,6 +19,13 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **chemicl manual & examples**: a *Chemistry (chemicl)* section in the
+  in-app docs (four cards — SMILES, round-trip writing, element/isotope
+  data, the graph model — four evaluated code blocks with outputs
+  captured from the real image, and an honest limits callout; fully
+  translated), a second example notebook "SMILES gallery" (a shelf of
+  known molecules with formulas, masses and ring counts, verified on
+  the image), and README quick-start steps for both samples (en + zh).
 - **chemicl: SMILES support** — `parse-smiles-string` and
   `write-smiles-string` are now in the port, as a fresh self-contained
   recursive-descent implementation (the upstream parser needs
