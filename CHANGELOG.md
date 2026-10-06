@@ -21,7 +21,14 @@ it install their own service-worker cache.
 ### Added
 - **chemicl: show-smiles — molecules drawn as SVG in the cell**.
   `(chemicl:show-smiles "Cn1…")` parses a SMILES string and depicts the
-  molecule: force-directed 2-D layout (engine-side, plain Lisp), carbons
+  molecule: template-based 2-D layout (engine-side, plain Lisp) — rings
+  are placed as regular polygons (fused rings share their edge, larger
+  rings first), chains attach by full-circle clearance search so
+  substituents never land inside a ring, and a gentle relaxation only
+  refines non-ring atoms; aromatic rings draw alternating inner accents
+  (a matching, so fused systems never show adjacent double bonds) and
+  bonds are trimmed at heteroatom labels. Benzene renders as a clean
+  Kekulé hexagon; melatonin as a proper fused indole. Carbons
   as bare vertices, heteroatoms labeled with implicit H folded in,
   double/triple/aromatic bond line forms. The SVG travels through the
   existing ;;PLOT64 capture channel as a raw-SVG payload — the app
