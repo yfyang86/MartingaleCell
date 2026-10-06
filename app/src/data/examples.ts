@@ -287,6 +287,11 @@ export const EXAMPLES: Example[] = [
       (chemicl:mass *caffeine*)
       (chemicl:molecular-formula *aspirin*))
 
+;;; draw them — each call renders an SVG structure diagram in the cell
+(chemicl:show-smiles "Cn1cnc2c1c(=O)n(C)c(=O)n2C" :name "caffeine")
+(chemicl:show-smiles "CC(=O)Oc1ccccc1C(=O)O" :name "aspirin")
+(chemicl:show-smiles "N#Cc1ccc(cc1)S(=O)(=O)N" :name "saccharin")
+
 ;;; any SMILES, evaluated on the spot
 (chemicl:molecular-formula
   (chemicl:parse-smiles-string "OC(=O)C(C)CC(N)C(=O)O")) ; aspartic acid
@@ -336,6 +341,9 @@ export const EXAMPLES: Example[] = [
 (list (chemicl:molecular-formula *cyclohexane*)
       (mapcar #'length (chemicl:minimal-rings (chemicl:hanser-rings *cyclohexane*))))`,
     expectedOutput: `;;=> ("C8H10N4O2" 194.1906008720398 "C9H8O4")
+;;PLOT64 <caffeine structure svg>
+;;PLOT64 <aspirin structure svg>
+;;PLOT64 <saccharin structure svg>
 ;;=> "C6H11N1O4"
 ;;=> ("[OH]C(=O)c1([cH][cH][cH][cH]c1OC(=O)[CH3])" "C9H8O4" "C9H8O4")
 ;;=> ("iron" 55.845 3.44)
@@ -380,7 +388,12 @@ export const EXAMPLES: Example[] = [
                                                          :name (first p)))
                     *shelf*)))
   (chemicl:name
-    (first (sort (copy-list mols) #'> :key #'chemicl:mass))))`,
+    (first (sort (copy-list mols) #'> :key #'chemicl:mass))))
+
+;;; draw the whole shelf — one SVG structure diagram per molecule
+(mapc (lambda (pair)
+        (chemicl:show-smiles (second pair) :name (first pair)))
+      *shelf*)`,
     expectedOutput: `;;=> *SHELF*
 ;;=> (("ethanol" "C2H6O1" 46.06844091415405 0)
 ;;=>  ("benzene" "C6H6" 78.11184167861938 1)
@@ -389,7 +402,14 @@ export const EXAMPLES: Example[] = [
 ;;=>  ("pyrrole" "C4H5N1" 67.08920073509216 1)
 ;;=>  ("cyclohexane" "C6H12" 84.1594820022583 1)
 ;;=>  ("saccharin" "C7H6N2O2S1" 182.19973993301392 1))
-;;=> "caffeine"`,
+;;=> "caffeine"
+;;PLOT64 <ethanol structure svg>
+;;PLOT64 <benzene structure svg>
+;;PLOT64 <caffeine structure svg>
+;;PLOT64 <aspirin structure svg>
+;;PLOT64 <pyrrole structure svg>
+;;PLOT64 <cyclohexane structure svg>
+;;PLOT64 <saccharin structure svg>`,
   },
   {
     slug: 'mop-toolkit',

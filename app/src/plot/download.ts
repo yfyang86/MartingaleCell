@@ -3,6 +3,13 @@
  * (save fig "name.png" w h) without a gnuplot binary. */
 
 import { buildSvg, svgSize } from './build-svg'
+
+/** width/height of a raw engine-drawn SVG (our generator always writes both attrs) */
+function rawSvgSize(svg: string): { w: number; h: number } {
+  const w = Number(/width="([\d.]+)/.exec(svg)?.[1]) || 420
+  const h = Number(/height="([\d.]+)/.exec(svg)?.[1]) || 320
+  return { w, h }
+}
 import type { PlotAttachment } from './gnuplot'
 
 function baseName(path: string): string {
@@ -23,7 +30,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 /** Serialize the rendered SVG and download it. */
 export function downloadPlotSvg(plot: PlotAttachment, fallbackName: string): void {
-  const svg = buildSvg(plot.spec)
+  const svg = plot.svg ?? buildSvg(plot.spec!)
   const name = plot.outputName
     ? baseName(plot.outputName).replace(/\.png$/i, '.svg')
     : fallbackName.replace(/\.png$/i, '') + '.svg'
@@ -32,8 +39,8 @@ export function downloadPlotSvg(plot: PlotAttachment, fallbackName: string): voi
 
 /** Rasterize the SVG into a canvas at 2× and download as PNG. */
 export async function downloadPlotPng(plot: PlotAttachment, fallbackName: string): Promise<void> {
-  const svg = buildSvg(plot.spec)
-  const { w, h } = svgSize(plot.spec)
+  const svg = plot.svg ?? buildSvg(plot.spec!)
+  const { w, h } = plot.svg ? rawSvgSize(plot.svg) : svgSize(plot.spec!)
   const name = plot.outputName
     ? (/\.png$/i.test(plot.outputName) ? baseName(plot.outputName) : baseName(plot.outputName) + '.png')
     : fallbackName.replace(/\.svg$/i, '').replace(/\.png$/i, '') + '.png'

@@ -78,9 +78,13 @@ export interface PlotDataFile {
 
 /** A plot attached to a session cell. */
 export interface PlotAttachment {
-  spec: PlotSpec
+  /** parsed gnuplot spec; absent for raw-SVG plots (see svg) */
+  spec?: PlotSpec
   script: string
   outputName?: string
+  /** raw SVG, drawn by the engine itself (chemicl's show-smiles) instead
+   * of going through the gnuplot-subset renderer */
+  svg?: string
 }
 
 export const PLOT_MARKER = ';;PLOT64 '
@@ -155,6 +159,11 @@ export function decodePlotMarker(line: string): { script: string; files: PlotDat
 export function parsePlotMarker(line: string): PlotAttachment | null {
   const unpacked = decodePlotMarker(line)
   if (!unpacked) return null
+  /* raw-SVG capture: the payload's first string is the SVG itself
+   * (chemicl's show-smiles draws molecules this way) */
+  const head = unpacked.script.trimStart().slice(0, 5).toLowerCase()
+  if (head === '<?xml' || unpacked.script.trimStart().startsWith('<svg'))
+    return { svg: unpacked.script, script: '' }
   const spec = parseGnuplot(unpacked.script, unpacked.files)
   return { spec, script: unpacked.script, outputName: spec.outputName }
 }

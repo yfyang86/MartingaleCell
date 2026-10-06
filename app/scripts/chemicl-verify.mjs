@@ -5,13 +5,16 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { build } from 'esbuild'
 import { createRequire } from 'node:module'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
 const require = createRequire(import.meta.url)
 const JSZip = require('jszip')
+await build({ entryPoints: ['src/plot/gnuplot.ts'], bundle: true, format: 'esm', outfile: '/tmp/chem-plot.mjs' })
+const { parsePlotMarker } = await import(pathToFileURL('/tmp/chem-plot.mjs').href)
 const zip = await JSZip.loadAsync(fs.readFileSync(path.join(publicDir, 'sample-projects', 'chemicl.zip')))
 const files = []
 for (const [name, entry] of Object.entries(zip.files)) {
@@ -81,7 +84,10 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
   (chemicl:molecular-formula (chemicl:parse-smiles-string "CCO"))
   (chemicl:write-smiles-string (chemicl:parse-smiles-string "c1ccccc1"))
   (chemicl:molecular-formula (chemicl:parse-smiles-string
-    (chemicl:write-smiles-string (chemicl:parse-smiles-string "c1ccccc1")))))` })
+    (chemicl:write-smiles-string (chemicl:parse-smiles-string "c1ccccc1"))))
+  ;; show-smiles draws the molecule — a raw-SVG ;;PLOT64 marker
+  (chemicl:molecular-formula
+    (chemicl:show-smiles "Cn1cnc2c1c(=O)n(C)c(=O)n2C" :name "caffeine")))` })
     }
     if (m.type === 'done' && m.id === 201) {
       const l = out(201).join('\n')
@@ -94,6 +100,12 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
         ['SMILES benzene write', /1c|c1|cH|C1/.test(l)],
         ['SMILES benzene round-trip', (l.match(/C6H6/g) || []).length >= 1],
       ]
+      /* the show-smiles PLOT64 marker must arrive AND parse as raw svg */
+      const marker = out(201).find((l) => l.startsWith(';;PLOT64'))
+      let att = null
+      try { att = marker ? parsePlotMarker(marker) : null } catch { att = null }
+      checks.push(['show-smiles marker arrives', !!marker])
+      checks.push(['marker parses as raw SVG', !!(att && att.svg && att.svg.startsWith('<svg') && att.svg.includes('<circle'))])
       checks.forEach(([n, ok]) => { if (!ok) console.log('  ✗ ' + n) })
       console.log('result lines:', l.split('\n').filter(Boolean).slice(0, 8))
       const ok = checks.every(([, ok]) => ok)

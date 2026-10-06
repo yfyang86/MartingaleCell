@@ -19,6 +19,18 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **chemicl: show-smiles — molecules drawn as SVG in the cell**.
+  `(chemicl:show-smiles "Cn1…")` parses a SMILES string and depicts the
+  molecule: force-directed 2-D layout (engine-side, plain Lisp), carbons
+  as bare vertices, heteroatoms labeled with implicit H folded in,
+  double/triple/aromatic bond line forms. The SVG travels through the
+  existing ;;PLOT64 capture channel as a raw-SVG payload — the app
+  renders it with the usual plot chrome (Download SVG/PNG included,
+  markdown transcripts embed it), gnuplot captures unchanged. Both
+  example notebooks draw (the Molecules example depicts caffeine,
+  aspirin and saccharin; the SMILES gallery draws its whole shelf);
+  `test:plot` covers the raw-SVG marker routing and `test:chemicl`
+  asserts the marker end-to-end on both wasm images.
 - **chemicl manual & examples**: a *Chemistry (chemicl)* section in the
   in-app docs (four cards — SMILES, round-trip writing, element/isotope
   data, the graph model — four evaluated code blocks with outputs

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { FlaskConical, Search, ArrowLeftRight, Shapes, TriangleAlert } from 'lucide-react'
+import { FlaskConical, Search, ArrowLeftRight, Shapes, TriangleAlert, PenLine } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
 import { CodeBlock } from './cl-highlight'
@@ -45,6 +45,15 @@ const ELEMENT_CODE = `;;; the periodic table that ships with the port
 
 const ELEMENT_OUT = `;;=> ("iron" 55.845 3.44 13.003355)`
 
+const DRAW_CODE = `;;; depict a molecule: parse + 2-D layout + SVG, in the cell
+(chemicl:show-smiles "Cn1cnc2c1c(=O)n(C)c(=O)n2C" :name "caffeine")
+
+;;; any molecule you built yourself draws the same way
+(chemicl:show-molecule (chemicl:parse-smiles-string "OC(=O)C(C)CC(N)C(=O)O"
+                                              :name "aspartic acid"))
+
+;;; molecule-svg returns the string if you want it yourself`
+
 const HAND_CODE = `;;; by hand: atoms, bonds, and the helpers around them
 (defparameter *water*
   (let ((mol (chemicl:make-molecule :name "water")))
@@ -77,6 +86,11 @@ const CARDS = [
     Icon: ArrowLeftRight,
     title: 'Round-trip writing',
     body: 'write-smiles-string emits a non-canonical SMILES (insertion-order DFS, ring digits paired, brackets where needed). Parsing it back reproduces the formula and mass exactly — verified against RDKit over an 18-molecule battery.',
+  },
+  {
+    Icon: PenLine,
+    title: 'Drawn, not just counted',
+    body: 'show-smiles parses a SMILES string and draws the molecule right in the cell: a force-directed 2-D layout, carbons as bare vertices, heteroatoms labeled, double/triple/aromatic bonds as their line forms. The SVG travels through the same capture channel gnuplot plots use, so the usual Download SVG/PNG toolbar applies.',
   },
   {
     Icon: Search,
@@ -121,6 +135,7 @@ export default function Chemicl() {
           { code: SMILES_CODE, out: SMILES_OUT },
           { code: ROUNDTRIP_CODE, out: ROUNDTRIP_OUT },
           { code: ELEMENT_CODE, out: ELEMENT_OUT },
+          { code: DRAW_CODE, out: undefined },
           { code: HAND_CODE, out: HAND_OUT },
         ].map((block, i) => (
           <motion.div
@@ -131,7 +146,8 @@ export default function Chemicl() {
             transition={{ duration: 0.45, ease: EASE_OUT }}
           >
             <CodeBlock code={block.code} />
-            <pre className="mt-2 overflow-x-auto rounded-lg border border-hairline bg-inset px-4 py-3 font-mono text-[12px] leading-[1.6] text-muted">{block.out}</pre>
+            {block.out && <pre className="mt-2 overflow-x-auto rounded-lg border border-hairline bg-inset px-4 py-3 font-mono text-[12px] leading-[1.6] text-muted">{block.out}</pre>}
+            {!block.out && <p className="mt-2 font-mono text-[12px] text-muted">;; the molecules render as SVG structure diagrams in the cells</p>}
           </motion.div>
         ))}
       </div>

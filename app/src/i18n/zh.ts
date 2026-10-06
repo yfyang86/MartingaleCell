@@ -419,6 +419,9 @@ export const ZH: Record<string, string> = {
   'Round-trip writing': '往返写出',
   'write-smiles-string emits a non-canonical SMILES (insertion-order DFS, ring digits paired, brackets where needed). Parsing it back reproduces the formula and mass exactly — verified against RDKit over an 18-molecule battery.':
     'write-smiles-string 输出非规范化的 SMILES（按插入序 DFS、环数字成对、必要时加方括号）。重新解析可精确还原分子式与质量 —— 已用 RDKit 在 18 个分子上验证。',
+  'Drawn, not just counted': '不仅算得出，还画得出',
+  'show-smiles parses a SMILES string and draws the molecule right in the cell: a force-directed 2-D layout, carbons as bare vertices, heteroatoms labeled, double/triple/aromatic bonds as their line forms. The SVG travels through the same capture channel gnuplot plots use, so the usual Download SVG/PNG toolbar applies.':
+    'show-smiles 解析 SMILES 字符串并直接在 cell 里画出分子：力导向 2-D 布局，碳为裸顶点，杂原子带标记，双键/三键/芳香键以各自的线型呈现。SVG 经由 gnuplot 绘图同一捕获通道传送，因此同样适用 Download SVG/PNG 工具栏。',
   'Element & isotope data': '元素与同位素数据',
   'The full periodic table and IUPAC isotope data ship inside the port (converted once from the upstream XML). Look elements up by atomic number, string or keyword symbol; exact-mass uses the isotope table.':
     '完整元素周期表与 IUPAC 同位素数据随移植内置（由上游 XML 一次性转换而来）。可按原子序数、字符串或关键字符号查询元素；exact-mass 使用同位素表。',

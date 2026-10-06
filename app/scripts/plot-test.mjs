@@ -17,14 +17,14 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { parseGnuplot, splitPlotSegments } from './src/plot/gnuplot'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction, evaluateConstant } from './src/plot/expr'\n",
+    contents: "export { parseGnuplot, splitPlotSegments, parsePlotMarker } from './src/plot/gnuplot'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction, evaluateConstant } from './src/plot/expr'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') },
   logLevel: 'silent',
 })
-const { parseGnuplot, splitPlotSegments, buildSvg, plotXRange, compileExpression, sampleFunction, evaluateConstant } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { parseGnuplot, splitPlotSegments, parsePlotMarker, buildSvg, plotXRange, compileExpression, sampleFunction, evaluateConstant } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const files = [
   { path: '/tmp/a', content: '1 2 3\n2 4 6\n' },
@@ -144,6 +144,20 @@ check('a persisted spec without defs still renders the plain functions', /<polyl
 const badDef = parseGnuplot('q(x) = nope(x)\nplot q(x) title "q"\n', files)
 check('a user function outside the subset stays "not drawn"', /not drawn: q \(function\)/.test(buildSvg(badDef)))
 check('`set xrange [0:1]` is not taken for a variable definition; `a == 1` is not a definition either', parseGnuplot('set xrange [0:1]\n', files).defs === undefined && parseGnuplot('a == 1\n', files).defs === undefined)
+
+
+/* raw-SVG captures (chemicl's show-smiles): the payload's first string is
+ * the SVG itself — routed as {svg}, gnuplot capture untouched */
+{
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text x="6">mol</text></svg>'
+  const escaped = '"' + svg.replace(/(["\\])/g, '\\$1') + '"'
+  const b64 = Buffer.from(escaped, 'binary').toString('base64')
+  const att = parsePlotMarker(';;PLOT64 ' + b64)
+  check('a raw-SVG capture attaches as {svg} with no spec', att && typeof att.svg === 'string' && att.svg.startsWith('<svg') && att.spec === undefined && att.script === '')
+  const gnuplotLine = ';;PLOT64 ' + Buffer.from('"plot \\"x\\" with lines"', 'binary').toString('base64')
+  const att2 = parsePlotMarker(gnuplotLine)
+  check('a gnuplot capture still parses to a spec', att2 && att2.spec instanceof Object && att2.svg === undefined)
+}
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

@@ -125,8 +125,10 @@ function markdownCell(cell: Cell, limit?: number, labels?: Map<string, RunLabel>
   if (st) out.push(`_${st}_`)
   if (cell.plots?.length) {
     cell.plots.forEach((p, i) => {
-      const title = p.spec.title || p.outputName || `plot ${i + 1}`
-      out.push(`![${title.replace(/[[\]]/g, '')}](${plotDataUri(buildSvg(p.spec))})`)
+      const svg = p.svg ?? (p.spec ? buildSvg(p.spec) : '')
+      if (!svg) return
+      const title = (p.spec?.title || p.outputName || `plot ${i + 1}`)
+      out.push(`![${title.replace(/[[\]]/g, '')}](${plotDataUri(svg)})`)
     })
   }
   return out.join('\n\n')
