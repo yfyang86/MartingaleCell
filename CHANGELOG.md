@@ -33,8 +33,15 @@ it install their own service-worker cache.
   terminal atoms when it buys space (overlap scored on atom-atom and
   atom-bond distances). Aromatic rings draw alternating inner accents
   (a matching, so fused systems never show adjacent double bonds) and
-  bonds are trimmed at heteroatom labels. Benzene renders as a clean
-  Kekulé hexagon; melatonin as a proper fused indole. Carbons
+  bonds are trimmed at heteroatom labels. Spiro rings (one shared atom)
+  and linked rings (no shared edge) place as whole polygons with
+  clearance-picked orientation, so steroid-scale molecules like
+  cephalostatin-1 (C54H74N2O10, 12 rings, 66 heavy atoms) depict —
+  min non-bonded distance better than RDKit's own depiction of the same
+  molecule; dense systems (4+ rings) get a short final relaxation, and
+  label circles/fonts/trims scale with the render fit so big molecules
+  never overlap labels. Benzene renders as a clean Kekulé hexagon;
+  melatonin as a proper fused indole. Carbons
   as bare vertices, heteroatoms labeled with implicit H folded in,
   double/triple/aromatic bond line forms. The SVG travels through the
   existing ;;PLOT64 capture channel as a raw-SVG payload — the app
