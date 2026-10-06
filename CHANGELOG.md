@@ -19,6 +19,19 @@ it install their own service-worker cache.
   `conscell-*` caches are deleted by the service worker on activate.
 
 ### Added
+- **chemicl: SMILES support** — `parse-smiles-string` and
+  `write-smiles-string` are now in the port, as a fresh self-contained
+  recursive-descent implementation (the upstream parser needs
+  parser-combinators + fset, still not vendored). Organic + bracket
+  atoms, all bond types (stereo direction accepted and dropped),
+  branches, reusable ring closures, fragments, implicit-hydrogen
+  completion; the writer is non-canonical but round-trips exactly.
+  Cross-checked against RDKit over an 18-SMILES battery (17 formula
+  + mass matches; [13CH4] differs only in average-vs-isotope mass
+  semantics) with 18/18 write→parse round-trips. Also fixed in the
+  port: ring closures now close once (upstream-style hash removal),
+  and count-elements sees all fragments. Example notebook and
+  `test:chemicl` extended; verified on both wasm images.
 - **chemicl — chemical structures sample project** (port of Cyrus
   Harmon's chemicl, BSD): molecules as atom/bond graphs, periodic-table
   element and isotope data, molecular formulas, molar and exact masses,

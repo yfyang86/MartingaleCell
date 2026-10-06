@@ -280,6 +280,25 @@ export const EXAMPLES: Example[] = [
     code: `;;;; Molecules with the bundled chemicl port (Explorer → Open sample
 ;;;; project: chemicl). After loading it, evaluate these forms.
 
+;;; SMILES in, molecule out — caffeine and aspirin, straight from the
+;;; string (the sample's init.lisp already parsed *caffeine* and
+;;; *aspirin* this way)
+(list (chemicl:molecular-formula *caffeine*)
+      (chemicl:mass *caffeine*)
+      (chemicl:molecular-formula *aspirin*))
+
+;;; any SMILES, evaluated on the spot
+(chemicl:molecular-formula
+  (chemicl:parse-smiles-string "OC(=O)C(C)CC(N)C(=O)O")) ; aspartic acid
+
+;;; write it back out (non-canonical) and re-parse — a round trip
+(let* ((m (chemicl:parse-smiles-string "CC(=O)Oc1ccccc1C(=O)O"))
+       (smi (chemicl:write-smiles-string m))
+       (m2 (chemicl:parse-smiles-string smi)))
+  (list smi
+        (chemicl:molecular-formula m)
+        (chemicl:molecular-formula m2)))
+
 ;;; the periodic table — element lookup by symbol or atomic number
 (list (chemicl:name (chemicl:get-element 26))
       (chemicl:mass (chemicl:get-element "Fe"))
@@ -299,10 +318,6 @@ export const EXAMPLES: Example[] = [
       (chemicl:mass *water*)
       (chemicl:exact-mass *water*))
 
-;;; caffeine ships with the sample project (init.lisp) — C8H10N4O2
-(list (chemicl:molecular-formula *caffeine*)
-      (chemicl:mass *caffeine*))
-
 ;;; ring perception on cyclohexane
 (defparameter *cyclohexane*
   (let ((mol (chemicl:make-molecule :name "cyclohexane")))
@@ -320,10 +335,12 @@ export const EXAMPLES: Example[] = [
 
 (list (chemicl:molecular-formula *cyclohexane*)
       (mapcar #'length (chemicl:minimal-rings (chemicl:hanser-rings *cyclohexane*))))`,
-    expectedOutput: `;;=> ("iron" 55.845 3.44)
+    expectedOutput: `;;=> ("C8H10N4O2" 194.1906008720398 "C9H8O4")
+;;=> "C6H11N1O4"
+;;=> ("[OH]C(=O)c1([cH][cH][cH][cH]c1OC(=O)[CH3])" "C9H8O4" "C9H8O4")
+;;=> ("iron" 55.845 3.44)
 ;;=> *WATER*
-;;=> ("H2O1" 18.01528 18.010565)
-;;=> ("C8H10N4O2" 194.1906)
+;;=> ("H2O1" 18.01528024673462 18.010565042495728)
 ;;=> *CYCLOHEXANE*
 ;;=> ("C6H12" (7))`,
   },

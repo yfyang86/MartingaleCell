@@ -72,14 +72,32 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
         for (const l of lines) console.log('L: ' + l)
         return finish(false, 'load errors: ' + bad.length)
       }
-      submit({ type: 'eval', id: 201, code: '(list (chemicl:molecular-formula *caffeine*) (chemicl:mass *caffeine*))' })
+      submit({ type: 'eval', id: 201, code: `
+(list
+  (chemicl:molecular-formula *caffeine*) (chemicl:mass *caffeine*)
+  ;; SMILES: parse straight from the string (aspirin), round-trip benzene
+  (chemicl:molecular-formula (chemicl:parse-smiles-string "CC(=O)Oc1ccccc1C(=O)O"))
+  (chemicl:mass (chemicl:parse-smiles-string "CC(=O)Oc1ccccc1C(=O)O"))
+  (chemicl:molecular-formula (chemicl:parse-smiles-string "CCO"))
+  (chemicl:write-smiles-string (chemicl:parse-smiles-string "c1ccccc1"))
+  (chemicl:molecular-formula (chemicl:parse-smiles-string
+    (chemicl:write-smiles-string (chemicl:parse-smiles-string "c1ccccc1")))))` })
     }
     if (m.type === 'done' && m.id === 201) {
       const l = out(201).join('\n')
-      const okFormula = l.includes('C8H10N4O2')
-      const okMass = /194\.19/.test(l)
-      console.log('result lines:', l.split('\n').filter(Boolean).slice(0, 6))
-      finish(okFormula && okMass, `chemicl on SBCL/wasm — formula ${okFormula}, mass ${okMass}`)
+      const checks = [
+        ['caffeine formula', l.includes('C8H10N4O2')],
+        ['caffeine mass', /194\.19/.test(l)],
+        ['SMILES aspirin formula', l.includes('C9H8O4')],
+        ['SMILES aspirin mass', /180\.15/.test(l)],
+        ['SMILES ethanol formula', l.includes('C2H6O1')],
+        ['SMILES benzene write', /1c|c1|cH|C1/.test(l)],
+        ['SMILES benzene round-trip', (l.match(/C6H6/g) || []).length >= 1],
+      ]
+      checks.forEach(([n, ok]) => { if (!ok) console.log('  ✗ ' + n) })
+      console.log('result lines:', l.split('\n').filter(Boolean).slice(0, 8))
+      const ok = checks.every(([, ok]) => ok)
+      finish(ok, `chemicl on SBCL/wasm — ${checks.filter(([, ok]) => ok).length}/${checks.length} checks`)
     }
   })
   worker.on('error', (e) => finish(false, 'worker error: ' + (e?.stack || e)))
