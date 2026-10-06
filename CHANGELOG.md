@@ -21,11 +21,17 @@ it install their own service-worker cache.
 ### Added
 - **chemicl: show-smiles — molecules drawn as SVG in the cell**.
   `(chemicl:show-smiles "Cn1…")` parses a SMILES string and depicts the
-  molecule: template-based 2-D layout (engine-side, plain Lisp) — rings
-  are placed as regular polygons (fused rings share their edge, larger
-  rings first), chains attach by full-circle clearance search so
-  substituents never land inside a ring, and a gentle relaxation only
-  refines non-ring atoms; aromatic rings draw alternating inner accents
+  molecule: template-based 2-D coordinate generation (engine-side,
+  plain Lisp, RDKit-style): rings are placed as regular polygons (fused
+  rings share their edge; linked rings like nicotine grow as whole
+  polygons off their attachment bond), chains use standardized bond
+  geometry — 120-degree zig-zag continuations with alternating turns,
+  even angular spread at branch points (109 degrees at tetrahedral
+  centers like S(=O)2), radial directions for ring substituents — with
+  clearance-picked mirrored candidates; a flip pass reflects chain
+  subtrees across their attachment lines and a polish pass rotates
+  terminal atoms when it buys space (overlap scored on atom-atom and
+  atom-bond distances). Aromatic rings draw alternating inner accents
   (a matching, so fused systems never show adjacent double bonds) and
   bonds are trimmed at heteroatom labels. Benzene renders as a clean
   Kekulé hexagon; melatonin as a proper fused indole. Carbons
