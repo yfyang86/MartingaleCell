@@ -45,7 +45,12 @@ it install their own service-worker cache.
   spreads left-to-right like its reference depiction). Bracket-atom
   formal charges parse correctly ([n+] is +1, not 0 — the ++/-- counter
   was off by one) and display in the label (N+, O-). Thiamine (vitamin
-  B1) draws its thiazolium N+ correctly. Benzene renders as a clean
+  B1) draws its thiazolium N+ correctly. Ring detection now repairs
+  fused-system envelope cycles by chord splitting — saccharin
+  previously mis-detected a 9-ring around its 5+6 core and drew one
+  bond 3x too long; rings attached only through a bridge (thiamine's
+  pyrimidine) are placed whole when the BFS first reaches them instead
+  of collapsing into a broken zig-zag. Benzene renders as a clean
   Kekulé hexagon; melatonin as a proper fused indole. Carbons
   as bare vertices, heteroatoms labeled with implicit H folded in,
   double/triple/aromatic bond line forms. The SVG travels through the

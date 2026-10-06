@@ -304,7 +304,7 @@ export const useProject = create<ProjectState>((set, get) => {
         set({ busy: true })
         /* versioned so a browser (or proxy) cache can never hand back a
          * stale sample after the bundled zip is refreshed */
-        const res = await fetch(`/sample-projects/${which}.zip?v=4`)
+        const res = await fetch(`/sample-projects/${which}.zip?v=5`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const blob = await res.blob()
         const label = which === 'cl-plot'
