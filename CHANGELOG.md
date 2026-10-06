@@ -40,8 +40,13 @@ it install their own service-worker cache.
   min non-bonded distance better than RDKit's own depiction of the same
   molecule; dense systems (4+ rings) get a short final relaxation, and
   label circles/fonts/trims scale with the render fit so big molecules
-  never overlap labels. Benzene renders as a clean Kekulé hexagon;
-  melatonin as a proper fused indole. Carbons
+  never overlap labels, and the finished layout is rotated to its
+  principal axis so long molecules read horizontally (cephalostatin-1
+  spreads left-to-right like its reference depiction). Bracket-atom
+  formal charges parse correctly ([n+] is +1, not 0 — the ++/-- counter
+  was off by one) and display in the label (N+, O-). Thiamine (vitamin
+  B1) draws its thiazolium N+ correctly. Benzene renders as a clean
+  Kekulé hexagon; melatonin as a proper fused indole. Carbons
   as bare vertices, heteroatoms labeled with implicit H folded in,
   double/triple/aromatic bond line forms. The SVG travels through the
   existing ;;PLOT64 capture channel as a raw-SVG payload — the app
