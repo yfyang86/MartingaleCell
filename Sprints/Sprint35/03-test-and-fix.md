@@ -60,4 +60,5 @@ a real regression test for the blocker.
   (https://github.com/yfyang86/ConsCell/actions/runs/37561475754) —
   in progress when this log was committed; its result is recorded in
   the follow-up commit below.
-MERGE_RESULT
+- Run 170 completed green: both jobs (`lint · build · wasm tests` and
+  `browser smoke`, 3 min 14 s in all). Sprint 35 closed.
