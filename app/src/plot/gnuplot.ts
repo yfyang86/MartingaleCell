@@ -23,6 +23,7 @@ export interface PlotPoint {
 }
 
 import type { PlotDefs } from './expr'
+import { sanitizeSvg } from './sanitize'
 export type { PlotDefs }
 
 export type PlotStyle = 'lines' | 'points' | 'linespoints' | 'dots' | 'boxes' | 'impulses'
@@ -163,7 +164,9 @@ export function parsePlotMarker(line: string): PlotAttachment | null {
    * (chemicl's show-smiles draws molecules this way) */
   const head = unpacked.script.trimStart().slice(0, 5).toLowerCase()
   if (head === '<?xml' || unpacked.script.trimStart().startsWith('<svg'))
-    return { svg: unpacked.script, script: '' }
+    /* Sprint 35: any Lisp code can print the marker, and the SVG goes into
+     * the DOM with innerHTML — strip scripting before it gets there */
+    return { svg: sanitizeSvg(unpacked.script), script: '' }
   const spec = parseGnuplot(unpacked.script, unpacked.files)
   return { spec, script: unpacked.script, outputName: spec.outputName }
 }

@@ -146,6 +146,22 @@ const scenarios = {
     check('typed line completes the read → (:HELLO "Ada")', true)
   },
 
+  /* Sprint 35 (review blocker 6): a raw-SVG ;;PLOT64 payload — which any Lisp code can print — is sanitised before it reaches innerHTML */
+  async svgsafe({ page, check, setCode }) {
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40" onload="window.__pwned=1"><script>window.__pwned=2</script><image href="x" onerror="window.__pwned=3"/><foreignObject><body onload="window.__pwned=4"/></foreignObject><a href="javascript:window.__pwned=5"><text x="4" y="24" fill="#e6edf3">mol</text></a><circle cx="60" cy="20" r="6" fill="#6ea8dc"/></svg>'
+    const payload = '"' + hostile.replace(/(["\\])/g, '\\$1') + '"'
+    const b64 = Buffer.from(payload, 'binary').toString('base64')
+    await setCode(`(progn (format t ";;PLOT64 ${b64}~%") :drawn)`)
+    await page.keyboard.press('Control+Enter')
+    await page.locator('.cc-mol-plot svg').first().waitFor({ timeout: 30_000 })
+    await page.waitForTimeout(300) /* give any surviving handler a chance to fire */
+    const html = await page.locator('.cc-mol-plot').first().innerHTML()
+    const pwned = await page.evaluate('window.__pwned')
+    check('the raw SVG renders in the cell with its drawing kept (text, circle)', /<text/.test(html) && /<circle/.test(html), html)
+    check('script, foreignObject, on* handlers and javascript: hrefs are stripped', !/<script|foreignObject|onload|onerror|javascript:/i.test(html), html)
+    check('nothing in the payload executed (window.__pwned stays unset)', pwned === undefined, String(pwned))
+  },
+
   /* go-to-definition, the outline, workspace search, find references, session-box definitions, the package pill */
   async definitions({ page, check, setCode, setCaret, waitDoc, evalAll, newBuffer, searchBox, marks, cells }) {
     await setCode('(defun sq (x)\n  (* x x))\n\n(defun use-it ()\n  (sq 9))\n')
@@ -589,6 +605,37 @@ const scenarios = {
     await page.keyboard.press('Control+Enter')
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:ENGINE"SBCL"42)'))`, null, { timeout: 60_000 })
     check('a cell evaluates on SBCL: (:ENGINE "SBCL" 42)', true)
+
+    /* Sprint 35 (review blocker 3): Interrupt while more cells are queued
+     * behind a CPU-bound image. The third cell's submit waits for the old
+     * mailbox to drain; it must be dropped when the worker is replaced,
+     * not time out 30 s later and mark the fresh image crashed. */
+    await setCode('(loop)')
+    await page.keyboard.press('Control+Enter')
+    const interrupt = page.locator('button[title^="Interrupt this cell"]').first()
+    await interrupt.waitFor({ timeout: 20_000 })
+    await setCode('(+ 1 1)')
+    await page.keyboard.press('Control+Enter')
+    await setCode('(+ 2 2)')
+    await page.keyboard.press('Control+Enter')
+    const queuedAt = Date.now()
+    await interrupt.click()
+    /* the image is replaced: the status bar leaves and comes back */
+    await page.waitForFunction(`!(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('SBCL · WASM')`, null, { timeout: 30_000 }).catch(() => {})
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    await page.locator('.cm-content').first().waitFor()
+    await setCode('(+ 40 2)')
+    await page.keyboard.press('Control+Enter')
+    const back = await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>42'))`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    check('after Interrupt with two cells queued, the respawned SBCL evaluates (+ 40 2) → 42', back)
+    /* past the old 30 s mailbox timeout: the image must still be healthy */
+    const left = 31_000 - (Date.now() - queuedAt)
+    if (left > 0) await page.waitForTimeout(left)
+    await setCode('(+ 1 2)')
+    await page.keyboard.press('Control+Enter')
+    const stillUp = await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>3'))`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    const faulted = await page.evaluate(`document.body.textContent.includes('RUNTIME-FAULT') || document.body.textContent.includes('sbcl submit failed')`)
+    check('31 s after the queued submit the image is still healthy: (+ 1 2) → 3, no RUNTIME-FAULT, no "sbcl submit failed"', stillUp && !faulted, `stillUp=${stillUp} faulted=${faulted}`)
   },
 
   /* Sprint 27: Settings → Lisp implementation switches engines through Restart, ECL comes back, the choice survives a reload and resets with the workspace */

@@ -83,7 +83,6 @@ export function parseSymbolDump(printed: string): { name: string; kind: LiveKind
 
 export function registerLiveSymbols(dump: { name: string; kind: LiveKind }[]): void {
   const curated = new Set(CL_SYMBOLS.map((s) => s.name))
-  const byName = new Map(dump.map((d) => [d.name, d]))
   const merged: Completion[] = []
   for (const d of dump) {
     liveKinds.set(d.name, d.kind)
@@ -95,8 +94,16 @@ export function registerLiveSymbols(dump: { name: string; kind: LiveKind }[]): v
       detail: qualified ? `${d.name.slice(0, d.name.indexOf(':')).toUpperCase()} · live image` : 'CL · live image',
     })
   }
-  for (const c of coreCompletions) if (!byName.has(c.label)) merged.push(c)
+  /* Sprint 35: the curated list is always offered in full — a symbol in both
+   * the dump and the curated list keeps its documented entry (skipped above),
+   * one only in the curated list keeps it too. */
+  merged.push(...coreCompletions)
   liveCompletions = merged
+}
+
+/** The completions offered from the live image (tests). */
+export function liveCompletionLabels(): string[] {
+  return liveCompletions.map((c) => c.label)
 }
 
 /** The form dumped by dumpCoreSymbolsForm, for hidden evaluation. */

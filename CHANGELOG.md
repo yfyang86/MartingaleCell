@@ -14,9 +14,53 @@ it install their own service-worker cache.
 ### Changed
 - **Renamed ConsCell to MartingaleCell** across the UI, docs, package
   metadata, storage keys and the service-worker cache. Existing users'
-  localStorage (engine preference, memory quota, editor states, workspace,
-  session transcripts) is migrated one-shot on load; pre-rename
-  `conscell-*` caches are deleted by the service worker on activate.
+  state is migrated on load: localStorage keys (engine preference,
+  memory quota, language, search options, session history) at first
+  import, and the IndexedDB keys (workspace, editor states, project
+  definitions, virtual project, directory handle, installed modules)
+  before the first render (Sprint 35); pre-rename `conscell-*` caches
+  are deleted by the service worker on activate.
+
+### Fixed (Sprint 35 — review blockers)
+- **Upgrade data loss**: the IndexedDB keys renamed with the product were
+  not migrated, so an upgraded profile opened with an empty workspace,
+  no editor state, no project and no installed modules. Covered by
+  `scripts/storage-migration-test.mjs`.
+- **Autocomplete lost curated symbols** once the live image's symbol
+  dump arrived: a symbol in both the dump and the curated list was
+  dropped from both (`defun`, `format`, …). The curated list is now
+  always offered in full.
+- **Interrupt on SBCL could mark the fresh image crashed**: a cell
+  submit waiting for a busy image's mailbox kept waiting on the old
+  shared buffer after the worker was replaced, timed out 30 s later and
+  reported a crash on the healthy new image (every later evaluation a
+  RUNTIME-FAULT until Restart). Stale submits are dropped; the `sbcl`
+  smoke scenario interrupts with two queued cells and evaluates 31 s
+  later.
+- **chemicl: acyclic molecules drew as "(empty molecule)"** (ethanol,
+  hexane, open-chain amino acids): the layout seeded only the first
+  ring. The first heavy atom is seeded when there is no ring, and
+  disconnected components (`.` in the SMILES: salts, hydrates) are
+  seeded to the right of what is drawn.
+- **chemicl: layout cost** — the flip pass recomputed every subtree
+  and two full overlap scores per candidate (a 36-atom chain took 4 s on
+  SBCL and over two minutes on ECL). Subtrees are computed once per
+  pass, a candidate is judged on the partial score of the atoms it
+  moves, and the pass is skipped above 60 heavy atoms: 36 atoms in
+  about 0.1 s, 66 in under 0.1 s. The principal-axis orientation uses
+  two-argument `atan` (cyclobutane no longer produces NaN coordinates).
+- **Raw-SVG plot payloads are sanitised**: a `;;PLOT64` payload that is
+  an SVG (chemicl's `show-smiles`) went into the page unchanged, so any
+  Lisp code could run script on the IDE origin. Script, foreignObject,
+  iframe/object/embed, `on*` handlers, `javascript:`/`data:` URLs and
+  `url()` styles are stripped (DOMParser in the browser, a text pass in
+  Node); `plot-test` and the `svgsafe` smoke scenario cover it.
+- **CI ran only 18 of the 25 Node suites**: the MOP probes, chemicl,
+  ANSI, completion and i18n suites (and the new migration test) are
+  now workflow steps; the MOP probe fails when it collects no results.
+  `chemicl-verify` resolves its entry from the repo root, writes its
+  bundle to a per-process temp file, and asserts acyclic, disconnected
+  and timing probes.
 
 ### Added
 - **chemicl: show-smiles — molecules drawn as SVG in the cell**.

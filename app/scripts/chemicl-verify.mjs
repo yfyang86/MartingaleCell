@@ -3,6 +3,7 @@
  * Usage: node --experimental-wasm-exnref scripts/chemicl-verify.mjs
  */
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,8 +14,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
 const require = createRequire(import.meta.url)
 const JSZip = require('jszip')
-await build({ entryPoints: ['src/plot/gnuplot.ts'], bundle: true, format: 'esm', outfile: '/tmp/chem-plot.mjs' })
-const { parsePlotMarker } = await import(pathToFileURL('/tmp/chem-plot.mjs').href)
+/* Sprint 35: entry resolved from the repo root (the script runs from any
+ * cwd) and the bundle written to a per-process temp file (two runs — CI
+ * matrix, a local run beside it — no longer race on one /tmp path). */
+const bundle = path.join(os.tmpdir(), `martingalecell-chem-plot-${process.pid}.mjs`)
+await build({ entryPoints: [path.join(root, 'src/plot/gnuplot.ts')], bundle: true, format: 'esm', outfile: bundle, logLevel: 'silent' })
+const { parsePlotMarker } = await import(pathToFileURL(bundle).href)
+fs.rmSync(bundle, { force: true })
 const zip = await JSZip.loadAsync(fs.readFileSync(path.join(publicDir, 'sample-projects', 'chemicl.zip')))
 const files = []
 for (const [name, entry] of Object.entries(zip.files)) {
@@ -25,7 +31,7 @@ if (!files.length) { console.log('FAIL: chemicl.zip empty'); process.exit(1) }
 
 const MAILBOX_OFF = 8192
 const enc = new TextEncoder()
-let sab, i32, u8, worker, done = false
+let sab, i32, u8, worker, done = false, pending = []
 const msgs = []
 const out = (id) => msgs.filter((m) => (m.type === 'stdout' || m.type === 'stderr') && m.id === id).map((m) => m.text)
 
@@ -36,7 +42,7 @@ function finish(ok, why) {
   if (worker) worker.terminate()
   process.exit(ok ? 0 : 1)
 }
-setTimeout(() => finish(false, 'timeout 300s'), 300_000)
+setTimeout(() => finish(false, 'timeout 420s'), 420_000)
 
 function submit(msg) {
   const bytes = enc.encode(JSON.stringify(msg))
@@ -108,6 +114,55 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
       checks.push(['marker parses as raw SVG', !!(att && att.svg && att.svg.startsWith('<svg') && att.svg.includes('<circle'))])
       checks.forEach(([n, ok]) => { if (!ok) console.log('  ✗ ' + n) })
       console.log('result lines:', l.split('\n').filter(Boolean).slice(0, 8))
+      if (!checks.every(([, ok]) => ok)) return finish(false, `chemicl on SBCL/wasm — ${checks.filter(([, ok]) => ok).length}/${checks.length} checks`)
+      pending = checks
+      /* Sprint 35 (review blockers 4 and 5): acyclic molecules used to come
+       * back as "(empty molecule)"; the flip pass used to cost O(N^4). Each
+       * form prints the SVG's bond-line count and its own wall time. */
+      submit({ type: 'eval', id: 202, code: `
+(flet ((probe (name smiles)
+         (let* ((t0 (get-internal-real-time))
+                (svg (chemicl:molecule-svg (chemicl:parse-smiles-string smiles)))
+                (ms (round (* 1000 (- (get-internal-real-time) t0)) internal-time-units-per-second))
+                (lines (loop with n = 0 with start = 0
+                             for p = (search "<line" svg :start2 start)
+                             while p do (incf n) (setf start (1+ p))
+                             finally (return n))))
+           (format t ";;PROBE ~a lines=~a empty=~a ms=~a~%" name lines
+                   (if (search "(empty molecule)" svg) 1 0) ms))))
+  (probe "ethanol" "CCO")
+  (probe "hexane" "CCCCCC")
+  (probe "lysine" "NCCCCC(N)C(=O)O")
+  (probe "salt" "[Na+].[Cl-]")
+  (probe "hydrate" "CC(=O)O.O")
+  (probe "cyclobutane" "C1CCC1")
+  (probe "chain36" "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+  (probe "chain66" "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+  (probe "branched40" "CC(C)CC(C)(C)CC(CC(C)C)CC(C)CC(C)(C)CC(CC(C)C)CC(C)CC(C)(C)CC(CC(C)C)CC(C)C"))` })
+    }
+    if (m.type === 'done' && m.id === 202) {
+      const lines = out(202)
+      const probes = {}
+      for (const l of lines) {
+        const mm = /^;;PROBE (\S+) lines=(\d+) empty=(\d) ms=(\d+)/.exec(l)
+        if (mm) probes[mm[1]] = { lines: +mm[2], empty: mm[3] === '1', ms: +mm[4] }
+      }
+      const errs = lines.filter((l) => /;;ERROR:|;;ERRTYPE:/.test(l))
+      const drawn = (name, minLines) => [`${name} is drawn (${probes[name]?.lines ?? '?'} bond lines, ${probes[name]?.ms ?? '?'} ms)`, !!probes[name] && !probes[name].empty && probes[name].lines >= minLines]
+      const checks = [
+        ...pending,
+        ['layout probes evaluate without error', errs.length === 0 && Object.keys(probes).length === 9],
+        drawn('ethanol', 2), drawn('hexane', 5), drawn('lysine', 9),
+        drawn('salt', 0), drawn('hydrate', 3), drawn('cyclobutane', 4),
+        drawn('chain36', 35), drawn('chain66', 65), drawn('branched40', 30),
+        [`cyclobutane has no NaN coordinates`, !!probes.cyclobutane && !/NaN|#<|nan/i.test(lines.join(''))],
+        [`a 36-atom chain lays out in under 5 s (${probes.chain36?.ms ?? '?'} ms)`, !!probes.chain36 && probes.chain36.ms < 5_000],
+        [`a 66-atom chain lays out in under 10 s (${probes.chain66?.ms ?? '?'} ms)`, !!probes.chain66 && probes.chain66.ms < 10_000],
+        [`a branched 40-atom chain lays out in under 5 s (${probes.branched40?.ms ?? '?'} ms)`, !!probes.branched40 && probes.branched40.ms < 5_000],
+      ]
+      checks.forEach(([n, ok]) => { if (!ok) console.log('  ✗ ' + n) })
+      if (errs.length) for (const l of lines) console.log('L: ' + l)
+      console.log('probes:', JSON.stringify(probes))
       const ok = checks.every(([, ok]) => ok)
       finish(ok, `chemicl on SBCL/wasm — ${checks.filter(([, ok]) => ok).length}/${checks.length} checks`)
     }

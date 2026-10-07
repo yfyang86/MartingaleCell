@@ -86,6 +86,9 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
       const real = results.filter((l) => !l.includes(';;MOP: done'))
       const pass = real.filter((l) => / OK\s*$/.test(l)).length
       const fails = real.filter((l) => !/ OK\s*$/.test(l))
+      /* Sprint 35: zero collected results used to pass — the battery has
+       * MOP_CASES checks and every one must report */
+      if (real.length !== MOP_CASES) fails.push(`expected ${MOP_CASES} results, got ${real.length}`)
       const summary = `MOP probe: ${pass} passed, ${fails.length} failed`
       console.log(`\n${summary}`)
       fails.length === 0
@@ -98,6 +101,9 @@ if (!process.execArgv.includes('--experimental-wasm-exnref') && !process.env.CC_
   })
   worker.on('error', (e) => finish(false, 'worker error: ' + (e?.stack || e)))
 }
+
+/** (mop-test …) / (mop-test-eq …) forms in BATTERY below — keep in step */
+const MOP_CASES = 34
 
 const BATTERY = String.raw`(progn
 (defun mop-test (name form)
