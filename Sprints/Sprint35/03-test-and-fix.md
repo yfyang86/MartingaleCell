@@ -47,6 +47,17 @@ a real regression test for the blocker.
 
 ## CI
 
-PR_RUN
+- PR #35 (`sprint35` → `dev`, label `smoke`): run 169
+  (https://github.com/yfyang86/ConsCell/actions/runs/37560950839),
+  both jobs green — `lint · build · wasm tests` with the seven new steps
+  (MOP SBCL 7 s, MOP ECL 1 s, chemicl 31 s, ANSI, completion, i18n,
+  migration) and `browser smoke` (12 scenarios in 2 min 3 s). The run
+  opened by the `pull_request` event was cancelled by the labelled one,
+  as since Sprint 29.
+- Merged as `0e23269` (merge commit) into `dev`.
 
-MERGE_RUN
+- Merge-commit run on `dev` (`0e23269`): run 170
+  (https://github.com/yfyang86/ConsCell/actions/runs/37561475754) —
+  in progress when this log was committed; its result is recorded in
+  the follow-up commit below.
+MERGE_RESULT
