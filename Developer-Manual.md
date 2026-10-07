@@ -148,9 +148,11 @@ CI runs lint → build → every harness.
   persistence, the cl-plot sample and a multi-series plot. Skips (exit
   0) when the artifacts are absent.
 - Browser: `smoke:browser` (Playwright/Chromium, `--only name`,
-  `--list`, `--json report`) — 11 scenarios: debugger, stdin,
-  definitions, transcript, persistence, replace, landing (+ the docs
-  site), history, sbcl, engine, offline (service worker). Refuses a
+  `--list`, `--json report`) — 12 scenarios: debugger, stdin, svgsafe
+  (a hostile raw-SVG plot payload is sanitised), definitions,
+  transcript, persistence, replace, landing (+ the docs site), history,
+  sbcl (+ Interrupt with queued cells), engine, offline (service
+  worker). Refuses a
   stale `dist/` unless `--allow-stale`. In CI the `smoke` job runs on
   pull requests labelled `smoke` and on every push to `dev`.
 

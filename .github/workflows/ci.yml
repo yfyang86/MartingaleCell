@@ -114,6 +114,28 @@ jobs:
       - name: service worker test (install, activate, offline navigation, cache-first, warm)
         run: node scripts/sw-test.mjs
 
+      # Sprint 35: the suites `pnpm test` chains but CI never ran
+      - name: MOP probe on SBCL/wasm (34 sb-mop checks; fails on zero results)
+        run: node scripts/mop-probe.mjs
+
+      - name: MOP probe on ECL/wasm
+        run: node scripts/ecl-mop-probe.mjs
+
+      - name: chemicl sample project on SBCL/wasm (formula, mass, SMILES, show-smiles, layout probes)
+        run: node scripts/chemicl-verify.mjs
+
+      - name: ANSI terminal emulation test
+        run: node scripts/ansi-test.mjs
+
+      - name: completion logic test (context, ranking, live symbols keep the curated list)
+        run: node scripts/completion-test.mjs
+
+      - name: i18n test
+        run: node scripts/i18n-test.mjs
+
+      - name: rename migration test (localStorage + IndexedDB keys)
+        run: node scripts/storage-migration-test.mjs
+
   smoke:
     name: browser smoke (label `smoke`, and pushes to dev)
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'smoke'))

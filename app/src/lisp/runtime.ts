@@ -17,6 +17,12 @@ import { get as idbGet, set as idbSet } from 'idb-keyval'
 
 const BOOT_TIMEOUT_MS = 120_000 /* sbcl boots ~112 MB of artifacts; wecl is well under the old 30 s */
 const MODULES_IDB_KEY = 'martingalecell-modules-v1'
+
+/** Thrown by sbclSubmit when the SBCL worker (and its shared buffer) was
+ * replaced under a queued request; send() drops such requests silently. */
+class StaleChannelError extends Error {
+  constructor() { super('sbcl channel replaced'); this.name = 'StaleChannelError' }
+}
 const MODULES_CHANGED_MARKER = ';;MODULES-CHANGED'
 /** Printed by cc:eval-string at the end of every eval job: the package the next job reads in. */
 const PACKAGE_MARKER = ';;PACKAGE:'
@@ -594,6 +600,9 @@ class LispRuntime {
   private killWorker() {
     if (this.worker) { this.worker.terminate(); this.worker = null }
     this.sbclSab = null
+    /* Sprint 35: submits queued behind a dead channel abort (see
+     * sbclSubmit); sends to the next image start a fresh chain. */
+    this.sbclSendQueue = Promise.resolve()
   }
 
   /** Send a request to the live worker: postMessage for the ECL worker,
@@ -609,7 +618,13 @@ class LispRuntime {
        * the writes; the eval queue already orders the sends. */
       this.sbclSendQueue = this.sbclSendQueue
         .then(() => this.sbclSubmit(msg))
-        .catch((e) => this.onCrash('sbcl submit failed: ' + String(e?.message ?? e)))
+        .catch((e) => {
+          /* a submit outlived its channel (Interrupt / restart replaced the
+           * worker): the request belongs to the old image, drop it — the new
+           * image is healthy and must not be marked crashed. */
+          if (e instanceof StaleChannelError) return
+          this.onCrash('sbcl submit failed: ' + String(e?.message ?? e))
+        })
     } else {
       this.worker.postMessage(msg)
     }
@@ -620,16 +635,22 @@ class LispRuntime {
    * drains the flag at its next WASI call, so a busy mailbox just means
    * the image is still running the previous request. */
   private async sbclSubmit(msg: WorkerInMessage): Promise<void> {
-    if (!this.sbclSab) throw new Error('sbcl channel not ready')
-    const i32 = new Int32Array(this.sbclSab)
-    const u8 = new Uint8Array(this.sbclSab)
+    const sab = this.sbclSab
+    if (!sab) throw new StaleChannelError()
+    const i32 = new Int32Array(sab)
+    const u8 = new Uint8Array(sab)
     const bytes = new TextEncoder().encode(JSON.stringify(msg))
     if (bytes.length + 1 > SBCL_MAILBOX_MAX) throw new Error(`request too large for the sbcl mailbox (${bytes.length} bytes)`)
     const t0 = performance.now()
     while (Atomics.load(i32, 4) === 1) {
+      /* Sprint 35: the worker was replaced while we waited for the old one
+       * to drain its mailbox — it never will. Abort instead of timing out
+       * 30 s later and reporting the new image as crashed. */
+      if (this.sbclSab !== sab) throw new StaleChannelError()
       if (performance.now() - t0 > 30_000) throw new Error('sbcl runtime did not drain its mailbox')
       await new Promise((r) => setTimeout(r, 15))
     }
+    if (this.sbclSab !== sab) throw new StaleChannelError()
     u8.set(bytes, SBCL_MAILBOX_OFF)
     u8[SBCL_MAILBOX_OFF + bytes.length] = 0
     Atomics.store(i32, 4, 1)

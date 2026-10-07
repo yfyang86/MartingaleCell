@@ -14,7 +14,7 @@ import esbuild from 'esbuild'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const entry = path.join(os.tmpdir(), `martingalecell-completion-entry-${process.pid}.ts`)
 const outfile = path.join(os.tmpdir(), `martingalecell-completion-bundle-${process.pid}.mjs`)
-fs.writeFileSync(entry, `export { analyzeContext, scoreMatch, localsInForm, bufferSymbols, parseSymbolDump, registerLiveSymbols, haveLiveSymbols } from ${JSON.stringify(path.join(root, 'src/components/ide/completion'))}\n`)
+fs.writeFileSync(entry, `export { analyzeContext, scoreMatch, localsInForm, bufferSymbols, parseSymbolDump, registerLiveSymbols, haveLiveSymbols, liveCompletionLabels } from ${JSON.stringify(path.join(root, 'src/components/ide/completion'))}\n`)
 esbuild.buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent' })
 const mod = await import(outfile)
 
@@ -107,6 +107,18 @@ const check = (ok, label) => { console.log((ok ? '✓ ' : '✗ ') + label); if (
   mod.registerLiveSymbols(dump)
   check(mod.scoreMatch('sb-mop:slot-value-using-class', 'slot-value-u') >= 600, 'bare prefix matches after sb-mop: separator')
   check(mod.scoreMatch('sb-mop:slot-value-using-class', 'sb-mop:slot') >= 700, 'package-prefixed exact-prefix scores high')
+}
+
+{
+  /* Sprint 35 (review blocker 2): a symbol in both the dump and the curated
+   * list used to be dropped from both; the curated entry must survive. */
+  const dump = mod.parseSymbolDump('((DEFUN 1) (FORMAT 0) (CAR 0) (MY-OWN-FN 0))')
+  mod.registerLiveSymbols(dump)
+  const labels = mod.liveCompletionLabels()
+  check(labels.includes('defun') && labels.includes('format'), 'curated symbols present in the dump are still offered')
+  check(labels.includes('my-own-fn'), 'dump-only symbol offered')
+  check(labels.includes('loop'), 'curated symbol absent from the dump still offered')
+  check(labels.filter((l) => l === 'defun').length === 1, 'curated symbol offered once, not twice')
 }
 
 console.log(fails ? `\nFAIL: ${fails} check(s)` : '\nPASS: completion logic')

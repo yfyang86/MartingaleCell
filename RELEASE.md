@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm lint && pnpm build && pnpm test          # 17 suites
 node scripts/boot-harness.mjs --exercise      # ECL + the cl-plot sample
 pnpm preview --port 4173 &                    # then, in another shell:
-node scripts/browser-smoke.mjs --json dist/smoke-report.json   # 11 scenarios
+node scripts/browser-smoke.mjs --json dist/smoke-report.json   # 12 scenarios
 ```
 
 - [ ] Boot screen and About show `v<version>`; the browser's

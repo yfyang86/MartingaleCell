@@ -17,14 +17,14 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { parseGnuplot, splitPlotSegments, parsePlotMarker } from './src/plot/gnuplot'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction, evaluateConstant } from './src/plot/expr'\n",
+    contents: "export { parseGnuplot, splitPlotSegments, parsePlotMarker } from './src/plot/gnuplot'\nexport { sanitizeSvgText } from './src/plot/sanitize'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction, evaluateConstant } from './src/plot/expr'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') },
   logLevel: 'silent',
 })
-const { parseGnuplot, splitPlotSegments, parsePlotMarker, buildSvg, plotXRange, compileExpression, sampleFunction, evaluateConstant } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { parseGnuplot, splitPlotSegments, parsePlotMarker, sanitizeSvgText, buildSvg, plotXRange, compileExpression, sampleFunction, evaluateConstant } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const files = [
   { path: '/tmp/a', content: '1 2 3\n2 4 6\n' },
@@ -157,6 +157,25 @@ check('`set xrange [0:1]` is not taken for a variable definition; `a == 1` is no
   const gnuplotLine = ';;PLOT64 ' + Buffer.from('"plot \\"x\\" with lines"', 'binary').toString('base64')
   const att2 = parsePlotMarker(gnuplotLine)
   check('a gnuplot capture still parses to a spec', att2 && att2.spec instanceof Object && att2.svg === undefined)
+}
+
+/* Sprint 35 (review blocker 6): the raw-SVG path is sanitised — a payload
+ * any Lisp code can print must not run script on the IDE origin */
+{
+  const mk = (svg) => ';;PLOT64 ' + Buffer.from('"' + svg.replace(/(["\\])/g, '\\$1') + '"', 'binary').toString('base64')
+  const hostile = '<svg xmlns="http://www.w3.org/2000/svg" onload="window.__pwned=1"><script>window.__pwned=2</script><foreignObject><body onload="x()"/></foreignObject><a href="javascript:alert(1)"><text x="1" onclick="y()">mol</text></a><image href="data:text/html,x" xlink:href="javascript:z()"/><circle cx="1" cy="1" r="1" style="fill:url(javascript:1)"/><use href="#ok"/><line x1="0" y1="0" x2="1" y2="1"/></svg>'
+  const att = parsePlotMarker(mk(hostile))
+  const s = att?.svg ?? ''
+  check('hostile raw SVG: <script> removed', !/<script/i.test(s), s)
+  check('hostile raw SVG: <foreignObject> removed with its subtree', !/foreignobject|<body/i.test(s), s)
+  check('hostile raw SVG: on* attributes removed (onload, onclick)', !/\son[a-z]+\s*=/i.test(s), s)
+  check('hostile raw SVG: javascript:/data: URLs removed', !/javascript:|data:/i.test(s), s)
+  check('hostile raw SVG: style url() removed', !/url\(/i.test(s), s)
+  check('hostile raw SVG: drawing kept (text, circle, line, fragment use)', /<text/.test(s) && /<circle/.test(s) && /<line/.test(s) && /href="#ok"/.test(s), s)
+  const clean = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g stroke="#333"><line x1="1" y1="1" x2="9" y2="9"/><text x="2" y="2" font-size="3">C</text></g></svg>'
+  check('clean raw SVG passes unchanged', sanitizeSvgText(clean) === clean, sanitizeSvgText(clean))
+  check('a CDATA-hidden script does not survive', !/<script|pwned/i.test(sanitizeSvgText('<svg><![CDATA[</text>]]><script>pwned</script></svg>')))
+  check('a self-closing <script/> and a mixed-case <SCRIPT> are removed', !/script/i.test(sanitizeSvgText('<svg><script src="x"/><SCRIPT>a</SCRIPT><circle r="1"/></svg>')))
 }
 
 console.log(results.join('\n'))
