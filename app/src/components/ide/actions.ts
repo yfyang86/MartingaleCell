@@ -387,7 +387,7 @@ export function gotoDefinition(name?: string) {
   if (bdef) {
     if (bdef.cellN != null) {
       ws.addLog('DEBUG', 'UI', `go to definition: ${sym} → session cell [${bdef.cellN}] (${bdef.kind}, evaluated)`)
-      window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: bdef.cellN }))
+      window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: bdef.cellN }))
       return
     }
     /* freshness (Sprint 12): the entry says where the name was evaluated; the buffer may have moved on */
@@ -538,7 +538,7 @@ export async function importTranscriptText(name: string, text: string, mode: 'ap
   }
   const { parseMarkdownTranscript, parseLispTranscript } = await import('@/session/transcript')
   const cells = isMarkdown ? parseMarkdownTranscript(text) : parseLispTranscript(text)
-  if (!cells.length) { toast(`No cells found in ${name} — is it a ConsCell transcript?`); return 0 }
+  if (!cells.length) { toast(`No cells found in ${name} — is it a MartingaleCell transcript?`); return 0 }
   if (mode === 'replace' && ws.cells.length > 0) {
     pendingImport = { name, cells }
     useUi.getState().setConfirm('import-replace')
@@ -589,5 +589,5 @@ export function rerunCell(cell: { id: string; n: number; input: string; bufferNa
 
 /** scroll a session cell into view and flash it */
 export function gotoCell(n: number) {
-  window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: n }))
+  window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: n }))
 }

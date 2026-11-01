@@ -1,4 +1,4 @@
-# ConsCell — Developer Manual
+# MartingaleCell — Developer Manual
 
 Everything a contributor needs: layout, architecture, the two Lisp
 engines, the worker protocol, tests, artifacts and the release process.
@@ -148,9 +148,11 @@ CI runs lint → build → every harness.
   persistence, the cl-plot sample and a multi-series plot. Skips (exit
   0) when the artifacts are absent.
 - Browser: `smoke:browser` (Playwright/Chromium, `--only name`,
-  `--list`, `--json report`) — 11 scenarios: debugger, stdin,
-  definitions, transcript, persistence, replace, landing (+ the docs
-  site), history, sbcl, engine, offline (service worker). Refuses a
+  `--list`, `--json report`) — 12 scenarios: debugger, stdin, svgsafe
+  (a hostile raw-SVG plot payload is sanitised), definitions,
+  transcript, persistence, replace, landing (+ the docs site), history,
+  sbcl (+ Interrupt with queued cells), engine, offline (service
+  worker). Refuses a
   stale `dist/` unless `--allow-stale`. In CI the `smoke` job runs on
   pull requests labelled `smoke` and on every push to `dev`.
 
@@ -205,6 +207,15 @@ The checklist is [RELEASE.md](RELEASE.md); in short:
    not long-cached, and every SPA route serving `index.html`.
 
 ## Known open ends
+
+- **ANSI screen (cells)**: cells whose output is escape-code driven
+  (clear/cursor/SGR — the Matrix-effect style) render as a live
+  terminal grid (`src/terminal/ansi.ts`, the `ansi screen` block in the
+  cell; `pnpm test:ansi` covers the parser). SBCL streams such output
+  live (the worker flushes escape-carrying partial lines). ECL's wasm
+  build only flushes stdout per newline, which escape-driven programs
+  never emit — the screen stays blank there; that needs an ECL-side
+  flush, not a MartingaleCell fix.
 
 - Ctrl-C delivery to Lisp is unimplemented in the sbcl port itself
   (`wasm-arch.c`) — `interrupt()` respawns the SBCL image; drop the

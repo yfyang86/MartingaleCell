@@ -36,4 +36,4 @@
 - SBCL→WASM: does not exist (no wasm backend). CLASP: no wasm target. No npm packages (`ecl-wasm`, `common-lisp-wasm` etc. all 404).
 
 ## Branding note
-design.md names the product "ConsCell" and mentions "SBCL→WASM" — the actual engine is ECL (WECL). UI copy should say "ECL — ANSI Common Lisp, compiled to WebAssembly". Keep the ConsCell branding.
+design.md names the product "MartingaleCell" and mentions "SBCL→WASM" — the actual engine is ECL (WECL). UI copy should say "ECL — ANSI Common Lisp, compiled to WebAssembly". Keep the MartingaleCell branding.

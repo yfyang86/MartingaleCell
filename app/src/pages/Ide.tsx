@@ -1,4 +1,4 @@
-/* /ide — the ConsCell workspace shell.
+/* /ide — the MartingaleCell workspace shell.
  * 48px toolbar · resizable editor | (session / log) splits · 28px status bar.
  * Boots the WECL runtime with a full-screen transcript, falls back to
  * JSCL → mock so the IDE always evaluates something. */
@@ -13,6 +13,7 @@ import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { useProject } from '@/store/project'
 import { registerProjectDefinitions } from '@/components/ide/completion'
+import { dumpCoreSymbolsForm, parseSymbolDump, registerLiveSymbols } from '@/components/ide/completion'
 import { runtime } from '@/lisp/runtime'
 import Toolbar from '@/components/ide/Toolbar'
 import EditorPanel from '@/components/ide/EditorPanel'
@@ -28,6 +29,7 @@ import {
   evaluateFormAtPoint, evaluateAllForms, newBuffer, saveBuffers,
   decodeShareHash, loadExamples, loadExampleIntoBuffer, findReferences } from '@/components/ide/actions'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
@@ -62,6 +64,7 @@ function Gutter({ vertical, onReset }: { vertical?: boolean; onReset: () => void
 }
 
 export default function Ide() {
+  const { t } = useI18n()
   const location = useLocation()
   const hydrated = useWorkspace((s) => s.hydrated)
   const engineStatus = useWorkspace((s) => s.engineStatus)
@@ -131,7 +134,19 @@ export default function Ide() {
         })
       }
       runtime.subscribeStatus(() => {
-        if (runtime.status === 'ready-ecl' || runtime.status === 'ready-sbcl') applyPrintLength(useWorkspace.getState().settings.printLength)
+        if (runtime.status === 'ready-ecl' || runtime.status === 'ready-sbcl') {
+          applyPrintLength(useWorkspace.getState().settings.printLength)
+          /* the live image's external CL symbols → autocomplete (one hidden
+           * job; the ~800-symbol alphabet with real kinds, curated docs on
+           * top). Best-effort: failures leave the curated list in place. */
+          void runtime.eval(dumpCoreSymbolsForm).then((r) => {
+            const dump = r.values[0] ? parseSymbolDump(r.values[0]) : []
+            if (dump.length > 0) {
+              registerLiveSymbols(dump)
+              useWorkspace.getState().addLog('DEBUG', 'EVAL', `autocomplete: ${dump.length} live CL symbols from the image`)
+            }
+          }).catch(() => { /* curated symbols only */ })
+        }
       })
       useWorkspace.subscribe((s, prev) => {
         const n = s.settings.printLength
@@ -256,8 +271,8 @@ export default function Ide() {
 
         {isTiny && !bannerDismissed && (
           <div className="flex items-center justify-between gap-3 border-b border-hairline bg-raised px-3 py-2 text-[12px] text-secondary">
-            <span>ConsCell is built for keyboards — best experienced on desktop.</span>
-            <button className="text-muted hover:text-primary" onClick={() => useUi.getState().dismissBanner()} aria-label="Dismiss">
+            <span>{t('MartingaleCell is built for keyboards — best experienced on desktop.')}</span>
+            <button className="text-muted hover:text-primary" onClick={() => useUi.getState().dismissBanner()} aria-label={t('Dismiss')}>
               <X size={13} />
             </button>
           </div>

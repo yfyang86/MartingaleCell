@@ -1,4 +1,4 @@
-# ConsCell
+# MartingaleCell
 
 **一个完全运行在浏览器里的 notebook 风格 Common Lisp IDE。**
 真正的 Common Lisp，编译为 WebAssembly —— 无服务器、免安装、数据不出本机。
@@ -6,6 +6,19 @@
 ```lisp
 (mapcar (lambda (n) (* n n)) '(1 2 3 4))   ; ⇒ (1 4 9 16)
 ```
+
+
+![MartingaleCell 首页](docs/screenshots/landing.png)
+
+## 图示示例
+
+- **化学结构直接画进结果单元** —— 褪黑素与维生素 B1（硫胺素）由 SMILES 字符串绘制：
+
+![分子绘制](docs/screenshots/ide-molecules.png)
+
+- **示例画廊** —— 22 个可直接运行的笔记本（基础、宏、CLOS、MOP、条件系统、算法、化学等）：
+
+![示例画廊](docs/screenshots/examples.png)
 
 （本文档为中文版；English version: [README.md](README.md)）
 
@@ -20,20 +33,25 @@
     器、cell 与项目工具完全一致。
 - **Notebook 会话**：求值一个 form 或整个 buffer（`Ctrl+Enter`），每次
   运行生成一个结果 cell —— 返回值、打印输出、警告、带 condition 细节
-  的错误、耗时，以及渲染为 SVG 的 gnuplot 图形。
+  的错误、耗时、渲染为 SVG 的 gnuplot 图形，以及面向转义码驱动程序的
+  实时 ANSI 终端画面（见 *Matrix effect* 示例）。
 - **真正的编辑器**：CodeMirror，Lisp 语法高亮、括号匹配、按 buffer 的
   undo、脏标记、自动保存、buffer 标签页、定义大纲（`Ctrl+Shift+O`）与
   工作区搜索（`Ctrl+Shift+F`）。
 - **项目管理**：打开本地文件夹（或导入 ZIP / 一组文件），编辑保存，然
   后 **Load Project into Runtime** —— ASDF system 按 `:components` 顺序
   加载，每个文件逐个 top-level form 加载，一个坏 form 不会中断整个加
-  载。试试内置示例：*Open sample project: cl-plot*。
+  载。试试内置示例：*Open sample project: cl-plot*。化学可选
+  *Open sample project: chemicl*：直接从 SMILES 构建分子，详见应用内
+  文档《化学（chemicl）》与 *Molecules*、*SMILES gallery* 示例。
 - **交互式调试**：出错时 image 可以暂停并给出当前可用的 restart
   （retry、store-value、define-function、abort，项目加载时还有
   skip-form）。标准输入同样可用：`(read-line)` 会暂停 cell 等你输入一
   行。
 - **运行时内的包管理**：把项目作为模块安装 / 列出 / 加载 / 卸载
   （`(package-install "name")`），通过 IndexedDB 在页面刷新后保留。
+- **界面中英双语**：工具栏提供 EN / 中文 切换（按浏览器语言自动选择，
+  选择会被记住）。
 - **一切皆本地**：项目、编辑器状态与模块都保存在你的浏览器里，求值发
   生在 Web Worker 中。无遥测、无后端、无需账号 —— 首次加载之后，IDE
   可以离线打开并启动（service worker 会保留所加载版本的应用与引擎
@@ -106,7 +124,7 @@ cell 可能先于其上方的 defun cell 执行，对已定义的函数报
 
 ## 授权说明
 
-- **ConsCell 自身代码** —— MIT，见 [LICENSE](LICENSE)。覆盖 IDE、
+- **MartingaleCell 自身代码** —— MIT，见 [LICENSE](LICENSE)。覆盖 IDE、
   worker 以及本仓库中的 WebAssembly 移植工作。
 - **SBCL**（默认引擎）—— 主体为公有领域，部分文件为 MIT 式与 BSD 式
   授权；以 SBCL 源码树中的 `COPYING` 为准。此处使用的 `wasm32-wasip1`
@@ -114,9 +132,9 @@ cell 可能先于其上方的 defun cell 执行，对已定义的函数报
   （[yfyang86/sbcl](https://github.com/yfyang86/sbcl)）；
   `app/public/sbcl/` 下的 `.gz` 构件由它构建。
 - **ECL / WECL** —— LGPL-2.1+（Daniel Kochmański 的 Embeddable Common
-  Lisp WebAssembly 构建）。ConsCell 原样分发 WECL 二进制作为 fallback
+  Lisp WebAssembly 构建）。MartingaleCell 原样分发 WECL 二进制作为 fallback
   引擎，保留其授权声明，且不与之链接：IDE 通过 worker 消息协议与其
-  通信。源码可从 ECL 项目获得；ConsCell 不以它为核心依赖。
+  通信。源码可从 ECL 项目获得；MartingaleCell 不以它为核心依赖。
 - **cl-plot**（内置示例）—— MIT，© Martin Kersner（其 LICENSE 文件在
   示例 zip 内）。
 

@@ -5,6 +5,7 @@ import { useProject } from '@/store/project'
 import { registerProjectDefinitions } from '@/components/ide/completion'
 import { useWorkspace, type Cell } from './workspace'
 import { autoDownloadSavedPlots } from '@/plot/download'
+import { AnsiScreen, hasAnsi } from '@/terminal/ansi'
 import { lineageForBuffer } from '@/session/lineage'
 
 /** Engine protocol markers (`;;=>` values, `;;WARNING:`/`;;ERROR:`, the
@@ -83,6 +84,17 @@ export function evaluateCode(code: string, bufferName?: string, origin?: EvalOri
 
   useWorkspace.getState().setEvaluating(true)
 
+  /* an ANSI screen for escape-code-driven output (Matrix-style programs);
+   * activated by the first ESC[ in the stream, painted throttled */
+  let screen: AnsiScreen | null = null
+  let lastPaint = 0
+  const paint = (force = false) => {
+    if (!screen) return
+    const now = performance.now()
+    if (!force && now - lastPaint < 150) return
+    lastPaint = now
+    useWorkspace.getState().updateCell(cell.id, { terminal: screen.frame() })
+  }
   return runtime
     .eval(trimmed, {
       onStart: () => {
@@ -91,6 +103,10 @@ export function evaluateCode(code: string, bufferName?: string, origin?: EvalOri
         s.setEvaluating(true)
       },
       onStream: (chunk, isErr) => {
+        if (!isErr) {
+          if (screen) { screen.feed(chunk); paint() }
+          else if (hasAnsi(chunk)) { screen = new AnsiScreen(); screen.feed(chunk); paint(true) }
+        }
         const kept = chunk.split('\n').filter((l) => !OUT_MARKER_RE.test(l.trimStart()))
         if (kept.length > 0) useWorkspace.getState().appendCellStdout(cell.id, kept.join('\n'))
         /* verbosity "verbose": mirror engine stderr noise into the log too */

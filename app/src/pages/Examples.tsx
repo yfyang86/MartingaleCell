@@ -9,11 +9,13 @@ import FeaturedCard from '@/components/examples/FeaturedCard'
 import ExampleCard from '@/components/examples/ExampleCard'
 import ExampleModal from '@/components/examples/ExampleModal'
 import FilterBar from '@/components/examples/FilterBar'
+import { useI18n } from '@/i18n/context'
 
 const FEATURED_SLUG = 'once-only'
 const HEADLINE = 'Twelve programs. Zero setup.'
 
 export default function Examples() {
+  const { t } = useI18n()
   const [category, setCategory] = useState('All')
   const [difficulty, setDifficulty] = useState<0 | 1 | 2 | 3>(0)
   const [query, setQuery] = useState('')
@@ -64,12 +66,12 @@ export default function Examples() {
           transition={{ duration: 0.4 }}
           className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-steel"
         >
-          Gallery
+          {t('Gallery')}
         </motion.p>
 
         {/* Word-level rise, 12ms stagger, on load */}
         <h1 className="mt-3 font-display text-[clamp(30px,4vw,44px)] font-semibold leading-[1.1] tracking-[-0.02em] text-primary">
-          {HEADLINE.split(' ').map((word, i) => (
+          {t(HEADLINE).split(' ').map((word, i) => (
             <span
               key={i}
               className="inline-block overflow-hidden pb-1 align-bottom"
@@ -85,7 +87,7 @@ export default function Examples() {
                 className="inline-block"
               >
                 {word}
-                {i < HEADLINE.split(' ').length - 1 ? ' ' : ''}
+                {i < t(HEADLINE).split(' ').length - 1 ? ' ' : ''}
               </motion.span>
             </span>
           ))}
@@ -97,9 +99,7 @@ export default function Examples() {
           transition={{ delay: 0.25, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="mt-4 max-w-2xl text-[17px] leading-relaxed text-secondary"
         >
-          Every example runs in the browser Lisp engine (SBCL or ECL) — ANSI Common Lisp
-          compiled to WebAssembly. Pick one, and it
-          opens in the IDE with the session ready — just press{' '}
+          {t('Every example runs in the browser Lisp engine (SBCL or ECL) — ANSI Common Lisp compiled to WebAssembly. Pick one, and it opens in the IDE with the session ready — just press')}{' '}
           <kbd className="cc-kbd">Ctrl</kbd>{' '}
           <span aria-hidden className="text-muted">+</span>{' '}
           <kbd className="cc-kbd">Enter</kbd>.
@@ -147,7 +147,7 @@ export default function Examples() {
             >
               <span className="font-mono text-4xl text-muted">λ</span>
               <p className="mt-3 text-[14px] text-secondary">
-                No examples match that filter.
+                {t('No examples match that filter.')}
               </p>
               <button
                 type="button"
@@ -158,7 +158,7 @@ export default function Examples() {
                 }}
                 className="mt-4 rounded-md border border-hairline px-4 py-2 text-[13px] font-medium text-secondary transition-colors duration-150 ease-snap hover:border-strong hover:bg-raised hover:text-white"
               >
-                Reset filters
+                {t('Reset filters')}
               </button>
             </motion.div>
           )}
@@ -173,16 +173,16 @@ export default function Examples() {
           className="flex flex-col items-center py-24 text-center"
         >
           <h2 className="font-display text-[22px] font-semibold tracking-tight text-primary">
-            Have a snippet of your own?
+            {t('Have a snippet of your own?')}
           </h2>
           <p className="mt-2 text-[15px] text-secondary">
-            Open a blank buffer and start consing.
+            {t('Open a blank buffer and start consing.')}
           </p>
           <Link
             to="/ide"
             className="group mt-6 flex items-center gap-1.5 rounded-md border border-hairline px-4 py-2 text-[13px] font-medium text-secondary transition-colors duration-150 ease-snap hover:border-strong hover:bg-raised hover:text-white"
           >
-            Open empty IDE
+            {t('Open empty IDE')}
             <ArrowRight
               size={14}
               strokeWidth={1.75}

@@ -48,3 +48,4 @@ Research/qiang-dict-notes/
 # harness inflates .gz itself (scripts/fetch-sbcl.mjs --gzip writes both)
 app/public/sbcl/*
 !app/public/sbcl/*.gz
+!app/public/sbcl/sbcl-home.tar.gz

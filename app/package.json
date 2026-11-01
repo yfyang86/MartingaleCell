@@ -1,7 +1,7 @@
 {
-  "name": "conscell",
-  "version": "1.0.0-beta.2",
-  "description": "ConsCell — a notebook-style Common Lisp IDE in the browser (ECL and SBCL compiled to WebAssembly)",
+  "name": "martingalecell",
+  "version": "1.0.0",
+  "description": "MartingaleCell \u2014 a notebook-style Common Lisp IDE in the browser (ECL and SBCL compiled to WebAssembly)",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf && pnpm run test:sbcl && pnpm run test:sbcl-artifacts && pnpm run test:smoke-summary && pnpm run test:plot",
+    "test": "pnpm run test:transcript && pnpm run test:search && pnpm run test:outline && pnpm run test:editor && pnpm run test:history && pnpm run test:fold && pnpm run test:lineage && pnpm run test:boot && pnpm run test:package && pnpm run test:settings && pnpm run test:debugger && pnpm run test:stdin && pnpm run test:perf && pnpm run test:sbcl && pnpm run test:sbcl-artifacts && pnpm run test:mop && pnpm run test:chemicl && pnpm run test:ecl-mop && pnpm run test:ansi && pnpm run test:completion && pnpm run test:i18n && pnpm run test:smoke-summary && pnpm run test:plot && pnpm run test:sw && pnpm run test:storage-migration",
     "test:boot": "node scripts/boot-harness.mjs",
     "test:package": "node scripts/package-test.mjs",
     "test:modules": "node scripts/pkg-mgr-test.mjs && node scripts/pkg-persist-test.mjs",
@@ -30,9 +30,17 @@
     "test:lineage": "node scripts/lineage-test.mjs",
     "test:sbcl": "node scripts/sbcl-test.mjs",
     "test:sbcl-artifacts": "node scripts/sbcl-artifact-test.mjs",
+    "test:mop": "node scripts/mop-probe.mjs",
+    "test:chemicl": "node scripts/chemicl-verify.mjs",
+    "test:ecl-mop": "node scripts/ecl-mop-probe.mjs",
     "test:smoke-summary": "node scripts/smoke-summary-test.mjs",
     "test:plot": "node scripts/plot-test.mjs",
-    "fetch:sbcl": "node scripts/fetch-sbcl.mjs"
+    "test:sw": "node scripts/sw-test.mjs",
+    "test:storage-migration": "node scripts/storage-migration-test.mjs",
+    "fetch:sbcl": "node scripts/fetch-sbcl.mjs",
+    "test:ansi": "node scripts/ansi-test.mjs",
+    "test:completion": "node scripts/completion-test.mjs",
+    "test:i18n": "node scripts/i18n-test.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

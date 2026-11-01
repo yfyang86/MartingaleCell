@@ -12,12 +12,24 @@ import { buildSvg } from './build-svg'
 import type { PlotAttachment, PlotSpec } from './gnuplot'
 import { downloadPlotPng, downloadPlotSvg } from './download'
 
-export function SvgPlot({ spec }: { spec: PlotSpec }) {
+/** Raw engine-drawn SVG (chemicl molecules) — same chrome, no gnuplot. */
+function RawSvg({ svg }: { svg: string }) {
+  return (
+    <div
+      className="cc-svg-plot cc-mol-plot overflow-x-auto rounded-md border border-hairline bg-inset [&>svg]:block [&>svg]:h-auto [&>svg]:max-w-full"
+      /* sanitised in parsePlotMarker (src/plot/sanitize.ts): no script,
+       * foreignObject, on* handlers or javascript: URLs survive */
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
+export function SvgPlot({ spec }: { spec?: PlotSpec }) {
   return (
     <div
       className="cc-svg-plot overflow-x-auto rounded-md border border-hairline bg-inset [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
       /* safe: buildSvg escapes every interpolated string (titles, labels, paths) */
-      dangerouslySetInnerHTML={{ __html: buildSvg(spec) }}
+      dangerouslySetInnerHTML={{ __html: spec ? buildSvg(spec) : "" }}
     />
   )
 }
@@ -29,7 +41,7 @@ function PlotCardComponent({ plot, index }: { plot: PlotAttachment; index: numbe
     <div className="cc-plot-card">
       <div className="mb-1 flex items-center gap-2 font-mono text-[10.5px] text-muted">
         <ChartLine size={11} className="text-steel" />
-        <span className="text-secondary">gnuplot → svg{saved ? ` · ${saved}` : ''}</span>
+        <span className="text-secondary">{plot.svg ? 'chemicl → svg' : `gnuplot → svg`}{saved ? ` · ${saved}` : ''}</span>
         <span className="ml-auto flex gap-1">
           <button
             className="flex items-center gap-1 rounded-full border border-hairline px-2 py-0.5 text-[10px] text-steel transition-colors hover:border-strong hover:bg-raised"
@@ -49,15 +61,17 @@ function PlotCardComponent({ plot, index }: { plot: PlotAttachment; index: numbe
           </button>
         </span>
       </div>
-      <SvgPlot spec={plot.spec} />
-      <details className="group/details mt-1">
+      {plot.svg
+        ? <RawSvg svg={plot.svg} />
+        : <SvgPlot spec={plot.spec} />}
+      {plot.script && <details className="group/details mt-1">
         <summary className="cursor-pointer select-none font-mono text-[10px] text-muted transition-colors hover:text-secondary">
           gnuplot script ({plot.script.split('\n').length} lines)
         </summary>
         <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-hairline bg-inset px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-secondary scrollbar-thin">
           {plot.script}
         </pre>
-      </details>
+      </details>}
     </div>
   )
 }

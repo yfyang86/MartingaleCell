@@ -30,9 +30,9 @@ export function formatStamp(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** conscell-session-2026-09-09-1530.md */
+/** martingalecell-session-2026-09-09-1530.md */
 export function transcriptFileName(ext: 'md' | 'lisp', when = new Date()): string {
-  return `conscell-session-${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}-${pad(when.getHours())}${pad(when.getMinutes())}.${ext}`
+  return `martingalecell-session-${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}-${pad(when.getHours())}${pad(when.getMinutes())}.${ext}`
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -125,8 +125,10 @@ function markdownCell(cell: Cell, limit?: number, labels?: Map<string, RunLabel>
   if (st) out.push(`_${st}_`)
   if (cell.plots?.length) {
     cell.plots.forEach((p, i) => {
-      const title = p.spec.title || p.outputName || `plot ${i + 1}`
-      out.push(`![${title.replace(/[[\]]/g, '')}](${plotDataUri(buildSvg(p.spec))})`)
+      const svg = p.svg ?? (p.spec ? buildSvg(p.spec) : '')
+      if (!svg) return
+      const title = (p.spec?.title || p.outputName || `plot ${i + 1}`)
+      out.push(`![${title.replace(/[[\]]/g, '')}](${plotDataUri(svg)})`)
     })
   }
   return out.join('\n\n')
@@ -136,7 +138,7 @@ export function buildMarkdownTranscript(cells: Cell[], meta: TranscriptMeta = {}
   const when = meta.exportedAt ?? new Date()
   const labels = runLabels(cells)
   const parts = [
-    '# ConsCell session',
+    '# MartingaleCell session',
     `Exported ${formatStamp(when)}${meta.engine ? ` · ${meta.engine}` : ''} · ${cells.length} cell${cells.length === 1 ? '' : 's'}`,
     ...cells.map((c) => markdownCell(c, meta.valueLimit, labels)),
   ]
@@ -174,7 +176,7 @@ function lispCell(cell: Cell, prevPkg: string | null, limit?: number, labels?: M
 export function buildLispTranscript(cells: Cell[], meta: TranscriptMeta = {}): string {
   const when = meta.exportedAt ?? new Date()
   const head = [
-    `;;;; ConsCell session — exported ${formatStamp(when)}${meta.engine ? ` · ${meta.engine}` : ''}`,
+    `;;;; MartingaleCell session — exported ${formatStamp(when)}${meta.engine ? ` · ${meta.engine}` : ''}`,
     `;;;; ${cells.length} cell${cells.length === 1 ? '' : 's'}. Results are comments; the forms evaluate as they are.`,
   ].join('\n')
   const body: string[] = []

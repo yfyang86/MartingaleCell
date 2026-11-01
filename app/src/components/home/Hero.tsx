@@ -6,10 +6,12 @@ import { useGSAP } from '@gsap/react'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import ParenField from '@/components/home/ParenField'
 import MiniRepl from '@/components/home/MiniRepl'
+import { useI18n } from '@/i18n/context'
 
 gsap.registerPlugin(SplitText)
 
 export default function Hero() {
+  const { t, lang } = useI18n()
   const rootRef = useRef<HTMLElement>(null)
   const headlineRef = useRef<HTMLHeadingElement>(null)
   const gradientSpanRef = useRef<HTMLSpanElement>(null)
@@ -106,31 +108,33 @@ export default function Hero() {
       {/* Content */}
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
         <span className="hero-eyebrow rounded-full border border-hairline bg-panel/60 px-3 py-1 font-mono text-[11px] tracking-wider text-steel opacity-0">
-          SBCL & ECL · WebAssembly · zero install
+          {t('SBCL & ECL · WebAssembly · zero install')}
         </span>
 
+        {/* SplitText rewrites these DOM nodes into per-char spans, which
+         * defeats React reconciliation — remount on language change so the
+         * split re-runs on the translated text */}
         <h1
+          key={lang}
           ref={headlineRef}
           className="mt-7 font-display text-[clamp(44px,6vw,76px)] font-bold leading-[1.02] tracking-[-0.03em] text-primary"
         >
-          Common Lisp,
+          {t('Common Lisp,')}
           <br />
-          running on nothing
+          {t('running on nothing')}
           <br />
-          but your{' '}
+          {t('but your')}{' '}
           <span
             ref={gradientSpanRef}
             className="text-brand-gradient"
             style={{ backgroundSize: '220% 100%' }}
           >
-            browser.
+            {t('browser.')}
           </span>
         </h1>
 
         <p className="hero-subhead mt-6 max-w-2xl text-[18px] leading-[1.65] text-secondary opacity-0">
-          ConsCell runs SBCL (and ECL as a fallback) compiled to WebAssembly and wraps it in a notebook-style IDE —
-          syntax-highlighted editor, persistent result cells, a real condition system with
-          restarts. No servers. No setup. Your code never leaves the tab.
+          {t('MartingaleCell runs SBCL (and ECL as a fallback) compiled to WebAssembly and wraps it in a notebook-style IDE — syntax-highlighted editor, persistent result cells, a real condition system with restarts. No servers. No setup. Your code never leaves the tab.')}
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
@@ -139,7 +143,7 @@ export default function Hero() {
             className="hero-cta group flex items-center gap-2 rounded-md px-7 py-3.5 text-[15px] font-semibold text-abyss opacity-0 animate-glow-pulse transition-transform [transition-duration:120ms] ease-snap hover:-translate-y-px active:scale-[0.97]"
             style={{ background: 'var(--brand-gradient)' }}
           >
-            Launch the IDE
+            {t('Launch the IDE')}
             <ArrowRight
               size={16}
               strokeWidth={2}
@@ -150,12 +154,12 @@ export default function Hero() {
             to="/examples"
             className="hero-cta rounded-md border border-hairline px-7 py-3.5 text-[15px] font-medium text-primary opacity-0 transition-all [transition-duration:120ms] ease-snap hover:-translate-y-px hover:border-strong hover:bg-raised active:scale-[0.97]"
           >
-            Browse examples
+            {t('Browse examples')}
           </Link>
         </div>
 
         <p className="hero-trust mt-5 font-mono text-[11.5px] text-muted opacity-0">
-          ( loads in ~4s · works offline · MIT licensed )
+          {t('( loads in ~4s · works offline · MIT licensed )')}
         </p>
 
         <div className="hero-repl mt-12 flex w-full justify-center opacity-0">
@@ -165,7 +169,7 @@ export default function Hero() {
 
       {/* Scroll cue */}
       <div className="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 text-center">
-        <p className="font-mono text-[11px] tracking-widest text-muted">scroll</p>
+        <p className="font-mono text-[11px] tracking-widest text-muted">{t('scroll')}</p>
         <ChevronDown size={16} className="mx-auto mt-1 animate-chevron-drop text-muted" />
       </div>
     </section>

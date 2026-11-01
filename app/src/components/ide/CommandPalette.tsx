@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { foldCode, unfoldCode, foldAll, unfoldAll } from '@codemirror/language'
@@ -43,6 +44,7 @@ export default function CommandPalette() {
 }
 
 function PaletteBody({ close }: { close: () => void }) {
+  const { t } = useI18n()
   const [query, setQueryState] = useState('')
   const [cursor, setCursor] = useState(0)
   const [examples, setExamples] = useState<ExampleItem[]>([])
@@ -77,7 +79,7 @@ function PaletteBody({ close }: { close: () => void }) {
       {
         id: 'copy-all', group: 'Session', name: 'Copy session as transcript', run: () => {
           const cells = ws().cells
-          void copyText(cells.map((c) => `${c.pkg}> ${c.input}\n${c.values.map((v) => ';;=> ' + v).join('\n')}`).join('\n\n'), 'Transcript copied')
+          void copyText(cells.map((c) => `${c.pkg}> ${c.input}\n${c.values.map((v) => ';;=> ' + v).join('\n')}`).join('\n\n'), t('Transcript copied'))
         },
       },
       { id: 'restart', group: 'Runtime', name: 'Restart Lisp image', run: () => ui().setConfirm('restart') },
@@ -113,7 +115,7 @@ function PaletteBody({ close }: { close: () => void }) {
           const blob = new Blob([JSON.stringify({ buffers: s.buffers, cells: s.cells, settings: s.settings }, null, 2)], { type: 'application/json' })
           const url = URL.createObjectURL(blob)
           const a = document.createElement('a')
-          a.href = url; a.download = 'conscell-workspace.json'; a.click()
+          a.href = url; a.download = 'martingalecell-workspace.json'; a.click()
           URL.revokeObjectURL(url)
         } },
     ]
@@ -127,6 +129,7 @@ function PaletteBody({ close }: { close: () => void }) {
       })
     }
     return base
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examples])
 
   /* subsequence matches, but a name that starts with / contains the query verbatim ranks first (Sprint 10) */
@@ -174,12 +177,12 @@ function PaletteBody({ close }: { close: () => void }) {
                   if (e.key === 'Enter' && filtered[cursor]) runCmd(filtered[cursor])
                   if (e.key === 'Escape') close()
                 }}
-                placeholder="Type a command…"
+                placeholder={t('Type a command…')}
                 className="h-12 w-full bg-transparent text-[14px] text-primary placeholder:text-muted focus:outline-none"
               />
             </div>
             <div className="scrollbar-thin max-h-[320px] overflow-y-auto py-1.5">
-              {filtered.length === 0 && <div className="px-4 py-6 text-center text-[12.5px] text-muted">No matching commands</div>}
+              {filtered.length === 0 && <div className="px-4 py-6 text-center text-[12.5px] text-muted">{t('No matching commands')}</div>}
               {filtered.map((c, i) => (
                 <button
                   key={c.id}
@@ -187,15 +190,15 @@ function PaletteBody({ close }: { close: () => void }) {
                   onMouseEnter={() => setCursor(i)}
                   onClick={() => runCmd(c)}
                 >
-                  <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">{c.group}</span>
-                  <span className="flex-1 font-mono text-[12.5px] text-primary">{highlight(c.name, query)}</span>
-                  {c.desc && <span className="text-[11px] text-muted">{c.desc}</span>}
+                  <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">{t(c.group)}</span>
+                  <span className="flex-1 font-mono text-[12.5px] text-primary">{highlight(t(c.name), query)}</span>
+                  {c.desc && <span className="text-[11px] text-muted">{t(c.desc)}</span>}
                   {c.kbd && <span className="cc-kbd">{c.kbd}</span>}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-3 border-t border-hairline px-4 py-2 font-mono text-[10.5px] text-muted">
-              <span>↑↓ navigate</span><span>↵ run</span><span>esc close</span>
+              <span>↑↓ {t('navigate')}</span><span>↵ {t('run')}</span><span>esc {t('close')}</span>
             </div>
           </motion.div>
         </motion.div>

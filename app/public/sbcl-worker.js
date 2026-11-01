@@ -1,4 +1,4 @@
-/* ConsCell — SBCL (wasm32-wasip1) Web Worker.
+/* MartingaleCell — SBCL (wasm32-wasip1) Web Worker.
  *
  * Hand-written, NOT bundled. Runs the SBCL WebAssembly port
  * (github.com/yfyang86/sbcl, branch wasm-dev — see SBCL-Handoff.md) as a
@@ -654,16 +654,24 @@ var SBCL_HELPER_SRC = [
   '      (let ((provider (lambda (module &optional paths)',
   '                        (declare (ignore paths))',
   '                        (and (string-equal (string module) "asdf")',
-  '                             (find-package :asdf)))))',
+  '                             (find-package :asdf)',
+  '                             ;; only speak for the dummy — with the real',
+  '                             ;; contribs SBCL\'s own provider loads it',
+  '                             (not (probe-file "/sbcl/sbcl-home/contrib/asdf.fasl"))))))',
   '        (pushnew provider sb-ext:*module-provider-functions* :test (function eq))',
   '        t)',
   '    (serious-condition () nil)))',
+  '(defun %real-asdf-p ()',
+  '  (and (find-package :asdf) (fboundp (find-symbol "LOAD-SYSTEM" (find-package :asdf)))))',
   '(defun load-project (files &key debug)',
   '  (setf *load-aborted* nil)',
   '  (setf *project-files* (mapcar (function parse-namestring) files))',
   '  ;; infrastructure first: the shims must exist before the package',
-  '  ;; snapshot, so ASDF is never reported as a project package',
-  '  (%ensure-dummy-asdf)',
+  '  ;; snapshot, so ASDF is never reported as a project package. With the',
+  '  ;; real contribs in the image (require :asdf) loads them and no',
+  '  ;; dummy is installed; the provider only answers when it does.',
+  '  (handler-case (require :asdf) (serious-condition () nil))',
+  '  (unless (%real-asdf-p) (%ensure-dummy-asdf))',
   '  (%ensure-require-provider)',
   '  (let* ((*debug-enabled* debug)',
   '         (*debug-condition* nil)',
@@ -677,7 +685,17 @@ var SBCL_HELPER_SRC = [
   '    (%install-io sin)',
   '    (when (or asds lisps)',
   '      (setf *default-pathname-defaults*',
-  '            (make-pathname :directory (pathname-directory (pathname (or (car asds) (car lisps)))))))',
+  '            (make-pathname :directory (pathname-directory (pathname (or (car asds) (car lisps))))))',
+  '      ;; with the real ASDF: register every .asd directly — the',
+  '      ;; registry search needs (directory ...), which this port cannot',
+  '      ;; do — so init-style files can (asdf:load-system ...) them.',
+  '      ;; find-symbol: the ASDF package does not exist at helper-read',
+  '      ;; time, so a plain ASDF: prefix would not even read',
+  '      (when (%real-asdf-p)',
+  '        (let ((load-asd (find-symbol "LOAD-ASD" (find-package :asdf))))',
+  '          (when load-asd',
+  '            (dolist (a asds)',
+  '              (handler-case (funcall load-asd a) (serious-condition () nil)))))))',
   '    ;; an ext-compat.lisp defines the ECL-only EXT:SHELL/EXT:CD this',
   '    ;; image lacks — load it FIRST so the system files read cleanly',
   '    (when (and (find "ext-compat" lisps :key (function pathname-name) :test (function string-equal))',
@@ -1183,6 +1201,7 @@ function bootstrapDone() {
     var ok = verifyLines.some(function (l) { return l.indexOf(';;=> 3') !== -1 })
     if (ok) {
       bootLine('warm-up eval (+ 1 2) ;;=> 3')
+      try { bootLine('image resident: ' + Math.round(mem().byteLength / 1048576) + ' MB linear memory (quota ' + (memoryQuotaBytes > 0 ? Math.round(memoryQuotaBytes / 1048576) + ' MB' : 'off') + ')') } catch (e1) { /* diagnostics */ }
       bootLine('ready — happy hacking (SBCL, wasm32-wasip1)')
       phase = 'run'
       self.postMessage({ type: 'ready' })
@@ -1202,6 +1221,13 @@ function writeOutChunk(fd, u8) {
     var t = lines[i]
     if (t !== '') emitLine(fd, t)
   }
+  /* escape-code-driven output (cursor addressing, colors) never emits
+   * newlines — flush the pending partial once it carries sequences, so
+   * the page's ANSI screen updates live */
+  if (outLine[fd].length >= 32 && outLine[fd].indexOf(String.fromCharCode(27)) >= 0) {
+    emitLine(fd, outLine[fd])
+    outLine[fd] = ''
+  }
 }
 
 function mem() { return wasm.exports.memory.buffer }
@@ -1215,6 +1241,9 @@ function readPath(ptr, len) {
  * clock — it does constantly (get-internal-real-time) */
 var timerDeadline = 0
 var registerArea = 0
+/* the memory quota (0: off) and whether we already nudged a GC */
+var memoryQuotaBytes = 0
+var memoryQuotaNudged = false
 
 function setInterruptBits(bits) {
   if (!registerArea) return
@@ -1231,6 +1260,19 @@ function checkInterrupts() {
   if (Atomics.load(sabI32, 5) === 1) {
     Atomics.store(sabI32, 5, 0)
     setInterruptBits(1)
+  }
+  /* the quota: nudge a GC when close, refuse to grow past it — a page
+   * OOM-killed by its embedder is worse than a clean crash here */
+  if (memoryQuotaBytes > 0 && wasm) {
+    var used = mem().byteLength
+    if (used >= memoryQuotaBytes) {
+      self.postMessage({ type: 'crash', message: 'SBCL memory quota exceeded (' + Math.round(used / 1048576) + ' MB linear memory; quota ' + Math.round(memoryQuotaBytes / 1048576) + ' MB — raise Settings → SBCL memory)' })
+      throw new Error('SBCL memory quota exceeded')
+    }
+    if (used >= memoryQuotaBytes * 0.85 && !memoryQuotaNudged) {
+      memoryQuotaNudged = true
+      setInterruptBits(4) /* WASM_PENDING_GC: collect at the next safe point */
+    }
   }
 }
 
@@ -1292,6 +1334,7 @@ function makeWasi() {
 
   w.fd_write = function (fd, iovs, iovsLen, nwrittenPtr) {
     var dv = memDV()
+    checkInterrupts() /* the quota check too: output follows big allocations */
     if (fd !== 1 && fd !== 2) {
       /* a file the Lisp side opened for output: buffer, commit at close */
       var e = fdTable.get(fd)
@@ -1834,6 +1877,45 @@ function fetchGzipArtifact(path) {
   }).catch(function () { return null })
 }
 
+/* the contrib bundle (sbcl-home.tar.gz, ~1.2 MB): gunzip + untar into
+ * the VFS so SBCL_HOME works and (require :asdf) &co load the real
+ * contribs instead of the dummy */
+function untarIntoVfs(bytes, baseDir) {
+  var off = 0
+  while (off + 512 <= bytes.length) {
+    var hdr = bytes.subarray(off, off + 512)
+    if (hdr[0] === 0) break
+    var name = ''
+    for (var i = 0; i < 100 && hdr[i] !== 0; i++) name += String.fromCharCode(hdr[i])
+    var prefix = ''
+    for (var j = 345; j < 500 && hdr[j] !== 0; j++) prefix += String.fromCharCode(hdr[j])
+    if (prefix) name = prefix + '/' + name
+    var size = 0
+    for (var k = 124; k < 136 && hdr[k] !== 0 && hdr[k] !== 32; k++) size = size * 8 + (hdr[k] - 48)
+    var type = String.fromCharCode(hdr[156] || 48)
+    off += 512
+    var path = baseDir + '/' + name.replace(/\/$/, '')
+    if (type === '5') vfs.dirs.add(path)
+    else if (type === '0' || type === '\0') vfsWriteFile(path, bytes.subarray(off, off + size))
+    off += Math.ceil(size / 512) * 512
+  }
+}
+
+function loadContribBundle() {
+  var get = typeof self.__ccSbclLoadBytes === 'function'
+    ? Promise.resolve(self.__ccSbclLoadBytes('sbcl-home.tar.gz')).catch(function () { return null })
+    : fetch('/sbcl/sbcl-home.tar.gz').then(function (r) { return r.ok ? r.arrayBuffer() : null }).catch(function () { return null })
+  return get.then(function (raw) {
+    if (!raw) return false
+    var u8in = new Uint8Array(raw)
+    var stream = new Blob([u8in]).stream().pipeThrough(new DecompressionStream('gzip'))
+    return new Response(stream).arrayBuffer().then(function (out) {
+      untarIntoVfs(new Uint8Array(out), '/sbcl')
+      return true
+    })
+  })
+}
+
 function loadArtifactBytes(path) {
   /* harness hook: Node can hand us the bytes without fetch */
   if (typeof self.__ccSbclLoadBytes === 'function') return Promise.resolve(self.__ccSbclLoadBytes(path))
@@ -1867,7 +1949,7 @@ function boot() {
       coreBytes = fetched('sbcl.core', b)
       return loadArtifactBytes(artifactBase + 'sbcl-core.wasm')
     })
-    .then(function (b) {
+    .then(async function (b) {
       coreModuleBytes = fetched('sbcl-core.wasm', b)
       bootLine('artifacts loaded (' +
         ((runtimeBytes.byteLength + coreBytes.byteLength + coreModuleBytes.byteLength) / 1e6).toFixed(1) +
@@ -1875,12 +1957,34 @@ function boot() {
 
       vfsWriteFile('/sbcl/sbcl.core', new Uint8Array(coreBytes))
       vfsWriteFile('/sbcl/sbcl-core.wasm', new Uint8Array(coreModuleBytes))
+      var haveContribs = await loadContribBundle().catch(function () { return false })
+      if (haveContribs) bootLine('contribs loaded — (require :asdf) and friends are real')
 
+      /* the Lisp heap quota (dynamic space, MB): from the worker URL's
+       * ?mem= (the page's SBCL memory setting) or a harness hook; the
+       * floor keeps tiny quotas from failing the warm boot itself */
+      /* the memory mode: a total linear-memory ceiling in MB, or 0 = off.
+       * The port commits roughly dynamic-space + ~100 MB of static/core
+       * spaces, so the flag is derived from the ceiling and the host
+       * watches the linear memory for the hard stop (the flag alone does
+       * not bound growth — the wasm memory grows on demand) */
+      var memMode = 0
+      try {
+        if (typeof self.__CC_SBCL_MEM === 'number') memMode = self.__CC_SBCL_MEM
+        else if (typeof location === 'object' && location.search) {
+          var qm = /(?:^|[?&])mem=(\d+)/.exec(location.search)
+          if (qm) memMode = parseInt(qm[1], 10)
+        }
+      } catch (e0) { /* keep the default */ }
+      var quotaMb = memMode >= 192 ? memMode : 0
+      var flagMb = quotaMb > 0 ? Math.max(64, quotaMb - 384) : 512
       /* runtime options (--core, --dynamic-space-size) must precede the
        * toplevel ones (--noinform …) or the runtime refuses the mix */
-      ARGS = ['sbcl.wasm', '--core', '/sbcl/sbcl.core', '--dynamic-space-size', '512',
+      ARGS = ['sbcl.wasm', '--core', '/sbcl/sbcl.core', '--dynamic-space-size', String(flagMb),
         '--noinform', '--no-sysinit', '--no-userinit', '--disable-debugger']
-      ENVS = ['PWD=/', 'HOME=/', 'SBCL_WASM_HOST=sbcl-worker', 'SBCL_WASM_RUNTIME=/sbcl/sbcl.wasm']
+      if (quotaMb > 0) memoryQuotaBytes = quotaMb * 1024 * 1024
+      ENVS = ['PWD=/', 'HOME=/', 'SBCL_WASM_HOST=sbcl-worker', 'SBCL_WASM_RUNTIME=/sbcl/sbcl.wasm',
+        ...(vfs.dirs.has('/sbcl/sbcl-home') ? ['SBCL_HOME=/sbcl/sbcl-home'] : [])]
 
       var mod = new WebAssembly.Module(new Uint8Array(runtimeBytes))
       wasm = new WebAssembly.Instance(mod, {

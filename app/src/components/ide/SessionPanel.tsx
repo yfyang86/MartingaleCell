@@ -6,6 +6,7 @@ import { ClipboardCopy, ClipboardPaste, ArrowDownToLine, Trash2, ArrowDown, Down
 import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { autocompletion, completionKeymap, completionStatus, closeCompletion, startCompletion } from '@codemirror/autocomplete'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { evaluateCode } from '@/store/evaluate'
@@ -35,6 +36,7 @@ const setText = (v: EditorView, text: string) =>
   v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, selection: { anchor: text.length } })
 
 function ReplInput() {
+  const { t } = useI18n()
   const packageName = useWorkspace((s) => s.packageName)
   const fontSize = useWorkspace((s) => s.settings.fontSize)
   const ligatures = useWorkspace((s) => s.settings.ligatures)
@@ -93,7 +95,7 @@ function ReplInput() {
           autocompletion({ override: [clCompletionSource], maxRenderedOptions: 8, icons: true }),
           themeComp.current.of(clEditorTheme(fontSize, ligatures)),
           replTheme,
-          placeholder('; type a form — Enter evaluates, ⇧Enter newline, ↑ history, Ctrl+Space complete'),
+          placeholder(t('; type a form — Enter evaluates, ⇧Enter newline, ↑ history, Ctrl+Space complete')),
           keymap.of([
             {
               key: 'Enter',
@@ -150,20 +152,20 @@ function ReplInput() {
       {search && (
         <div data-testid="session-history-search" className="absolute inset-x-3 bottom-full z-20 mb-1 rounded-md border border-hairline bg-raised p-1.5 shadow-modal">
           <div className="flex items-center gap-2 px-1 pb-1">
-            <span className="select-none font-mono text-[10.5px] uppercase tracking-wide text-muted">history</span>
+            <span className="select-none font-mono text-[10.5px] uppercase tracking-wide text-muted">{t('history')}</span>
             <input
               autoFocus
               value={search.query}
               onChange={(e) => setSearch({ query: e.target.value, sel: 0 })}
               onKeyDown={onSearchKey}
               onBlur={() => closeSearch()}
-              placeholder="type to search — ↑↓ or Ctrl R move, Enter recalls, Esc closes"
-              aria-label="Search session history"
+              placeholder={t('type to search — ↑↓ or Ctrl R move, Enter recalls, Esc closes')}
+              aria-label={t('Search session history')}
               className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-primary outline-none placeholder:text-muted"
             />
           </div>
           {matches.length === 0 ? (
-            <div className="px-1 py-1 font-mono text-[11px] text-muted">{entries.length ? 'no match' : 'no history yet'}</div>
+            <div className="px-1 py-1 font-mono text-[11px] text-muted">{entries.length ? t('no match') : t('no history yet')}</div>
           ) : (
             <ul className="max-h-48 overflow-y-auto">
               {matches.map((m, i) => (
@@ -194,6 +196,7 @@ function ReplInput() {
 }
 
 function EmptySession() {
+  const { t } = useI18n()
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3">
       <motion.span
@@ -204,16 +207,17 @@ function EmptySession() {
         <span className="tok-paren-1">(</span>
         <span className="tok-paren-2">)</span>
       </motion.span>
-      <p className="text-[13px] text-secondary">Evaluate something.</p>
+      <p className="text-[13px] text-secondary">{t('Evaluate something.')}</p>
       <p className="flex items-center gap-2 text-[11.5px] text-muted">
-        <span className="cc-kbd">Ctrl↵</span> evaluate form
-        <span className="cc-kbd">Ctrl⇧↵</span> evaluate all
+        <span className="cc-kbd">Ctrl↵</span> {t('evaluate form')}
+        <span className="cc-kbd">Ctrl⇧↵</span> {t('evaluate all')}
       </p>
     </div>
   )
 }
 
 export default function SessionPanel() {
+  const { t } = useI18n()
   const cells = useWorkspace((s) => s.cells)
   const packageName = useWorkspace((s) => s.packageName)
   const engineStatus = useWorkspace((s) => s.engineStatus)
@@ -269,8 +273,8 @@ export default function SessionPanel() {
         setTimeout(() => setFlashCell(null), 1200)
       }
     }
-    window.addEventListener('conscell:goto-cell', handler)
-    return () => window.removeEventListener('conscell:goto-cell', handler)
+    window.addEventListener('martingalecell:goto-cell', handler)
+    return () => window.removeEventListener('martingalecell:goto-cell', handler)
   }, [])
 
   return (
@@ -278,38 +282,38 @@ export default function SessionPanel() {
       {/* header */}
       <header className="flex h-8 shrink-0 items-center justify-between border-b border-hairline px-3">
         <div className="flex items-center gap-2.5">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Session</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{t('Session')}</span>
           <span className="font-mono text-[11px] text-steel">{packageName}&gt;</span>
-          <span className="text-[11px] text-muted">{cells.length} {cells.length === 1 ? 'cell' : 'cells'}</span>
+          <span className="text-[11px] text-muted">{cells.length} {cells.length === 1 ? t('cell') : t('cells')}</span>
           {warningCount > 0 && (
             <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-px font-mono text-[10px] text-warning">
-              {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
+              {warningCount} {warningCount === 1 ? t('warning') : t('warnings')}
             </span>
           )}
           {historyTrimmed && (
             <span className="rounded-full border border-hairline px-2 py-px font-mono text-[10px] text-muted">
-              history trimmed to last 1,000 cells
+              {t('history trimmed to last 1,000 cells')}
             </span>
           )}
         </div>
         <div className="flex items-center gap-0.5">
-          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Copy all as transcript" onClick={copyAll}>
+          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Copy all as transcript')} onClick={copyAll}>
             <ClipboardCopy size={14} />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Export session as Markdown (⇧click: .lisp transcript)" onClick={(e) => void exportSession(e.shiftKey ? 'lisp' : 'md')}>
+          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Export session as Markdown (⇧click: .lisp transcript)')} onClick={(e) => void exportSession(e.shiftKey ? 'lisp' : 'md')}>
             <Download size={14} />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Paste into editor" onClick={() => void pasteIntoEditor()}>
+          <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Paste into editor')} onClick={() => void pasteIntoEditor()}>
             <ClipboardPaste size={14} />
           </button>
           {!atBottom && (
-            <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title="Scroll to bottom" onClick={() => scrollToBottom()}>
+            <button className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary" title={t('Scroll to bottom')} onClick={() => scrollToBottom()}>
               <ArrowDownToLine size={14} />
             </button>
           )}
           <button
             className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors duration-100 hover:bg-raised hover:text-error"
-            title="Clear session (Ctrl⇧L)"
+            title={t('Clear session (Ctrl⇧L)')}
             onClick={() => setConfirm('clear-session')}
           >
             <Trash2 size={14} />
@@ -320,11 +324,10 @@ export default function SessionPanel() {
       {(engineStatus === 'ready-jscl' || engineStatus === 'ready-mock') && (
         <div className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning/[0.07] px-3 py-1.5 text-[11.5px] leading-snug text-secondary">
           <span className="mt-px shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-warning">
-            {engineStatus === 'ready-jscl' ? 'JSCL fallback' : 'demo runtime'}
+            {engineStatus === 'ready-jscl' ? t('JSCL fallback') : t('demo runtime')}
           </span>
           <span>
-            ECL could not be loaded. This rung has no debugger, no standard input, no packages and only a subset of ANSI Common Lisp.
-            Restart the runtime once the network is back to get the real image.
+            {t('ECL could not be loaded. This rung has no debugger, no standard input, no packages and only a subset of ANSI Common Lisp. Restart the runtime once the network is back to get the real image.')}
           </span>
         </div>
       )}
@@ -353,7 +356,7 @@ export default function SessionPanel() {
             onClick={() => scrollToBottom()}
           >
             <ArrowDown size={12} />
-            New result — jump to latest
+            {t('New result — jump to latest')}
           </motion.button>
         )}
       </AnimatePresence>

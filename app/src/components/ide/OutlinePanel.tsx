@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useProject, collectLispFiles } from '@/store/project'
 import { useUi } from '@/store/ui'
@@ -19,11 +20,12 @@ const KIND_SHORT: Record<string, string> = {
 }
 
 function Row({ kind, label, where, ticked, onClick }: { kind: string; label: string; where?: string; ticked?: boolean; onClick: () => void }) {
+  const { t } = useI18n()
   return (
     <button type="button" onClick={onClick} className="flex w-full items-center gap-1.5 truncate px-2 py-[2px] text-left font-mono text-[11px] hover:bg-raised" title={where}>
       <span className="w-9 shrink-0 text-[10px] text-muted">{KIND_SHORT[kind] ?? kind}</span>
       <span className="truncate text-secondary">{label}</span>
-      {ticked && <Check size={11} className="ml-auto shrink-0 text-steel" aria-label="evaluated" />}
+      {ticked && <Check size={11} className="ml-auto shrink-0 text-steel" aria-label={t('evaluated')} />}
       {!ticked && where && <span className="ml-auto shrink-0 text-[10px] text-muted">{where}</span>}
     </button>
   )
@@ -43,6 +45,7 @@ function Section({ title, count, children }: { title: string; count: number; chi
 }
 
 export default function OutlinePanel() {
+  const { t } = useI18n()
   const buffers = useWorkspace((s) => s.buffers)
   const activeBufferId = useWorkspace((s) => s.activeBufferId)
   const definitions = useProject((s) => s.definitions)
@@ -95,25 +98,25 @@ export default function OutlinePanel() {
   return (
     <div className="flex max-h-[55%] shrink-0 flex-col border-b border-hairline" data-testid="outline-panel">
       <div className="flex items-center gap-1 px-2 pt-1.5">
-        <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Outline</span>
+        <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{t('Outline')}</span>
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setOutlineOpen(false) } }}
-          placeholder="filter…"
+          placeholder={t('filter…')}
           spellCheck={false}
-          aria-label="Filter outline"
+          aria-label={t('Filter outline')}
           className="h-6 w-full min-w-0 rounded-sm bg-inset px-2 font-mono text-[11.5px] text-primary outline-none ring-1 ring-hairline focus:ring-steel"
         />
-        <button type="button" title="Close outline (Ctrl⇧O)" onClick={() => setOutlineOpen(false)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">
+        <button type="button" title={t('Close outline (Ctrl⇧O)')} onClick={() => setOutlineOpen(false)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-raised hover:text-primary">
           <X size={12} />
         </button>
       </div>
       <div className={cn('px-2 py-1 font-mono text-[10px] text-muted', total === 0 && 'pb-2')}>
-        {total === 0 ? (active ? 'no definitions' : 'no buffer') : `${total} definition${total === 1 ? '' : 's'} · ✓ = evaluated / loaded`}
+        {total === 0 ? (active ? t('no definitions') : t('no buffer')) : `${total} ${total === 1 ? t('definition') : t('definitions')} · ${t('✓ = evaluated / loaded')}`}
       </div>
       <div className="min-h-0 overflow-y-auto pb-1">
-        <Section title={active ? active.name : 'buffer'} count={bufferRows.length}>
+        <Section title={active ? active.name : t('buffer')} count={bufferRows.length}>
           {bufferRows.map((e) => (
             <Row key={e.offset} kind={e.kind} label={e.label} ticked={evaluated.has(e.name)} onClick={() => jumpToPosition(e.line, e.col)} />
           ))}
@@ -125,13 +128,13 @@ export default function OutlinePanel() {
             ))}
           </Section>
         ))}
-        <Section title="session box" count={sessionDefs.length}>
+        <Section title={t('session box')} count={sessionDefs.length}>
           {sessionDefs.map((d) => (
-            <Row key={`cell:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`[${d.cellN}]`} onClick={() => { if (d.cellN != null) window.dispatchEvent(new CustomEvent('conscell:goto-cell', { detail: d.cellN })) }} />
+            <Row key={`cell:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`[${d.cellN}]`} onClick={() => { if (d.cellN != null) window.dispatchEvent(new CustomEvent('martingalecell:goto-cell', { detail: d.cellN })) }} />
           ))}
         </Section>
         {bufferDefinitions.some((d) => d.cellN == null && d.bufferId !== active?.id && matches(d.name)) && (
-          <Section title="other buffers (evaluated)" count={bufferDefinitions.filter((d) => d.cellN == null && d.bufferId !== active?.id && matches(d.name)).length}>
+          <Section title={t('other buffers (evaluated)')} count={bufferDefinitions.filter((d) => d.cellN == null && d.bufferId !== active?.id && matches(d.name)).length}>
             {bufferDefinitions.filter((d) => d.cellN == null && d.bufferId !== active?.id && matches(d.name)).map((d) => (
               <Row key={`b:${d.bufferId}:${d.name}`} kind={d.kind} label={d.name.toLowerCase()} where={`${d.bufferName}:${d.line}`} onClick={() => gotoBuffer(d.bufferId, d.line, d.col)} />
             ))}

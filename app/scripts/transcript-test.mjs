@@ -43,11 +43,11 @@ const lisp = buildLispTranscript(cells, { engine: 'ECL 24.5 (WECL)', exportedAt:
 if (process.argv.includes('--show')) { console.log(md); console.log(lisp) }
 
 /* names */
-check('file name carries the date and extension', transcriptFileName('md', when) === 'conscell-session-2026-09-09-1530.md' && transcriptFileName('lisp', when).endsWith('.lisp'), transcriptFileName('md', when))
+check('file name carries the date and extension', transcriptFileName('md', when) === 'martingalecell-session-2026-09-09-1530.md' && transcriptFileName('lisp', when).endsWith('.lisp'), transcriptFileName('md', when))
 check('encodeBase64 matches Buffer for UTF-8 text', encodeBase64('héllo ×') === Buffer.from('héllo ×').toString('base64') && encodeBase64('ab') === 'YWI=' && encodeBase64('a') === 'YQ==')
 
 /* markdown */
-check('md: header with export time, engine and cell count', md.startsWith('# ConsCell session\n\nExported 2026-09-09 15:30 · ECL 24.5 (WECL) · 8 cells'), md.slice(0, 80))
+check('md: header with export time, engine and cell count', md.startsWith('# MartingaleCell session\n\nExported 2026-09-09 15:30 · ECL 24.5 (WECL) · 8 cells'), md.slice(0, 80))
 check('md: cell 1 is a lisp fence with the input and the values', /## Cell 1 · `CL-USER` · 12 ms\n\n```lisp\n\(defun sq \(x\) \(\* x x\)\)\n\(sq 12\)\n```\n\n```lisp\n;;=> SQ\n;;=> 144\n```/.test(md))
 check('md: output block and a warning quote', md.includes('**Output**\n```text\nhi\nthere\n```') && md.includes('> ⚠️ careful'))
 check('md: error with type, report, details and frames; no values', md.includes('**Error** `DIVISION-BY-ZERO`\n```text\nDivision by zero\n```') && md.includes('- operation: `/`') && md.includes('Frames (innermost first): `BOOM`') && !md.includes('## Cell 3 · `CL-USER` · 2.30 s\n\n```lisp\n(defun boom () (/ 1 0))\n(boom)\n```\n\n```lisp\n;;=>'), md.split('## Cell 3')[1]?.split('## Cell 4')[0])
@@ -62,7 +62,7 @@ check('md: aborted cell is marked', md.includes('_Evaluation aborted._'))
 check('md: a value containing ``` gets a longer fence', md.includes('````lisp\n;;=> "a ``` b"\n````'), md.split('## Cell 8')[1])
 
 /* lisp */
-check('lisp: header and cell banners', lisp.startsWith(';;;; ConsCell session — exported 2026-09-09 15:30 · ECL 24.5 (WECL)\n;;;; 8 cells.') && lisp.includes(';;; ---- cell 1 · CL-USER · 12 ms ----\n(defun sq (x) (* x x))\n(sq 12)\n;;=> SQ\n;;=> 144'), lisp.slice(0, 200))
+check('lisp: header and cell banners', lisp.startsWith(';;;; MartingaleCell session — exported 2026-09-09 15:30 · ECL 24.5 (WECL)\n;;;; 8 cells.') && lisp.includes(';;; ---- cell 1 · CL-USER · 12 ms ----\n(defun sq (x) (* x x))\n(sq 12)\n;;=> SQ\n;;=> 144'), lisp.slice(0, 200))
 check('lisp: OUT and WARNING lines are comments', lisp.includes(';; OUT hi\n;; OUT there\n;; WARNING: careful'))
 check('lisp: an error replaces the values and carries the type', lisp.includes('(boom)\n;; ERROR (DIVISION-BY-ZERO): Division by zero') && !lisp.includes('(boom)\n;;=>'))
 check('lisp: in-package is emitted when the package changes, not for the first CL-USER cell', lisp.includes(';;; ---- cell 4 · MY-PKG · 12 ms ----\n(in-package :my-pkg)\n(car x)') && !lisp.includes('cell 1 · CL-USER · 12 ms ----\n(in-package') && !lisp.includes('cell 5 · MY-PKG · 12 ms ----\n(in-package') && lisp.includes('cell 7 · CL-USER · 5.00 s ----\n(in-package :cl-user)'), lisp)

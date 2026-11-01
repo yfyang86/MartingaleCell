@@ -22,6 +22,10 @@ export interface PlotPoint {
   y: number
 }
 
+import type { PlotDefs } from './expr'
+import { sanitizeSvg } from './sanitize'
+export type { PlotDefs }
+
 export type PlotStyle = 'lines' | 'points' | 'linespoints' | 'dots' | 'boxes' | 'impulses'
 
 export interface PlotSeries {
@@ -50,6 +54,8 @@ export interface PlotArrow {
 }
 
 export interface PlotSpec {
+  /** Sprint 34: user-defined functions and variables from the script (`f(x) = …`, `a = …`) */
+  defs?: PlotDefs
   title?: string
   xlabel?: string
   ylabel?: string
@@ -73,9 +79,13 @@ export interface PlotDataFile {
 
 /** A plot attached to a session cell. */
 export interface PlotAttachment {
-  spec: PlotSpec
+  /** parsed gnuplot spec; absent for raw-SVG plots (see svg) */
+  spec?: PlotSpec
   script: string
   outputName?: string
+  /** raw SVG, drawn by the engine itself (chemicl's show-smiles) instead
+   * of going through the gnuplot-subset renderer */
+  svg?: string
 }
 
 export const PLOT_MARKER = ';;PLOT64 '
@@ -150,6 +160,13 @@ export function decodePlotMarker(line: string): { script: string; files: PlotDat
 export function parsePlotMarker(line: string): PlotAttachment | null {
   const unpacked = decodePlotMarker(line)
   if (!unpacked) return null
+  /* raw-SVG capture: the payload's first string is the SVG itself
+   * (chemicl's show-smiles draws molecules this way) */
+  const head = unpacked.script.trimStart().slice(0, 5).toLowerCase()
+  if (head === '<?xml' || unpacked.script.trimStart().startsWith('<svg'))
+    /* Sprint 35: any Lisp code can print the marker, and the SVG goes into
+     * the DOM with innerHTML — strip scripting before it gets there */
+    return { svg: sanitizeSvg(unpacked.script), script: '' }
   const spec = parseGnuplot(unpacked.script, unpacked.files)
   return { spec, script: unpacked.script, outputName: spec.outputName }
 }
@@ -306,6 +323,18 @@ export function parseGnuplot(script: string, files: PlotDataFile[]): PlotSpec {
     const line = rawLine.trim()
     if (!line || line === 'EOF' || /^cat\s*<</.test(line) || line.startsWith('#')) continue
     let m: RegExpMatchArray | null
+
+    /* Sprint 34: user definitions — `f(x, y) = body` and `a = body` (not `set …`, not `==`) */
+    if ((m = line.match(/^([a-zA-Z_]\w*)\s*\(\s*([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\s*\)\s*=(?!=)\s*(.+)$/))) {
+      const defs = (spec.defs ??= {})
+      ;(defs.functions ??= {})[m[1]] = { params: m[2].split(',').map((p) => p.trim()), body: m[3].trim() }
+      continue
+    }
+    if ((m = line.match(/^([a-zA-Z_]\w*)\s*=(?!=)\s*(.+)$/)) && !/^(?:set|unset|show|plot|splot|replot)\b/.test(line)) {
+      const defs = (spec.defs ??= {})
+      ;(defs.variables ??= {})[m[1]] = m[2].trim()
+      continue
+    }
 
     if (/^set\s+nokey\b/.test(line)) { spec.legend = false; continue }
     if (/^set\s+key\b/.test(line)) { spec.legend = true; continue }

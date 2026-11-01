@@ -1,5 +1,5 @@
 /**
- * ConsCell shared snippet catalog.
+ * MartingaleCell shared snippet catalog.
  *
  * Consumed by the Examples gallery (`/examples`) and by the IDE page via
  * dynamic import (`/ide?example=<slug>`). All snippets are real, runnable
@@ -269,6 +269,206 @@ export const EXAMPLES: Example[] = [
     expectedOutput: `;; OUT Withdrawing 30 from Ada's account…
 ;; OUT New balance: 120
 ;;=> 120`,
+  },
+  {
+    slug: 'chemistry',
+    title: 'Molecules (chemicl)',
+    category: 'Chemistry',
+    difficulty: 3,
+    description:
+      'Bundled chemicl port: build molecules, look up elements, compute formulas and molar masses.',
+    code: `;;;; Molecules with the bundled chemicl port (Explorer → Open sample
+;;;; project: chemicl). After loading it, evaluate these forms.
+
+;;; SMILES in, molecule out — caffeine and aspirin, straight from the
+;;; string (the sample's init.lisp already parsed *caffeine* and
+;;; *aspirin* this way)
+(list (chemicl:molecular-formula *caffeine*)
+      (chemicl:mass *caffeine*)
+      (chemicl:molecular-formula *aspirin*))
+
+;;; draw them — each call renders an SVG structure diagram in the cell
+(chemicl:show-smiles "Cn1cnc2c1c(=O)n(C)c(=O)n2C" :name "caffeine")
+(chemicl:show-smiles "CC(=O)Oc1ccccc1C(=O)O" :name "aspirin")
+(chemicl:show-smiles "N#Cc1ccc(cc1)S(=O)(=O)N" :name "saccharin")
+
+;;; any SMILES, evaluated on the spot
+(chemicl:molecular-formula
+  (chemicl:parse-smiles-string "OC(=O)C(C)CC(N)C(=O)O")) ; aspartic acid
+
+;;; write it back out (non-canonical) and re-parse — a round trip
+(let* ((m (chemicl:parse-smiles-string "CC(=O)Oc1ccccc1C(=O)O"))
+       (smi (chemicl:write-smiles-string m))
+       (m2 (chemicl:parse-smiles-string smi)))
+  (list smi
+        (chemicl:molecular-formula m)
+        (chemicl:molecular-formula m2)))
+
+;;; the periodic table — element lookup by symbol or atomic number
+(list (chemicl:name (chemicl:get-element 26))
+      (chemicl:mass (chemicl:get-element "Fe"))
+      (chemicl:electronegativity (chemicl:get-element :o)))
+
+;;; water, by hand: two H, one O, two bonds
+(defparameter *water*
+  (let ((mol (chemicl:make-molecule :name "water")))
+    (chemicl:add-atom mol 8 "O")
+    (chemicl:add-atom mol 1 "H1")
+    (chemicl:add-atom mol 1 "H2")
+    (chemicl:add-bond mol "O" "H1")
+    (chemicl:add-bond mol "O" "H2")
+    mol))
+
+(list (chemicl:molecular-formula *water*)
+      (chemicl:mass *water*)
+      (chemicl:exact-mass *water*))
+
+;;; ring perception on cyclohexane
+(defparameter *cyclohexane*
+  (let ((mol (chemicl:make-molecule :name "cyclohexane")))
+    (loop for i from 1 to 6 do (chemicl:add-atom mol 6 (format nil "C~A" i)))
+    (loop for i from 1 to 12 do (chemicl:add-atom mol 1 (format nil "H~A" i)))
+    (loop for i from 1 to 6
+          do (chemicl:add-bond mol
+                               (format nil "C~A" (1+ (mod (1- i) 6)))
+                               (format nil "C~A" (1+ (mod i 6))))
+             (chemicl:add-bond mol (format nil "C~A" i)
+                               (format nil "H~A" (1+ (* (1- i) 2))))
+             (chemicl:add-bond mol (format nil "C~A" i)
+                               (format nil "H~A" (+ (* (1- i) 2) 2))))
+    mol))
+
+(list (chemicl:molecular-formula *cyclohexane*)
+      (mapcar #'length (chemicl:minimal-rings (chemicl:hanser-rings *cyclohexane*))))`,
+    expectedOutput: `;;=> ("C8H10N4O2" 194.1906008720398 "C9H8O4")
+;;PLOT64 <caffeine structure svg>
+;;PLOT64 <aspirin structure svg>
+;;PLOT64 <saccharin structure svg>
+;;=> "C6H11N1O4"
+;;=> ("[OH]C(=O)c1([cH][cH][cH][cH]c1OC(=O)[CH3])" "C9H8O4" "C9H8O4")
+;;=> ("iron" 55.845 3.44)
+;;=> *WATER*
+;;=> ("H2O1" 18.01528024673462 18.010565042495728)
+;;=> *CYCLOHEXANE*
+;;=> ("C6H12" (7))`,
+  },
+  {
+    slug: 'smiles-gallery',
+    title: 'SMILES gallery',
+    category: 'Chemistry',
+    difficulty: 2,
+    description:
+      'Parse a shelf of known molecules from their SMILES strings; formulas, masses and one ring count each.',
+    code: `;;;; A small shelf of molecules, straight from SMILES. The chemicl
+;;;; sample project must be loaded (Explorer → Open sample project:
+;;;; chemicl), then evaluate.
+
+(defparameter *shelf*
+  '(("ethanol"     "CCO")
+    ("benzene"    "c1ccccc1")
+    ("caffeine"   "Cn1cnc2c1c(=O)n(C)c(=O)n2C")
+    ("aspirin"    "CC(=O)Oc1ccccc1C(=O)O")
+    ("pyrrole"    "[nH]1cccc1")
+    ("cyclohexane" "C1CCCCC1")
+    ("saccharin"  "N#Cc1ccc(cc1)S(=O)(=O)N")))
+
+;;; name → formula, average mass, and the number of rings
+(mapcar (lambda (pair)
+          (let* ((mol (chemicl:parse-smiles-string (second pair)
+                                                   :name (first pair))))
+            (list (first pair)
+                  (chemicl:molecular-formula mol)
+                  (chemicl:mass mol)
+                  (length (chemicl:minimal-rings
+                            (chemicl:hanser-rings mol))))))
+        *shelf*)
+
+;;; and the heaviest one on the shelf
+(let ((mols (mapcar (lambda (p) (chemicl:parse-smiles-string (second p)
+                                                         :name (first p)))
+                    *shelf*)))
+  (chemicl:name
+    (first (sort (copy-list mols) #'> :key #'chemicl:mass))))
+
+;;; draw the whole shelf — one SVG structure diagram per molecule
+(mapc (lambda (pair)
+        (chemicl:show-smiles (second pair) :name (first pair)))
+      *shelf*)`,
+    expectedOutput: `;;=> *SHELF*
+;;=> (("ethanol" "C2H6O1" 46.06844091415405 0)
+;;=>  ("benzene" "C6H6" 78.11184167861938 1)
+;;=>  ("caffeine" "C8H10N4O2" 194.1906008720398 2)
+;;=>  ("aspirin" "C9H8O4" 180.15742301940918 1)
+;;=>  ("pyrrole" "C4H5N1" 67.08920073509216 1)
+;;=>  ("cyclohexane" "C6H12" 84.1594820022583 1)
+;;=>  ("saccharin" "C7H6N2O2S1" 182.19973993301392 1))
+;;=> "caffeine"
+;;PLOT64 <ethanol structure svg>
+;;PLOT64 <benzene structure svg>
+;;PLOT64 <caffeine structure svg>
+;;PLOT64 <aspirin structure svg>
+;;PLOT64 <pyrrole structure svg>
+;;PLOT64 <cyclohexane structure svg>
+;;PLOT64 <saccharin structure svg>`,
+  },
+  {
+    slug: 'mop-toolkit',
+    title: 'The Metaobject Protocol',
+    category: 'CLOS',
+    difficulty: 3,
+    description:
+      'Proxy slots via slot-value-using-class, custom slot-unbound, funcallable instances, and a programmatic ensure-class.',
+    code: `;;;; The Metaobject Protocol — customize CLOS itself.
+
+;;; 1. Proxy slots: an :around method on SLOT-VALUE-USING-CLASS sees every
+;;; read of every slot of a standard instance. Multiply one slot by 10.
+(defclass temperature ()
+  ((celsius :initarg :celsius :initform 0)))
+
+(defmethod sb-mop:slot-value-using-class :around
+    ((class standard-class) (obj temperature)
+     (slot sb-mop:standard-effective-slot-definition))
+  (let ((raw (call-next-method)))
+    (if (eq (sb-mop:slot-definition-name slot) 'celsius)
+        (* 10 raw)   ; e.g. "tenths of a degree" storage
+        raw)))
+
+(defvar *t* (make-instance 'temperature :celsius 21))
+(slot-value *t* 'celsius)
+
+;;; 2. slot-unbound — reading a never-set slot can recover, not error.
+(defclass cache () ((hit :reader cache-hit) (miss :reader cache-miss)))
+
+(defmethod slot-unbound ((class standard-class) (obj cache) name)
+  (declare (ignore class name))
+  'cold)
+
+(list (cache-hit (make-instance 'cache))
+      (cache-miss (make-instance 'cache)))
+
+;;; 3. programmatic class creation — ENSURE-CLASS with canonicalized
+;;; :direct-slots (the wasm build's fix; upstream SBCL rejects this).
+(sb-mop:ensure-class 'point
+  :direct-superclasses (list (find-class 'standard-object))
+  :direct-slots (list (list 'x :initarg :x :initform 0)
+                      (list 'y :initarg :y :initform 0)))
+(slot-value (make-instance 'point :x 3 :y 4) 'x)
+
+;;; 4. funcallable instances — an object you can CALL.
+(defclass predicate-item ()
+  ((threshold :initarg :threshold :reader threshold))
+  (:metaclass sb-mop:funcallable-standard-class))
+
+(defmethod initialize-instance :after ((p predicate-item) &key)
+  (sb-mop:set-funcallable-instance-function
+   p (lambda (n) (> n (threshold p)))))
+
+(defparameter *big* (make-instance 'predicate-item :threshold 100))
+(mapcar *big* '(20 150 1000))`,
+    expectedOutput: `;;=> 210
+;;=> (COLD COLD)
+;;=> 3
+;;=> (NIL T T)`,
   },
   {
     slug: 'shape-dispatch',
@@ -681,6 +881,95 @@ export const EXAMPLES: Example[] = [
 ;;=> NIL`,
   },
   {
+    slug: 'matrix-terminal',
+    title: 'Matrix effect on the ANSI screen',
+    category: 'Algorithms',
+    difficulty: 2,
+    description:
+      'Cursor addressing, colors and a frame loop — rendered live on the cell\'s ansi screen (SBCL).',
+    code: `
+;;;; The Matrix effect — escape-code-driven output. The cell detects the
+;;;; cursor/color codes and renders them on a live terminal screen
+;;;; (SBCL streams such output; ECL flushes per newline only, so its
+;;;; screen stays blank). Iterations: 20 here, 0 = run until Ctrl .
+
+(defun clear-screen ()
+  "Clear the terminal screen using ANSI escape codes."
+  (format t "~c[2J~c[H" #\\Escape #\\Escape))
+
+(defun move-cursor (row col)
+  "Move the cursor to the specified position using ANSI escape codes."
+  (format t "~c[~d;~dH" #\\Escape row col))
+
+(defun set-green-color ()
+  "Set the text color to green using ANSI escape codes."
+  (format t "~c[32m" #\\Escape))
+
+(defun reset-color ()
+  "Reset the text color to default using ANSI escape codes."
+  (format t "~c[0m" #\\Escape))
+
+(defun random-char ()
+  "A random character, with a higher probability of being a space."
+  (if (zerop (random 5))
+      #\\Space
+      (code-char (+ 33 (random 94))))) ; '!' to '~'
+
+(defun copy-2d-array (src target w h)
+  "Copy the contents of a 2D array to another 2D array."
+  (loop for row from 0 below h do
+          (loop for col from 0 below w do
+                  (setf (aref target row col) (aref src row col)))))
+
+(defun update-with-changed-chars (buffer prev-buffer width height)
+  "Update the terminal with only the changed characters."
+  (loop for row from 0 below height do
+          (loop for col from 0 below width do
+                  (unless (char= (aref buffer row col) (aref prev-buffer row col))
+                    (move-cursor row col)
+                    (format t "~c " (aref buffer row col))))))
+
+(defun random-2d-array-with-columns (buffer columns width height)
+  "Drop a new character at each column's current head, then advance."
+  (loop for col from 0 below width do
+          (when (zerop (random 10)) ; 1/10 chance to restart a column
+                (setf (aref columns col) (random height)))
+          (setf (aref buffer (aref columns col) col) (random-char))
+          (incf (aref columns col))
+          (when (>= (aref columns col) height)
+                (setf (aref columns col) 0))))
+
+(defun matrix-effect (width height delay-time iterations)
+  "Simulate the Matrix effect: green characters falling down the screen.
+ITERATIONS 0 means run until interrupted (Ctrl .)."
+  (clear-screen)
+  (set-green-color)
+  (loop
+   with columns = (make-array width :initial-element 0)
+   with buffer = (make-array (list height width) :initial-element #\\Space)
+   with prev-buffer = (make-array (list height width) :initial-element #\\Space)
+   for i from 0
+   while (or (zerop iterations) (< i iterations))
+   do (progn
+        (random-2d-array-with-columns buffer columns width height)
+        (update-with-changed-chars buffer prev-buffer width height)
+        (copy-2d-array buffer prev-buffer width height)
+        (sleep delay-time)
+        (finish-output))))
+
+(defun run-matrix-effect (&optional (w 40) (h 16) (delay-time 0.08) (iterations 20))
+  "Run the effect; (run-matrix-effect 60 20 0.05 0) runs until Ctrl ."
+  (unwind-protect
+       (matrix-effect w h delay-time iterations)
+    (reset-color)))
+
+(run-matrix-effect)
+`,
+    expectedOutput: `;; ansi screen: 16 rows x 40 columns of green characters, refreshed
+;; ~12 frames/s for 20 frames (~1.6 s), then the color resets and the
+;; cell returns 0 (the LOOP's fall-through value). No plain stdout.`,
+  },
+  {
     slug: 'fractal-plots',
     title: 'Fractal plots',
     category: 'Algorithms',
@@ -886,7 +1175,7 @@ Add your own: (setf (gethash :my-shape *fractal-generators*) generator)."
     description:
       'Call a function that does not exist yet, then define it from inside the debugger and let the form finish.',
     code: `;;;; Two mistakes every REPL session makes — and the two restarts
-;;;; ConsCell adds for them. Neither exists in the image itself.
+;;;; MartingaleCell adds for them. Neither exists in the image itself.
 
 ;; 1. Undefined function. The cell pauses with DEFINE-FUNCTION: type a
 ;;    lambda (or the name of an existing function) and the form re-runs.

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 export const DOC_SECTIONS = [
   { id: 'getting-started', label: 'Getting started' },
@@ -13,6 +14,7 @@ export const DOC_SECTIONS = [
   { id: 'debugger', label: 'Debugger & restarts' },
   { id: 'projects', label: 'Projects' },
   { id: 'modules', label: 'Modules' },
+  { id: 'chemicl', label: 'Chemistry (chemicl)' },
   { id: 'shortcuts', label: 'Keyboard shortcuts' },
   { id: 'persistence', label: 'Persistence & privacy' },
   { id: 'faq', label: 'FAQ' },
@@ -51,14 +53,15 @@ function scrollToSection(id: string) {
 
 export default function DocsSidebar() {
   const active = useScrollSpy()
+  const { t } = useI18n()
 
   return (
     <aside className="sticky top-16 hidden max-h-[calc(100dvh-4rem)] w-60 shrink-0 self-start overflow-y-auto py-14 pr-6 scrollbar-thin lg:block">
       <p className="px-3 font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        Documentation
+        {t('Documentation')}
       </p>
 
-      <nav className="mt-4 flex flex-col gap-0.5" aria-label="Documentation sections">
+      <nav className="mt-4 flex flex-col gap-0.5" aria-label={t('Documentation sections')}>
         {DOC_SECTIONS.map((s, i) => {
           const isActive = active === s.id
           return (
@@ -81,7 +84,7 @@ export default function DocsSidebar() {
                   className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-steel"
                 />
               )}
-              {s.label}
+              {t(s.label)}
             </motion.button>
           )
         })}
@@ -93,15 +96,15 @@ export default function DocsSidebar() {
         transition={{ delay: 0.04 * DOC_SECTIONS.length + 0.1, duration: 0.35 }}
         className="cc-panel mt-8 p-4"
       >
-        <p className="text-[13px] font-semibold text-primary">New here?</p>
+        <p className="text-[13px] font-semibold text-primary">{t('New here?')}</p>
         <p className="mt-1 text-[12px] leading-relaxed text-secondary">
-          Skip the reading — open the workspace and evaluate something.
+          {t('Skip the reading — open the workspace and evaluate something.')}
         </p>
         <Link
           to="/ide"
           className="group mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-steel px-4 py-2 text-[12.5px] font-semibold text-abyss transition-all [transition-duration:120ms] ease-snap hover:-translate-y-px hover:bg-steel-bright active:scale-[0.97]"
         >
-          Launch the IDE
+          {t('Launch the IDE')}
           <ArrowRight
             size={13}
             strokeWidth={2}

@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type { ConditionDetail, DebugPause, EngineStatus, InputRequest, LogLevel, LogSource } from '@/lisp/types'
 import type { PlotAttachment } from '@/plot/gnuplot'
+import type { TerminalFrame } from '@/terminal/ansi'
 import { pushHistory, sanitizeHistory } from '@/session/history'
 import { getEnginePref, setEnginePref, type EnginePref } from '@/lisp/engine-pref'
 
@@ -67,6 +68,8 @@ export interface Cell {
   project?: ProjectLoadInfo
   /** gnuplot captures (worker ;;PLOT64 markers) rendered as SVG plots */
   plots?: PlotAttachment[]
+  /** live ANSI screen, when the cell's output is escape-code driven */
+  terminal?: TerminalFrame
   /** appended from a Markdown transcript, not evaluated in this session */
   imported?: boolean
   /** the buffer this cell was opened into ("Open as buffer"); re-run evaluates that buffer's current text */
@@ -131,7 +134,7 @@ export const DEFAULT_SETTINGS: IdeSettings = {
   debugOnError: true,
 }
 
-export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled to WASM.
+export const WELCOME_CODE = `;;;; Welcome to MartingaleCell — Common Lisp, compiled to WASM.
 ;;;; Press Ctrl+Enter to evaluate the form at point.
 
 (defun fib (n)
@@ -143,7 +146,7 @@ export const WELCOME_CODE = `;;;; Welcome to ConsCell — Common Lisp, compiled 
 (fib 15)
 `
 
-const IDB_KEY = 'conscell-workspace-v1'
+const IDB_KEY = 'martingalecell-workspace-v1'
 const MAX_CELLS = 1000
 const MAX_LOGS = 2000
 

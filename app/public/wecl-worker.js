@@ -1,4 +1,4 @@
-/* ConsCell — WECL (ECL → WebAssembly) classic Web Worker.
+/* MartingaleCell — WECL (ECL → WebAssembly) classic Web Worker.
  *
  * Hand-written, NOT bundled. Loads the self-hosted WECL runtime from /wecl/:
  *   1. importScripts('/wecl/boot.js')  — creates `var Module = {}` + wecl_init_hooks

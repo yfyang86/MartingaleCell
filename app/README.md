@@ -1,10 +1,10 @@
-# ConsCell
+# MartingaleCell
 
 A notebook-style Common Lisp IDE that runs entirely in the browser, with
 **two real engines**: **SBCL** (compiled to `wasm32-wasip1`) boots by
 default, and **ECL** (ANSI CL, compiled to WebAssembly as
 [WECL](https://turtleware.eu/)) takes over when SBCL cannot boot or when
-chosen in Settings. ConsCell wraps either in a CodeMirror editor,
+chosen in Settings. MartingaleCell wraps either in a CodeMirror editor,
 Jupyter-like result cells, a log console, a project explorer and an
 in-runtime package manager. Nothing leaves the browser.
 
@@ -87,8 +87,8 @@ screen shows each artifact's download progress.
 | Worker | `public/wecl-worker.js` | Hand-written classic Web Worker. Half of it is a Common Lisp helper library (package `cc`) embedded as a string: the eval loop, the project loader (parses `.asd` itself — the image has no ASDF), `ext:shell` polyfill with gnuplot capture, and the `package-install` family. It also swaps Emscripten's `invoke_*` setjmp trampolines for lean ones at instantiation — the interpreter runs ~30× faster for it (see `Sprints/Sprint7`). |
 | Runtime client | `src/lisp/` | `runtime.ts` owns the engine ladder (`engine-pref.ts`: SBCL worker → ECL worker → JSCL from CDN → built-in mock, or the chosen engine), serialises jobs, parses markers. `symbols.ts` feeds completion and doc popovers. |
 | Stores | `src/store/` | Zustand: `workspace` (buffers, cells, logs, settings; persisted to IndexedDB), `evaluate` (cell orchestration), `project` (local folder via File System Access API or virtual ZIP project), `ui`, `editor-meta`. |
-| Service worker | `public/sw.js` | Registered by `main.tsx` on production builds as `./sw.js?v=<version>`. Navigations network-first with the cached `index.html` offline; every other same-origin GET (assets, workers, engine artifacts, sample zip) cache-first. The cache is named after the app version, so a new build drops the old one. |
-| Project loading, plots | `src/project/`, `src/plot/` | Streams per-file load status into a cell; parses the gnuplot subset cl-plot emits and renders SVG. A `plot` line may name several data files (all are shipped); function expressions and data files that did not ship are listed in the plot as "not drawn" rather than dropped. |
+| Service worker | `public/sw.js`, `src/lisp/sw-warm.ts` | Registered by `main.tsx` on production builds as `./sw.js?v=<version>`. Navigations network-first with the cached `index.html` offline; every other same-origin GET (assets, workers, engine artifacts, sample zip) cache-first. After an engine boots, the page asks the worker to warm the cache with that engine's artifacts (`warm` message), so the first visit is enough for offline use. The cache is named after the app version, so a new build drops the old one. |
+| Project loading, plots | `src/project/`, `src/plot/` | Streams per-file load status into a cell; parses the gnuplot subset cl-plot emits and renders SVG. A `plot` line may name several data files (all are shipped); function expressions are drawn by `src/plot/expr.ts` (gnuplot's operators and maths functions, `f(x) = …` user functions, `a = …` variables, integer arithmetic on integer literals); anything outside that subset, and data files that did not ship, are listed in the plot as "not drawn" rather than dropped. |
 | IDE UI | `src/components/ide/` | Editor (CL tokenizer, rainbow parens, completion, signature help), session cells, log panel, explorer, toolbar, command palette, settings, boot screen. |
 | Pages | `src/pages/`, `src/components/{home,docs,examples}/` | Landing, docs, examples gallery. Routes are code-split; only `/ide` loads CodeMirror and the runtime client. |
 
@@ -121,7 +121,7 @@ sprint, and lands on `dev` through a pull request that must be green in CI.
 
 ## Licence notes
 
-ConsCell's own code is MIT (root `LICENSE`). The default engine is SBCL
+MartingaleCell's own code is MIT (root `LICENSE`). The default engine is SBCL
 (mostly public domain, with MIT-style and BSD-style parts — see SBCL's
 `COPYING`); ECL / WECL (LGPL-2.1+) ships unmodified as the fallback
 engine with its notice kept. The bundled sample project cl-plot is MIT

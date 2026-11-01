@@ -17,14 +17,14 @@ const check = (name, ok, detail = '') => { results.push(`${ok ? '✓' : '✗'} $
 
 const built = await esbuild.build({
   stdin: {
-    contents: "export { parseGnuplot, splitPlotSegments } from './src/plot/gnuplot'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction } from './src/plot/expr'\n",
+    contents: "export { parseGnuplot, splitPlotSegments, parsePlotMarker } from './src/plot/gnuplot'\nexport { sanitizeSvgText } from './src/plot/sanitize'\nexport { buildSvg, plotXRange } from './src/plot/build-svg'\nexport { compileExpression, sampleFunction, evaluateConstant } from './src/plot/expr'\n",
     resolveDir: root, loader: 'ts',
   },
   bundle: true, write: false, format: 'esm', platform: 'neutral', target: 'es2022',
   alias: { '@': path.join(root, 'src') },
   logLevel: 'silent',
 })
-const { parseGnuplot, splitPlotSegments, buildSvg, plotXRange, compileExpression, sampleFunction } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
+const { parseGnuplot, splitPlotSegments, parsePlotMarker, sanitizeSvgText, buildSvg, plotXRange, compileExpression, sampleFunction, evaluateConstant } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'))
 
 const files = [
   { path: '/tmp/a', content: '1 2 3\n2 4 6\n' },
@@ -114,6 +114,69 @@ check('data + function: the function is sampled over the data range and drawn; n
 check('a function series defaults to lines; "with points" is honoured', only.series[0].style === 'lines' && parseGnuplot('plot sin(x) with points\n', files).series[0].style === 'points')
 const both = buildSvg(parseGnuplot('plot sin(x) title "ok", foo(x) title "bad"\n', files))
 check('drawn and not-drawn functions side by side: one polyline, footnote names only bad', /<polyline /.test(both) && /not drawn: bad \(function\)/.test(both) && !/ok \(not drawn\)/.test(both))
+
+/* ---- Sprint 34: gnuplot integer arithmetic ---- */
+const c = (src, defs) => evaluateConstant(src, defs)
+check('integer literals: 1/2 = 0, 7/2 = 3, -7/2 = -3 (truncation)', c('1/2') === 0 && c('7/2') === 3 && c('-7/2') === -3, `${c('1/2')} ${c('7/2')} ${c('-7/2')}`)
+check('a float operand makes it real: 1/2.0 = 0.5, 1.0/2 = 0.5, 1/2. = 0.5', c('1/2.0') === 0.5 && c('1.0/2') === 0.5 && c('1/2.') === 0.5)
+check('x is real: x/2 at 1 = 0.5; 7/2*x at 1 = 3 (integer division binds first)', near(at('x/2', 1), 0.5) && near(at('7/2*x', 1), 3))
+check('2**-1 = 0 for integers, 2.0**-1 = 0.5; 3 % 2 = 1; int(7.9)/2 = 3', c('2**-1') === 0 && c('2.0**-1') === 0.5 && c('3 % 2') === 1 && c('int(7.9)/2') === 3)
+check('integer division by zero is not finite (NaN), not an exception', Number.isNaN(c('1/0')))
+check('sin(1)/2 is real (0.42…)', near(c('sin(1)/2'), Math.sin(1) / 2))
+
+/* ---- Sprint 34: user-defined functions and variables ---- */
+const defs = { functions: { f: { params: ['x'], body: 'x**2 + a' }, g: { params: ['u', 'v'], body: 'u*v - f(u)' }, h: { params: ['x'], body: 'h(x) + 1' } }, variables: { a: '1', b: 'a + 2', k: '1/2' } }
+check('a user function with a user variable: f(x) = x**2 + a, a = 1 → f(3) = 10', near(compileExpression('f(x)', defs)(3), 10), String(compileExpression('f(x)', defs)?.(3)))
+check('two parameters and a nested user call: g(2, 5) = 10 - f(2) = 5', near(c('g(2, 5)', defs), 5), String(c('g(2, 5)', defs)))
+check('a variable defined from another: b = a + 2 = 3', near(c('b', defs), 3))
+check('user integer arithmetic: k = 1/2 = 0', c('k', defs) === 0)
+check('parameters shadow x: f(2*x) at 1 = 5; without defs f is unknown', at('f(2*x)', 1) === null && near(compileExpression('f(2*x)', defs)(1), 5))
+check('wrong arity, unknown user name and infinite recursion compile to null', compileExpression('f(1, 2)', defs) === null && compileExpression('nope(x)', defs) === null && compileExpression('h(x)', defs) === null)
+check('user functions do not override x, pi or the maths functions', near(compileExpression('sin(pi/2) + x', defs)(1), 2))
+
+/* the script parser records definitions and the renderer uses them */
+const scripted = parseGnuplot('a = 2\nsq(x) = a*x**2\nlin(x, m) = m*x + a\nset title "defs"\nplot sq(x) title "sq", lin(x, 3) title "lin", "/tmp/a" using 1:2 title "d" with lines\n', files)
+check('parseGnuplot records `a = 2`, `sq(x) = …`, `lin(x, m) = …` in spec.defs', scripted.defs?.variables?.a === '2' && scripted.defs?.functions?.sq?.body === 'a*x**2' && scripted.defs?.functions?.lin?.params.join(',') === 'x,m', JSON.stringify(scripted.defs))
+check('the definition lines are not series, not ignored set-lines', scripted.series.length === 3 && scripted.ignored.length === 0, `${scripted.series.length} series, ignored=${JSON.stringify(scripted.ignored)}`)
+const svgDefs = buildSvg(scripted)
+check('buildSvg draws both user-function series (three polylines with the data series) and no footnote', (svgDefs.match(/<polyline /g) ?? []).length === 3 && !/not drawn/.test(svgDefs), svgDefs.match(/not drawn:[^<]*/)?.[0] ?? '')
+check('a persisted spec without defs still renders the plain functions', /<polyline /.test(buildSvg(parseGnuplot('plot sin(x)\n', files))))
+const badDef = parseGnuplot('q(x) = nope(x)\nplot q(x) title "q"\n', files)
+check('a user function outside the subset stays "not drawn"', /not drawn: q \(function\)/.test(buildSvg(badDef)))
+check('`set xrange [0:1]` is not taken for a variable definition; `a == 1` is not a definition either', parseGnuplot('set xrange [0:1]\n', files).defs === undefined && parseGnuplot('a == 1\n', files).defs === undefined)
+
+
+/* raw-SVG captures (chemicl's show-smiles): the payload's first string is
+ * the SVG itself — routed as {svg}, gnuplot capture untouched */
+{
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text x="6">mol</text></svg>'
+  const escaped = '"' + svg.replace(/(["\\])/g, '\\$1') + '"'
+  const b64 = Buffer.from(escaped, 'binary').toString('base64')
+  const att = parsePlotMarker(';;PLOT64 ' + b64)
+  check('a raw-SVG capture attaches as {svg} with no spec', att && typeof att.svg === 'string' && att.svg.startsWith('<svg') && att.spec === undefined && att.script === '')
+  const gnuplotLine = ';;PLOT64 ' + Buffer.from('"plot \\"x\\" with lines"', 'binary').toString('base64')
+  const att2 = parsePlotMarker(gnuplotLine)
+  check('a gnuplot capture still parses to a spec', att2 && att2.spec instanceof Object && att2.svg === undefined)
+}
+
+/* Sprint 35 (review blocker 6): the raw-SVG path is sanitised — a payload
+ * any Lisp code can print must not run script on the IDE origin */
+{
+  const mk = (svg) => ';;PLOT64 ' + Buffer.from('"' + svg.replace(/(["\\])/g, '\\$1') + '"', 'binary').toString('base64')
+  const hostile = '<svg xmlns="http://www.w3.org/2000/svg" onload="window.__pwned=1"><script>window.__pwned=2</script><foreignObject><body onload="x()"/></foreignObject><a href="javascript:alert(1)"><text x="1" onclick="y()">mol</text></a><image href="data:text/html,x" xlink:href="javascript:z()"/><circle cx="1" cy="1" r="1" style="fill:url(javascript:1)"/><use href="#ok"/><line x1="0" y1="0" x2="1" y2="1"/></svg>'
+  const att = parsePlotMarker(mk(hostile))
+  const s = att?.svg ?? ''
+  check('hostile raw SVG: <script> removed', !/<script/i.test(s), s)
+  check('hostile raw SVG: <foreignObject> removed with its subtree', !/foreignobject|<body/i.test(s), s)
+  check('hostile raw SVG: on* attributes removed (onload, onclick)', !/\son[a-z]+\s*=/i.test(s), s)
+  check('hostile raw SVG: javascript:/data: URLs removed', !/javascript:|data:/i.test(s), s)
+  check('hostile raw SVG: style url() removed', !/url\(/i.test(s), s)
+  check('hostile raw SVG: drawing kept (text, circle, line, fragment use)', /<text/.test(s) && /<circle/.test(s) && /<line/.test(s) && /href="#ok"/.test(s), s)
+  const clean = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g stroke="#333"><line x1="1" y1="1" x2="9" y2="9"/><text x="2" y="2" font-size="3">C</text></g></svg>'
+  check('clean raw SVG passes unchanged', sanitizeSvgText(clean) === clean, sanitizeSvgText(clean))
+  check('a CDATA-hidden script does not survive', !/<script|pwned/i.test(sanitizeSvgText('<svg><![CDATA[</text>]]><script>pwned</script></svg>')))
+  check('a self-closing <script/> and a mixed-case <SCRIPT> are removed', !/script/i.test(sanitizeSvgText('<svg><script src="x"/><SCRIPT>a</SCRIPT><circle r="1"/></svg>')))
+}
 
 console.log(results.join('\n'))
 const failed = results.filter((r) => r.startsWith('✗')).length

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 const STEPS = [
   {
@@ -32,6 +33,7 @@ const BOOT_LINES: { ok: boolean; text: string }[] = [
 ]
 
 export default function GettingStarted() {
+  const { t } = useI18n()
   return (
     <section id="getting-started" className="scroll-mt-20">
       <SectionHeading
@@ -57,9 +59,9 @@ export default function GettingStarted() {
               {String(i + 1).padStart(2, '0')}
             </span>
             <div className="pt-1">
-              <p className="text-[15px] font-semibold text-primary">{step.title}</p>
+              <p className="text-[15px] font-semibold text-primary">{t(step.title)}</p>
               <p className="mt-1 text-[14px] leading-relaxed text-secondary">
-                {step.copy}
+                {t(step.copy)}
               </p>
             </div>
           </motion.li>

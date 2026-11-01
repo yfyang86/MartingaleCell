@@ -9,6 +9,7 @@ import {
   ChevronLeft, ChevronDown, Loader2, PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 import { useWorkspace } from '@/store/workspace'
 import { useUi } from '@/store/ui'
 import { useProject } from '@/store/project'
@@ -69,11 +70,12 @@ export function EnginePill() {
   const status = useWorkspace((s) => s.engineStatus)
   const label = useWorkspace((s) => s.engineLabel)
   const evaluating = useWorkspace((s) => s.evaluating)
+  const { t } = useI18n()
 
   const content = evaluating
-    ? { dot: <Loader2 size={11} className="animate-spin text-steel" />, text: 'evaluating', cls: 'text-steel' }
+    ? { dot: <Loader2 size={11} className="animate-spin text-steel" />, text: t('evaluating'), cls: 'text-steel' }
     : status === 'booting'
-      ? { dot: <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />, text: 'starting runtime…', cls: 'text-warning' }
+      ? { dot: <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />, text: t('starting runtime…'), cls: 'text-warning' }
       : status === 'ready-ecl'
         ? { dot: <span className="h-2 w-2 rounded-full bg-success" />, text: `ECL · WASM`, cls: 'text-secondary' }
         : status === 'ready-sbcl'
@@ -81,8 +83,8 @@ export function EnginePill() {
           : status === 'ready-jscl'
           ? { dot: <span className="h-2 w-2 rounded-full bg-warning" />, text: 'JSCL · JS', cls: 'text-secondary' }
           : status === 'ready-mock'
-            ? { dot: <span className="h-2 w-2 rounded-full bg-muted" />, text: 'Mock', cls: 'text-secondary' }
-            : { dot: <span className="h-2 w-2 rounded-full bg-error" />, text: 'runtime crashed — restart', cls: 'text-error' }
+            ? { dot: <span className="h-2 w-2 rounded-full bg-muted" />, text: t('Mock'), cls: 'text-secondary' }
+            : { dot: <span className="h-2 w-2 rounded-full bg-error" />, text: t('runtime crashed — restart'), cls: 'text-error' }
 
   return (
     <div
@@ -113,6 +115,7 @@ function PackagePill() {
   const packageName = useWorkspace((s) => s.packageName)
   const buffers = useWorkspace((s) => s.buffers)
   const loadedPackages = useProject((s) => s.loadedPackages)
+  const { t } = useI18n()
   /* candidates: the live package, the standard ones, packages a loaded
    * project defined, and every (defpackage …) found in an open buffer */
   const packages = useMemo(() => {
@@ -136,7 +139,7 @@ function PackagePill() {
     >
       {(close) => (
         <>
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Reader package</div>
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{t('Reader package')}</div>
           {packages.map((p) => (
             <button
               key={p}
@@ -162,18 +165,19 @@ function PackagePill() {
 
 function ExamplesMenu() {
   const [examples, setExamples] = useState<ExampleItem[]>([])
+  const { t } = useI18n()
   useEffect(() => { void loadExamples().then(setExamples) }, [])
   return (
     <Dropdown
       trigger={
         <button className="flex h-7 items-center gap-1.5 rounded-md border border-hairline px-2.5 text-[12.5px] text-secondary transition-all duration-150 hover:border-strong hover:bg-raised hover:text-primary">
           <BookOpen size={13} />
-          <span className="hidden lg:inline">Examples</span>
+          <span className="hidden lg:inline">{t('Examples')}</span>
         </button>
       }
     >
       {(close) => examples.length === 0 ? (
-        <div className="px-3 py-2 text-[12px] text-muted">No examples available</div>
+        <div className="px-3 py-2 text-[12px] text-muted">{t('No examples available')}</div>
       ) : (
         <div className="max-h-80 overflow-y-auto">
           {[...new Set(examples.map((e) => e.category))].map((cat) => (
@@ -202,6 +206,7 @@ function ExamplesMenu() {
 function BufferName() {
   const buffer = useWorkspace((s) => s.buffers.find((b) => b.id === s.activeBufferId))
   const renameBuffer = useWorkspace((s) => s.renameBuffer)
+  const { t } = useI18n()
   const [editing, setEditing] = useState(false)
   if (!buffer) return null
   return (
@@ -221,12 +226,12 @@ function BufferName() {
         <button
           className="rounded-md px-1.5 py-1 font-mono text-[12.5px] text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary"
           onClick={() => setEditing(true)}
-          title="Click to rename"
+          title={t('Click to rename')}
         >
           {buffer.name}
         </button>
       )}
-      {buffer.dirty && <span className="h-1.5 w-1.5 rounded-full bg-steel" title="unsaved changes" />}
+      {buffer.dirty && <span className="h-1.5 w-1.5 rounded-full bg-steel" title={t('unsaved changes')} />}
     </div>
   )
 }
@@ -255,21 +260,22 @@ export default function Toolbar() {
   const setPaletteOpen = useUi((s) => s.setPaletteOpen)
   const setSettingsOpen = useUi((s) => s.setSettingsOpen)
   const setConfirm = useUi((s) => s.setConfirm)
+  const { t } = useI18n()
 
   return (
     <div className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline bg-panel px-3">
       {/* left zone */}
       <IconButton
         icon={<PanelLeft size={14} />}
-        title="Toggle project explorer (Ctrl B)"
+        title={t('Toggle project explorer (Ctrl B)')}
         onClick={() => useUi.getState().toggleExplorer()}
       />
       <Dropdown
         trigger={
           <button className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 transition-colors duration-100 hover:bg-raised">
-            <img src="/logo.svg" alt="ConsCell" className="h-[22px] w-[22px]" />
+            <img src="/logo.svg" alt="MartingaleCell" className="h-[22px] w-[22px]" />
             <span className="font-display text-[14px] font-semibold">
-              <span className="text-primary">Cons</span>
+              <span className="text-primary">Martingale</span>
               <span className="text-steel">Cell</span>
             </span>
             <ChevronDown size={11} className="text-muted" />
@@ -278,10 +284,10 @@ export default function Toolbar() {
       >
         {() => (
           <>
-            <MenuItem label="Back to home" href="/" />
-            <MenuItem label="Examples" href="/examples" />
-            <MenuItem label="Docs" href="/docs" />
-            <MenuItem label="About" onClick={() => useWorkspace.getState().addLog('INFO', 'UI', `ConsCell v${__APP_VERSION__} — ANSI Common Lisp in the browser (SBCL or ECL, compiled to WebAssembly)`)} />
+            <MenuItem label={t('Back to home')} href="/" />
+            <MenuItem label={t('Examples')} href="/examples" />
+            <MenuItem label={t('Docs')} href="/docs" />
+            <MenuItem label={t('About')} onClick={() => useWorkspace.getState().addLog('INFO', 'UI', `MartingaleCell v${__APP_VERSION__} — ANSI Common Lisp in the browser (SBCL or ECL, compiled to WebAssembly)`)} />
           </>
         )}
       </Dropdown>
@@ -303,10 +309,10 @@ export default function Toolbar() {
               : 'cursor-not-allowed bg-steel/40 text-abyss/70',
           )}
           onClick={() => ready && !evaluating && evaluateFormAtPoint()}
-          title="Evaluate form at point"
+          title={t('Evaluate form at point')}
         >
           {evaluating ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-          {evaluating ? 'Evaluating…' : 'Evaluate'}
+          {evaluating ? t('Evaluating…') : t('Evaluate')}
           <span className="cc-kbd hidden !py-0 text-[10px] sm:inline">Ctrl↵</span>
         </motion.button>
         <button
@@ -315,10 +321,10 @@ export default function Toolbar() {
             ready && !evaluating ? 'hover:border-strong hover:bg-raised hover:text-primary' : 'cursor-not-allowed opacity-50',
           )}
           onClick={() => ready && !evaluating && evaluateAllForms()}
-          title="Evaluate all top-level forms"
+          title={t('Evaluate all top-level forms')}
         >
           <FastForward size={13} />
-          <span className="hidden xl:inline">All</span>
+          <span className="hidden xl:inline">{t('All')}</span>
           <span className="cc-kbd hidden !py-0 text-[10px] xl:inline">Ctrl⇧↵</span>
         </button>
         <button
@@ -329,22 +335,22 @@ export default function Toolbar() {
               : 'cursor-not-allowed border-hairline text-muted/50',
           )}
           onClick={() => evaluating && setConfirm('interrupt')}
-          title="Interrupt evaluation (Ctrl .)"
+          title={t('Interrupt evaluation (Ctrl .)')}
         >
           <OctagonX size={13} />
-          <span className="hidden xl:inline">Interrupt</span>
+          <span className="hidden xl:inline">{t('Interrupt')}</span>
         </button>
-        <IconButton icon={<RotateCcw size={14} />} title="Restart Lisp image" onClick={() => setConfirm('restart')} />
+        <IconButton icon={<RotateCcw size={14} />} title={t('Restart Lisp image')} onClick={() => setConfirm('restart')} />
       </div>
 
       {/* right zone */}
       <div className="flex items-center gap-1">
         <ExamplesMenu />
-        <IconButton icon={<Link2 size={14} />} title="Share (copies URL)" onClick={() => void shareWorkspace()} />
-        <IconButton icon={<Settings2 size={14} />} title="Settings" onClick={() => setSettingsOpen(true)} />
+        <IconButton icon={<Link2 size={14} />} title={t('Share (copies URL)')} onClick={() => void shareWorkspace()} />
+        <IconButton icon={<Settings2 size={14} />} title={t('Settings')} onClick={() => setSettingsOpen(true)} />
         <button
           className="flex h-7 items-center gap-1 rounded-md px-1.5 text-secondary transition-colors duration-100 hover:bg-raised hover:text-primary"
-          title="Command palette (Ctrl K)"
+          title={t('Command palette (Ctrl K)')}
           onClick={() => setPaletteOpen(true)}
         >
           <Command size={14} />
@@ -355,7 +361,7 @@ export default function Toolbar() {
         <div className="mx-1 hidden h-4 w-px bg-hairline xl:block" />
         <Link to="/" className="hidden items-center gap-0.5 text-[12.5px] text-secondary transition-colors duration-100 hover:text-primary xl:flex">
           <ChevronLeft size={13} />
-          Back to site
+          {t('Back to site')}
         </Link>
       </div>
     </div>

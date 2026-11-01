@@ -281,8 +281,8 @@ function collectAcceptanceProblems(loadLines, evalLines) {
  * src/plot/build-svg.ts) with esbuild so the harness exercises the same
  * code the browser runs. */
 async function buildPlotModule() {
-  const entry = path.join(os.tmpdir(), `conscell-plot-entry-${process.pid}.ts`)
-  const outfile = path.join(os.tmpdir(), `conscell-plot-bundle-${process.pid}.mjs`)
+  const entry = path.join(os.tmpdir(), `martingalecell-plot-entry-${process.pid}.ts`)
+  const outfile = path.join(os.tmpdir(), `martingalecell-plot-bundle-${process.pid}.mjs`)
   fs.writeFileSync(entry,
     `export { unpackPlotPayload, parseGnuplot } from ${JSON.stringify(path.join(root, 'src/plot/gnuplot'))}\n` +
     `export { buildSvg } from ${JSON.stringify(path.join(root, 'src/plot/build-svg'))}\n`)

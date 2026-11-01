@@ -64,7 +64,7 @@ function tools(page, check) {
   const bootIde = async () => {
     /* pin ECL for the general scenarios — the app default is SBCL-first
      * since 1.0; scenarios that want SBCL set their own pref */
-    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'ecl') } catch { /* private mode */ } })
+    await page.addInitScript(() => { try { localStorage.setItem('martingalecell-engine-pref', 'ecl') } catch { /* private mode */ } })
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
     await page.locator('.cm-content').first().waitFor()
@@ -144,6 +144,22 @@ const scenarios = {
     await page.keyboard.press('Enter')
     await page.getByText('(:HELLO "Ada")').waitFor({ timeout: 20_000 })
     check('typed line completes the read → (:HELLO "Ada")', true)
+  },
+
+  /* Sprint 35 (review blocker 6): a raw-SVG ;;PLOT64 payload — which any Lisp code can print — is sanitised before it reaches innerHTML */
+  async svgsafe({ page, check, setCode }) {
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40" onload="window.__pwned=1"><script>window.__pwned=2</script><image href="x" onerror="window.__pwned=3"/><foreignObject><body onload="window.__pwned=4"/></foreignObject><a href="javascript:window.__pwned=5"><text x="4" y="24" fill="#e6edf3">mol</text></a><circle cx="60" cy="20" r="6" fill="#6ea8dc"/></svg>'
+    const payload = '"' + hostile.replace(/(["\\])/g, '\\$1') + '"'
+    const b64 = Buffer.from(payload, 'binary').toString('base64')
+    await setCode(`(progn (format t ";;PLOT64 ${b64}~%") :drawn)`)
+    await page.keyboard.press('Control+Enter')
+    await page.locator('.cc-mol-plot svg').first().waitFor({ timeout: 30_000 })
+    await page.waitForTimeout(300) /* give any surviving handler a chance to fire */
+    const html = await page.locator('.cc-mol-plot').first().innerHTML()
+    const pwned = await page.evaluate('window.__pwned')
+    check('the raw SVG renders in the cell with its drawing kept (text, circle)', /<text/.test(html) && /<circle/.test(html), html)
+    check('script, foreignObject, on* handlers and javascript: hrefs are stripped', !/<script|foreignObject|onload|onerror|javascript:/i.test(html), html)
+    check('nothing in the payload executed (window.__pwned stays unset)', pwned === undefined, String(pwned))
   },
 
   /* go-to-definition, the outline, workspace search, find references, session-box definitions, the package pill */
@@ -234,8 +250,8 @@ const scenarios = {
     const mdPath = await download.path()
     const md = mdPath ? fs.readFileSync(mdPath, 'utf8') : ''
     fs.writeFileSync(path.join(root, 'dist', 'smoke-session.md'), md)
-    check('export button downloads conscell-session-….md', /^conscell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
-    check('the Markdown carries the cells: header, the aborted cell, the value', md.startsWith('# ConsCell session') && md.includes('_Resumed via `ABORT`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
+    check('export button downloads martingalecell-session-….md', /^martingalecell-session-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(download.suggestedFilename()), download.suggestedFilename())
+    check('the Markdown carries the cells: header, the aborted cell, the value', md.startsWith('# MartingaleCell session') && md.includes('_Resumed via `ABORT`._') && md.includes(';;=> (:HELLO "Ada")'), md.slice(0, 300))
 
     const cellsBefore = await cells().count()
     const headings = (md.match(/^## Cell \d+ · /gm) || []).length
@@ -440,22 +456,32 @@ const scenarios = {
   /* Sprint 31: the service worker makes the IDE usable offline after its first load */
   async offline({ page, check, setCode }) {
     const context = page.context()
-    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'ecl') } catch { /* private mode */ } })
+    await page.addInitScript(() => { try { localStorage.setItem('martingalecell-engine-pref', 'ecl') } catch { /* private mode */ } })
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
     const registered = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.active !== null)).catch(() => false)
     check('the production build registers a service worker and it becomes active', registered === true, String(registered))
-    /* second load: the page is controlled, so the artifacts pass through the worker into its cache */
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
-    const controlled = await page.evaluate(() => navigator.serviceWorker.controller !== null)
-    check('after a reload the page is controlled by the worker', controlled === true, String(controlled))
+    /* Sprint 34: no second online load — after ready the page asks the worker to warm the
+     * cache with the engine's artifacts, and the document carries data-sw-warmed */
+    await page.waitForFunction(() => document.documentElement.dataset.swWarmed !== undefined, null, { timeout: 120_000 })
+    const warmed = await page.evaluate(() => document.documentElement.dataset.swWarmed)
+    /* every chunk the page has loaded so far ends up cached (late chunks are warmed as they appear, so wait, do not snapshot) */
+    const coverage = async () => {
+      const names = await caches.keys()
+      const c = await caches.open(names.find((n) => n.startsWith('martingalecell-')) ?? '')
+      const scripts = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.startsWith(location.origin) && /\/assets\/.*\.js$/.test(n))
+      const hits = await Promise.all(['/wecl/wecl.wasm', '/wecl-worker.js'].map((u) => new URL(u, location.href).href).concat(scripts).map((u) => c.match(u, { ignoreVary: true })))
+      return { engine: hits.slice(0, 2).every(Boolean), chunks: scripts.length, chunksCached: hits.slice(2).filter(Boolean).length }
+    }
+    const covered = await page.waitForFunction(`(${coverage.toString()})().then((r) => r.engine && r.chunks > 0 && r.chunksCached === r.chunks)`, null, { timeout: 20_000 }).then(() => true).catch(() => false)
+    const cached = await page.evaluate(`(${coverage.toString()})()`)
+    check(`after the first boot the worker warmed its cache with the engine's artifacts and the page's own chunks (data-sw-warmed=${warmed}, ${cached.chunksCached}/${cached.chunks} chunks)`, warmed === 'ecl' && covered, JSON.stringify({ warmed, ...cached }))
     await context.setOffline(true)
     try {
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.getByText('ECL 24.5 · wasm32').first().waitFor({ timeout: 90_000 })
       await page.locator('.cm-content').first().waitFor()
-      check('offline: the IDE loads from the cache and ECL boots', true)
+      check('offline: the IDE loads from the cache on the very next load and ECL boots', true)
       const isolated = await page.evaluate(() => crossOriginIsolated)
       check('offline: crossOriginIsolated still holds (the cached navigation kept its COOP/COEP headers)', isolated === true, String(isolated))
       await setCode('(list :offline (+ 40 2))')
@@ -567,7 +593,7 @@ const scenarios = {
   async sbcl({ page, check, setCode }) {
     const have = (f) => fs.existsSync(path.join(root, 'public', 'sbcl', f)) || fs.existsSync(path.join(root, 'public', 'sbcl', f + '.gz'))
     if (!['sbcl.wasm', 'sbcl.core', 'sbcl-core.wasm'].every(have)) throw new SkipScenario('SBCL artifacts not in public/sbcl/ (run scripts/fetch-sbcl.mjs)')
-    await page.addInitScript(() => { try { localStorage.setItem('conscell-engine-pref', 'sbcl') } catch { /* private mode */ } })
+    await page.addInitScript(() => { try { localStorage.setItem('martingalecell-engine-pref', 'sbcl') } catch { /* private mode */ } })
     const bootT0 = Date.now()
     await page.goto(`${base}/ide`, { waitUntil: 'domcontentloaded' })
     await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
@@ -579,6 +605,37 @@ const scenarios = {
     await page.keyboard.press('Control+Enter')
     await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>(:ENGINE"SBCL"42)'))`, null, { timeout: 60_000 })
     check('a cell evaluates on SBCL: (:ENGINE "SBCL" 42)', true)
+
+    /* Sprint 35 (review blocker 3): Interrupt while more cells are queued
+     * behind a CPU-bound image. The third cell's submit waits for the old
+     * mailbox to drain; it must be dropped when the worker is replaced,
+     * not time out 30 s later and mark the fresh image crashed. */
+    await setCode('(loop)')
+    await page.keyboard.press('Control+Enter')
+    const interrupt = page.locator('button[title^="Interrupt this cell"]').first()
+    await interrupt.waitFor({ timeout: 20_000 })
+    await setCode('(+ 1 1)')
+    await page.keyboard.press('Control+Enter')
+    await setCode('(+ 2 2)')
+    await page.keyboard.press('Control+Enter')
+    const queuedAt = Date.now()
+    await interrupt.click()
+    /* the image is replaced: the status bar leaves and comes back */
+    await page.waitForFunction(`!(document.querySelector('[data-testid="status-engine"]')?.textContent || '').includes('SBCL · WASM')`, null, { timeout: 30_000 }).catch(() => {})
+    await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
+    await page.locator('.cm-content').first().waitFor()
+    await setCode('(+ 40 2)')
+    await page.keyboard.press('Control+Enter')
+    const back = await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>42'))`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    check('after Interrupt with two cells queued, the respawned SBCL evaluates (+ 40 2) → 42', back)
+    /* past the old 30 s mailbox timeout: the image must still be healthy */
+    const left = 31_000 - (Date.now() - queuedAt)
+    if (left > 0) await page.waitForTimeout(left)
+    await setCode('(+ 1 2)')
+    await page.keyboard.press('Control+Enter')
+    const stillUp = await page.waitForFunction(`[...document.querySelectorAll('.cc-cell')].some((c) => c.textContent.replace(/\\s+/g, '').includes(';;=>3'))`, null, { timeout: 60_000 }).then(() => true).catch(() => false)
+    const faulted = await page.evaluate(`document.body.textContent.includes('RUNTIME-FAULT') || document.body.textContent.includes('sbcl submit failed')`)
+    check('31 s after the queued submit the image is still healthy: (+ 1 2) → 3, no RUNTIME-FAULT, no "sbcl submit failed"', stillUp && !faulted, `stillUp=${stillUp} faulted=${faulted}`)
   },
 
   /* Sprint 27: Settings → Lisp implementation switches engines through Restart, ECL comes back, the choice survives a reload and resets with the workspace */
@@ -622,14 +679,14 @@ const scenarios = {
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await page.getByText('SBCL · WASM').first().waitFor({ timeout: 180_000 })
-    const prefAfterReload = await page.evaluate(`localStorage.getItem('conscell-engine-pref')`)
+    const prefAfterReload = await page.evaluate(`localStorage.getItem('martingalecell-engine-pref')`)
     check('the choice survives a reload (SBCL boots, preference still sbcl)', prefAfterReload === 'sbcl', String(prefAfterReload))
 
     await page.locator('button[title="Settings"]').click()
     await page.getByRole('button', { name: 'Reset workspace' }).click()
     await page.getByRole('button', { name: 'Reset everything', exact: true }).click() /* the confirm sits above the drawer; the drawer can stay open for the check */
-    await page.waitForFunction(`localStorage.getItem('conscell-engine-pref') === 'auto'`, null, { timeout: 5_000 }).catch(() => {})
-    const prefAfterReset = await page.evaluate(`localStorage.getItem('conscell-engine-pref')`)
+    await page.waitForFunction(`localStorage.getItem('martingalecell-engine-pref') === 'auto'`, null, { timeout: 5_000 }).catch(() => {})
+    const prefAfterReset = await page.evaluate(`localStorage.getItem('martingalecell-engine-pref')`)
     check('Reset workspace puts the choice back to auto', prefAfterReset === 'auto', String(prefAfterReset))
   },
 }

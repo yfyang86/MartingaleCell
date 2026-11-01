@@ -2,12 +2,13 @@ import { motion } from 'framer-motion'
 import { FolderOpen, FileUp, PackageOpen, FileCode2, AlertTriangle, Search } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 const CARDS = [
   {
     Icon: FolderOpen,
     title: 'A project is a folder',
-    body: 'Open any local folder with the File System Access API (Chrome/Edge) — ConsCell remembers the handle and offers to reopen it next visit. Firefox/Safari get a virtual project instead: import a ZIP or upload a folder, edit in memory, and Export ZIP to save.',
+    body: 'Open any local folder with the File System Access API (Chrome/Edge) — MartingaleCell remembers the handle and offers to reopen it next visit. Firefox/Safari get a virtual project instead: import a ZIP or upload a folder, edit in memory, and Export ZIP to save.',
   },
   {
     Icon: FileCode2,
@@ -32,11 +33,12 @@ const CARDS = [
 ]
 
 export default function Projects() {
+  const { t } = useI18n()
   return (
     <section id="projects" className="scroll-mt-20">
       <SectionHeading
         title="Projects, not just snippets."
-        lead="Point ConsCell at a real folder of Common Lisp and treat the browser like a local IDE: browse, edit, save, then load the entire tree into the runtime and call it."
+        lead="Point MartingaleCell at a real folder of Common Lisp and treat the browser like a local IDE: browse, edit, save, then load the entire tree into the runtime and call it."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
@@ -50,8 +52,8 @@ export default function Projects() {
             className="cc-cell cc-cell-input p-6 transition-all [transition-duration:160ms] ease-snap hover:-translate-y-[3px] hover:border-strong hover:shadow-[0_8px_32px_rgba(110,168,220,0.08)]"
           >
             <card.Icon size={18} strokeWidth={1.75} className="text-steel" />
-            <p className="mt-3 text-[14px] font-semibold text-primary">{card.title}</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{card.body}</p>
+            <p className="mt-3 text-[14px] font-semibold text-primary">{t(card.title)}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{t(card.body)}</p>
           </motion.div>
         ))}
       </div>
@@ -65,15 +67,13 @@ export default function Projects() {
       >
         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
         <p className="text-[13px] leading-relaxed text-secondary">
-          <span className="font-semibold text-primary">gnuplot, emulated:</span> cl-plot builds a
-          gnuplot script and shells out to the <code className="font-mono text-[12px]">gnuplot</code> binary —{' '}
-          impossible inside WebAssembly. ConsCell intercepts that hand-off in the worker, ships the
-          script and its data files to the page, and renders a gnuplot-subset as dark-themed{' '}
-          <span className="font-semibold text-primary">SVG right inside the session cell</span> that
-          triggered it. Every plot carries Download SVG / Download PNG buttons (PNG is rasterized
-          via canvas at 2×), and <code className="font-mono text-[12px]">(save fig &quot;name.png&quot; …)</code>{' '}
-          auto-downloads the PNG — no binary required. Other subprocesses still surface as a clean{' '}
-          <code className="font-mono text-[12px]">;;ERROR:</code>, never a hung debugger.
+          <span className="font-semibold text-primary">{t('gnuplot, emulated:')}</span>{' '}
+          {t('cl-plot builds a gnuplot script and shells out to the')} <code className="font-mono text-[12px]">gnuplot</code>{' '}
+          {t('binary — impossible inside WebAssembly. MartingaleCell intercepts that hand-off in the worker, ships the script and its data files to the page, and renders a gnuplot-subset as dark-themed')}{' '}
+          <span className="font-semibold text-primary">{t('SVG right inside the session cell')}</span>{' '}
+          {t('that triggered it. Every plot carries Download SVG / Download PNG buttons (PNG is rasterized via canvas at 2×), and')} <code className="font-mono text-[12px]">(save fig &quot;name.png&quot; …)</code>{' '}
+          {t('auto-downloads the PNG — no binary required. Other subprocesses still surface as a clean')}{' '}
+          <code className="font-mono text-[12px]">;;ERROR:</code>, {t('never a hung debugger.')}
         </p>
       </motion.div>
     </section>

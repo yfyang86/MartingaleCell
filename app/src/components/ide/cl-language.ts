@@ -1,5 +1,5 @@
 /* Common Lisp language support for CodeMirror 6:
- * StreamLanguage tokenizer + ConsCell syntax HighlightStyle + editor theme.
+ * StreamLanguage tokenizer + MartingaleCell syntax HighlightStyle + editor theme.
  * Colors exactly per design.md §1.2 syntax table. */
 
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
@@ -169,7 +169,7 @@ export const clHighlight = HighlightStyle.define([
   { tag: tags.typeName, color: '#5EEAD4' },
 ])
 
-/** ConsCell editor chrome theme (colors per design.md; font size is dynamic). */
+/** MartingaleCell editor chrome theme (colors per design.md; font size is dynamic). */
 export function clEditorTheme(fontSize: number, ligatures: boolean) {
   return EditorView.theme({
     '&': {

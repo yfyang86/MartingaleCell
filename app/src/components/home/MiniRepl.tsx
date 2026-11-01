@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useI18n } from '@/i18n/context'
 
 const TYPED_FORM = "(mapcar #'1+ '(1 2 3 4))"
 const CYCLE_MS = 6000
@@ -88,6 +89,7 @@ const CELLS = [CellResult, CellWarning, CellValues]
  * multiple-values demos on a 6s loop. Pauses on hover. No real runtime.
  */
 export default function MiniRepl() {
+  const { t } = useI18n()
   const rootRef = useRef<HTMLDivElement>(null)
   const [started, setStarted] = useState(false)
   const [typed, setTyped] = useState(0)
@@ -139,11 +141,11 @@ export default function MiniRepl() {
         {/* panel header strip */}
         <div className="flex h-8 items-center justify-between border-b border-hairline px-3">
           <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-            Session — CL-USER
+            {t('Session — CL-USER')}
           </span>
           <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
-            ecl/wasm ready
+            {t('ecl/wasm ready')}
           </span>
         </div>
 
@@ -177,7 +179,7 @@ export default function MiniRepl() {
         </div>
       </div>
       <p className="mt-3 text-center font-mono text-[11px] text-muted">
-        This is a live preview — the real thing runs SBCL or ECL
+        {t('This is a live preview — the real thing runs SBCL or ECL')}
       </p>
     </div>
   )

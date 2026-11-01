@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n/context'
 
 const COLUMNS: { title: string; links: { label: string; to: string; external?: boolean }[] }[] = [
   {
@@ -51,6 +52,7 @@ const SHOWN = 'opacity-100 translate-y-0'
 
 export default function Footer() {
   const { ref, shown } = useRevealOnView<HTMLDivElement>()
+  const { t } = useI18n()
   return (
     <footer className="border-t border-hairline bg-panel">
       <div
@@ -61,12 +63,12 @@ export default function Footer() {
           <div className="flex items-center gap-2.5">
             <img src="/logo.svg" alt="" width={24} height={24} className="h-6 w-6" />
             <span className="font-display text-[16px] font-semibold tracking-tight">
-              <span className="text-primary">Cons</span>
+              <span className="text-primary">Martingale</span>
               <span className="text-steel">Cell</span>
             </span>
           </div>
           <p className="mt-3 text-[13px] leading-relaxed text-secondary">
-            The browser is the Lisp machine.
+            {t('The browser is the Lisp machine.')}
           </p>
         </div>
 
@@ -77,7 +79,7 @@ export default function Footer() {
             style={{ transitionDelay: `${0.08 * (i + 1)}s` }}
           >
             <h4 className="font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-              {col.title}
+              {t(col.title)}
             </h4>
             <ul className="mt-4 space-y-2.5">
               {col.links.map((link) => (
@@ -89,14 +91,14 @@ export default function Footer() {
                       rel="noreferrer"
                       className="text-[13px] text-secondary transition-colors duration-150 ease-snap hover:text-white"
                     >
-                      {link.label}
+                      {t(link.label)}
                     </a>
                   ) : (
                     <Link
                       to={link.to}
                       className="text-[13px] text-secondary transition-colors duration-150 ease-snap hover:text-white"
                     >
-                      {link.label}
+                      {t(link.label)}
                     </Link>
                   )}
                 </li>
@@ -109,7 +111,7 @@ export default function Footer() {
       <div className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-5 sm:flex-row sm:justify-between sm:px-6">
           <p className="font-mono text-[11px] text-muted">
-            © 2025 ConsCell — runs 100% client-side. No code ever leaves your machine.
+            {t('© 2025 MartingaleCell — runs 100% client-side. No code ever leaves your machine.')}
           </p>
           <p className="font-mono text-[11px] text-muted" aria-hidden>
             ((()))<span className="text-lisp">λ</span>((()))

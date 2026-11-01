@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Cpu, LifeBuoy, SlidersHorizontal, GitCompareArrows } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
+import { useI18n } from '@/i18n/context'
 
 /* Sprint 30: the engine story the IDE itself follows (src/lisp/engine-pref.ts) */
 const CARDS = [
@@ -37,11 +38,12 @@ const ROWS: [string, string, string][] = [
 ]
 
 export default function Engines() {
+  const { t } = useI18n()
   return (
     <section id="engines" className="scroll-mt-20">
       <SectionHeading
         title="Two engines, one session."
-        lead="ConsCell boots SBCL by default and falls back to ECL when SBCL cannot come up. Both are real ANSI Common Lisp implementations compiled to WebAssembly and run in a Web Worker; JSCL and a small demo interpreter sit further down the ladder for pages where neither wasm image loads."
+        lead="MartingaleCell boots SBCL by default and falls back to ECL when SBCL cannot come up. Both are real ANSI Common Lisp implementations compiled to WebAssembly and run in a Web Worker; JSCL and a small demo interpreter sit further down the ladder for pages where neither wasm image loads."
       />
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
@@ -55,8 +57,8 @@ export default function Engines() {
             className="cc-cell cc-cell-input p-6 transition-all [transition-duration:160ms] ease-snap hover:-translate-y-[3px] hover:border-strong hover:shadow-[0_8px_32px_rgba(110,168,220,0.08)]"
           >
             <card.Icon size={18} strokeWidth={1.75} className="text-steel" />
-            <p className="mt-3 text-[14px] font-semibold text-primary">{card.title}</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{card.body}</p>
+            <p className="mt-3 text-[14px] font-semibold text-primary">{t(card.title)}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-secondary">{t(card.body)}</p>
           </motion.div>
         ))}
       </div>
@@ -72,16 +74,16 @@ export default function Engines() {
           <thead className="bg-inset text-[11px] uppercase tracking-[0.12em] text-muted">
             <tr>
               <th className="px-4 py-2.5 font-medium">&nbsp;</th>
-              <th className="px-4 py-2.5 font-medium">SBCL (default)</th>
-              <th className="px-4 py-2.5 font-medium">ECL (fallback)</th>
+              <th className="px-4 py-2.5 font-medium">{t('SBCL (default)')}</th>
+              <th className="px-4 py-2.5 font-medium">{t('ECL (fallback)')}</th>
             </tr>
           </thead>
           <tbody>
             {ROWS.map(([k, a, b]) => (
               <tr key={k} className="border-t border-hairline">
-                <td className="px-4 py-2.5 font-semibold text-primary">{k}</td>
-                <td className="px-4 py-2.5 text-secondary">{a}</td>
-                <td className="px-4 py-2.5 text-secondary">{b}</td>
+                <td className="px-4 py-2.5 font-semibold text-primary">{t(k)}</td>
+                <td className="px-4 py-2.5 text-secondary">{t(a)}</td>
+                <td className="px-4 py-2.5 text-secondary">{t(b)}</td>
               </tr>
             ))}
           </tbody>
@@ -89,7 +91,7 @@ export default function Engines() {
       </motion.div>
 
       <p className="mt-4 text-[12px] text-muted">
-        The status bar names the running engine; the boot log shows which one came up and why.
+        {t('The status bar names the running engine; the boot log shows which one came up and why.')}
       </p>
     </section>
   )

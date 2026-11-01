@@ -64,7 +64,7 @@ routes = { '/sbcl/sbcl.core.gz': { type: 'application/octet-stream', body: origi
 got = bytesOf(await ctx.loadArtifactBytes('/sbcl/sbcl.core'))
 check('a .gz the server already decoded (no gzip magic, binary type) is used as is', got.equals(original))
 
-routes = { '/sbcl/sbcl.core.gz': { type: 'text/html; charset=utf-8', body: Buffer.from('<!doctype html><title>ConsCell</title>') }, '/sbcl/sbcl.core': { type: 'application/octet-stream', body: original } }
+routes = { '/sbcl/sbcl.core.gz': { type: 'text/html; charset=utf-8', body: Buffer.from('<!doctype html><title>MartingaleCell</title>') }, '/sbcl/sbcl.core': { type: 'application/octet-stream', body: original } }
 got = bytesOf(await ctx.loadArtifactBytes('/sbcl/sbcl.core'))
 check('an HTML answer for the .gz (SPA fallback) is refused; the plain artifact is used', got.equals(original))
 

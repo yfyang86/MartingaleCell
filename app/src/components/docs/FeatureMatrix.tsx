@@ -3,6 +3,7 @@ import { CheckCircle2, CircleDashed, Clock } from 'lucide-react'
 import { SectionHeading } from './shared'
 import { EASE_OUT } from './motion'
 import { ClCode } from './cl-highlight'
+import { useI18n } from '@/i18n/context'
 
 type Status = 'full' | 'partial' | 'planned'
 
@@ -21,9 +22,10 @@ const ROWS: Row[] = [
   { area: 'Sequences, arrays, hash tables', status: 'full', notes: 'Including displaced & adjustable arrays' },
   { area: 'LOOP / FORMAT / pretty printer', status: 'full', notes: 'format via gray streams into the OUT block' },
   { area: 'Packages & symbols', status: 'full', notes: 'defpackage; in-package persists across cells and drives the package pill; project symbols feed completion; go-to-definition knows every form the loader loaded and every form you evaluated' },
-  { area: 'MOP', status: 'partial', notes: 'slot-value-using-class etc.; ensure-generic-function edge cases pending' },
+  { area: 'MOP', status: 'full', notes: 'Full sb-mop: class protocol, slot metaobjects, the slot-value-using-class family, ensure-generic-function variants, long-form method combinations, funcallable instances; the wasm build also fixes ensure-class with :direct-slots and adds slot-exists-p-using-class (upstream SBCL lacks both) — verified by a 34-check battery in CI' },
   { area: 'Gray streams', status: 'partial', notes: 'Core protocol; *standard-input* is a Gray stream that pauses the cell for a line (read-line, read, y-or-n-p)' },
   { area: 'Pathnames & files', status: 'partial', notes: 'In-memory FS persisted to IndexedDB; no host filesystem access' },
+  { area: 'gnuplot plots (cl-plot)', status: 'partial', notes: 'ext:shell capture rendered as SVG: data series, multi-file plots, function expressions with gnuplot’s operators, user-defined functions and variables, integer arithmetic; no ternaries, strings or 3-D' },
   { area: 'FFI / foreign calls', status: 'planned', notes: 'Not meaningful under WASM; WASI experiments planned' },
   { area: 'Threads (bordeaux-threads)', status: 'planned', notes: 'No sb-thread in the SBCL wasm image and none in ECL/wasm; the COOP/COEP isolation headers are already served for the SBCL worker' },
 ]
@@ -47,6 +49,7 @@ const PILL: Record<Status, { label: string; className: string; Icon: typeof Chec
 }
 
 function StatusPill({ status, delay }: { status: Status; delay: number }) {
+  const { t } = useI18n()
   const { label, className, Icon } = PILL[status]
   return (
     <motion.span
@@ -57,13 +60,14 @@ function StatusPill({ status, delay }: { status: Status; delay: number }) {
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] ${className}`}
     >
       <Icon size={12} strokeWidth={2} />
-      {label}
+      {t(label)}
     </motion.span>
   )
 }
 
 /** Render inline `code` fragments inside the notes column with the CL theme. */
 function Notes({ text }: { text: string }) {
+  const { t } = useI18n()
   const parts = text.split(/(\*[^*]+\*|\b(?:eval|compile|compile-file|disassemble|change-class|handler-bind|restart-case|format|defpackage|slot-value-using-class|ensure-generic-function|stream-advance-to-column|bordeaux-threads)\b)/g)
   return (
     <span>
@@ -73,7 +77,7 @@ function Notes({ text }: { text: string }) {
             <ClCode code={p} />
           </code>
         ) : (
-          <span key={i}>{p}</span>
+          <span key={i}>{t(p)}</span>
         )
       )}
     </span>
@@ -81,6 +85,7 @@ function Notes({ text }: { text: string }) {
 }
 
 export default function FeatureMatrix() {
+  const { t } = useI18n()
   return (
     <section id="features" className="scroll-mt-20">
       <SectionHeading
@@ -102,11 +107,11 @@ export default function FeatureMatrix() {
               89%
             </span>
             <p className="mt-2 text-[12px] font-medium uppercase tracking-[0.12em] text-muted">
-              of the ANSI specification covered
+              {t('of the ANSI specification covered')}
             </p>
           </div>
           <p className="hidden max-w-[220px] text-right text-[12px] leading-relaxed text-secondary sm:block">
-            Full condition system, CLOS, and the LOOP/FORMAT trio — in a browser tab.
+            {t('Full condition system, CLOS, and the LOOP/FORMAT trio — in a browser tab.')}
           </p>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-inset">
@@ -127,13 +132,13 @@ export default function FeatureMatrix() {
           <thead>
             <tr className="border-b border-hairline bg-panel">
               <th className="px-4 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Area
+                {t('Area')}
               </th>
               <th className="w-28 px-4 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Status
+                {t('Status')}
               </th>
               <th className="px-4 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Notes
+                {t('Notes')}
               </th>
             </tr>
           </thead>
@@ -148,7 +153,7 @@ export default function FeatureMatrix() {
                 className="border-b border-hairline transition-colors duration-150 ease-snap last:border-b-0 hover:bg-raised"
               >
                 <td className="px-4 py-3 text-[13px] font-medium text-primary">
-                  {row.area}
+                  {t(row.area)}
                 </td>
                 <td className="px-4 py-3">
                   <StatusPill status={row.status} delay={(i % 4) * 0.06 + 0.1} />
@@ -163,11 +168,11 @@ export default function FeatureMatrix() {
       </div>
 
       <p className="mt-4 text-[12px] text-muted">
-        Run{' '}
+        {t('Run')}{' '}
         <code className="font-mono text-[11.5px]">
           <ClCode code="(lisp-implementation-version)" />
         </code>{' '}
-        in the IDE for the exact build — SBCL 2.4.8 or the ECL fallback.
+        {t('in the IDE for the exact build — SBCL 2.4.8 or the ECL fallback.')}
       </p>
     </section>
   )

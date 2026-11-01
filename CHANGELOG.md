@@ -1,15 +1,214 @@
 # Changelog
 
-All notable changes to ConsCell. The format follows
+All notable changes to MartingaleCell. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 uses [Semantic Versioning](https://semver.org/). Work lands in sprints
 (`Sprints/SprintN/`), each with a goal, implementation notes, a
 test-and-fix log and a proposal for the next one.
 
-## [Unreleased]
+## [1.0.0] — 2026-11-01
 
-`dev` carries version `1.0.0-beta.3` since the release, so builds after
-it install their own service-worker cache.
+The first full release. Highlights since 1.0.0-beta.2, in one line each:
+
+- **Chemistry in the notebook** — the bundled chemicl sample parses and
+  writes SMILES, computes formulas/masses/rings, and **draws molecules
+  as SVG** with an RDKit-style 2-D layout engine written in plain Lisp
+  (benzene's Kekulé hexagon through cephalostatin-1's 12 fused rings;
+  geometry verified against RDKit's own depictions).
+- **Renamed ConsCell → MartingaleCell**, with one-shot migration of
+  existing users' settings and caches.
+- **Bilingual UI** (English / 中文) across the whole app, docs included.
+- **Smarter autocomplete**: context-aware, ranked, backed by the live
+  image's symbol table.
+- **The MOP at native-SBCL parity** (34/34 battery), synced with the
+  wasm-port fixes; a live ANSI terminal screen in cells; per-cell
+  interrupt that safely replaces the worker; 22 example notebooks.
+- **Release-blocker hardening** (Sprint 35): storage-migration test
+  suite for the IndexedDB keys, sanitised raw-SVG plot payloads,
+  interrupt-safe SBCL job submission.
+- **Binaries vendored**: the SBCL 2.4.8 wasm release zip ships in
+  `releases/` (see its README); the app's gzip'd engine artifacts stay
+  git-tracked under `app/public/sbcl/`.
+
+Details below (all changes since 1.0.0-beta.2):
+
+`dev` carries version `1.0.0` as of this release, so builds after it
+install their own service-worker cache.
+
+### Changed
+- **Renamed ConsCell to MartingaleCell** across the UI, docs, package
+  metadata, storage keys and the service-worker cache. Existing users'
+  state is migrated on load: localStorage keys (engine preference,
+  memory quota, language, search options, session history) at first
+  import, and the IndexedDB keys (workspace, editor states, project
+  definitions, virtual project, directory handle, installed modules)
+  before the first render (Sprint 35); pre-rename `conscell-*` caches
+  are deleted by the service worker on activate.
+
+### Fixed (Sprint 35 — review blockers)
+- **Upgrade data loss**: the IndexedDB keys renamed with the product were
+  not migrated, so an upgraded profile opened with an empty workspace,
+  no editor state, no project and no installed modules. Covered by
+  `scripts/storage-migration-test.mjs`.
+- **Autocomplete lost curated symbols** once the live image's symbol
+  dump arrived: a symbol in both the dump and the curated list was
+  dropped from both (`defun`, `format`, …). The curated list is now
+  always offered in full.
+- **Interrupt on SBCL could mark the fresh image crashed**: a cell
+  submit waiting for a busy image's mailbox kept waiting on the old
+  shared buffer after the worker was replaced, timed out 30 s later and
+  reported a crash on the healthy new image (every later evaluation a
+  RUNTIME-FAULT until Restart). Stale submits are dropped; the `sbcl`
+  smoke scenario interrupts with two queued cells and evaluates 31 s
+  later.
+- **chemicl: acyclic molecules drew as "(empty molecule)"** (ethanol,
+  hexane, open-chain amino acids): the layout seeded only the first
+  ring. The first heavy atom is seeded when there is no ring, and
+  disconnected components (`.` in the SMILES: salts, hydrates) are
+  seeded to the right of what is drawn.
+- **chemicl: layout cost** — the flip pass recomputed every subtree
+  and two full overlap scores per candidate (a 36-atom chain took 4 s on
+  SBCL and over two minutes on ECL). Subtrees are computed once per
+  pass, a candidate is judged on the partial score of the atoms it
+  moves, and the pass is skipped above 60 heavy atoms: 36 atoms in
+  about 0.1 s, 66 in under 0.1 s. The principal-axis orientation uses
+  two-argument `atan` (cyclobutane no longer produces NaN coordinates).
+- **Raw-SVG plot payloads are sanitised**: a `;;PLOT64` payload that is
+  an SVG (chemicl's `show-smiles`) went into the page unchanged, so any
+  Lisp code could run script on the IDE origin. Script, foreignObject,
+  iframe/object/embed, `on*` handlers, `javascript:`/`data:` URLs and
+  `url()` styles are stripped (DOMParser in the browser, a text pass in
+  Node); `plot-test` and the `svgsafe` smoke scenario cover it.
+- **CI ran only 18 of the 25 Node suites**: the MOP probes, chemicl,
+  ANSI, completion and i18n suites (and the new migration test) are
+  now workflow steps; the MOP probe fails when it collects no results.
+  `chemicl-verify` resolves its entry from the repo root, writes its
+  bundle to a per-process temp file, and asserts acyclic, disconnected
+  and timing probes.
+
+### Added
+- **chemicl: show-smiles — molecules drawn as SVG in the cell**.
+  `(chemicl:show-smiles "Cn1…")` parses a SMILES string and depicts the
+  molecule: template-based 2-D coordinate generation (engine-side,
+  plain Lisp, RDKit-style): rings are placed as regular polygons (fused
+  rings share their edge; linked rings like nicotine grow as whole
+  polygons off their attachment bond), chains use standardized bond
+  geometry — 120-degree zig-zag continuations with alternating turns,
+  even angular spread at branch points (109 degrees at tetrahedral
+  centers like S(=O)2), radial directions for ring substituents — with
+  clearance-picked mirrored candidates; a flip pass reflects chain
+  subtrees across their attachment lines and a polish pass rotates
+  terminal atoms when it buys space (overlap scored on atom-atom and
+  atom-bond distances). Aromatic rings draw alternating inner accents
+  (a matching, so fused systems never show adjacent double bonds) and
+  bonds are trimmed at heteroatom labels. Spiro rings (one shared atom)
+  and linked rings (no shared edge) place as whole polygons with
+  clearance-picked orientation, so steroid-scale molecules like
+  cephalostatin-1 (C54H74N2O10, 12 rings, 66 heavy atoms) depict —
+  min non-bonded distance better than RDKit's own depiction of the same
+  molecule; dense systems (4+ rings) get a short final relaxation, and
+  label circles/fonts/trims scale with the render fit so big molecules
+  never overlap labels, and the finished layout is rotated to its
+  principal axis so long molecules read horizontally (cephalostatin-1
+  spreads left-to-right like its reference depiction). Bracket-atom
+  formal charges parse correctly ([n+] is +1, not 0 — the ++/-- counter
+  was off by one) and display in the label (N+, O-). Thiamine (vitamin
+  B1) draws its thiazolium N+ correctly. Ring detection now repairs
+  fused-system envelope cycles by chord splitting — saccharin
+  previously mis-detected a 9-ring around its 5+6 core and drew one
+  bond 3x too long; rings attached only through a bridge (thiamine's
+  pyrimidine) are placed whole when the BFS first reaches them instead
+  of collapsing into a broken zig-zag. Benzene renders as a clean
+  Kekulé hexagon; melatonin as a proper fused indole. Carbons
+  as bare vertices, heteroatoms labeled with implicit H folded in,
+  double/triple/aromatic bond line forms. The SVG travels through the
+  existing ;;PLOT64 capture channel as a raw-SVG payload — the app
+  renders it with the usual plot chrome (Download SVG/PNG included,
+  markdown transcripts embed it), gnuplot captures unchanged. Both
+  example notebooks draw (the Molecules example depicts caffeine,
+  aspirin and saccharin; the SMILES gallery draws its whole shelf);
+  `test:plot` covers the raw-SVG marker routing and `test:chemicl`
+  asserts the marker end-to-end on both wasm images.
+- **chemicl manual & examples**: a *Chemistry (chemicl)* section in the
+  in-app docs (four cards — SMILES, round-trip writing, element/isotope
+  data, the graph model — four evaluated code blocks with outputs
+  captured from the real image, and an honest limits callout; fully
+  translated), a second example notebook "SMILES gallery" (a shelf of
+  known molecules with formulas, masses and ring counts, verified on
+  the image), and README quick-start steps for both samples (en + zh).
+- **chemicl: SMILES support** — `parse-smiles-string` and
+  `write-smiles-string` are now in the port, as a fresh self-contained
+  recursive-descent implementation (the upstream parser needs
+  parser-combinators + fset, still not vendored). Organic + bracket
+  atoms, all bond types (stereo direction accepted and dropped),
+  branches, reusable ring closures, fragments, implicit-hydrogen
+  completion; the writer is non-canonical but round-trips exactly.
+  Cross-checked against RDKit over an 18-SMILES battery (17 formula
+  + mass matches; [13CH4] differs only in average-vs-isotope mass
+  semantics) with 18/18 write→parse round-trips. Also fixed in the
+  port: ring closures now close once (upstream-style hash removal),
+  and count-elements sees all fragments. Example notebook and
+  `test:chemicl` extended; verified on both wasm images.
+- **chemicl — chemical structures sample project** (port of Cyrus
+  Harmon's chemicl, BSD): molecules as atom/bond graphs, periodic-table
+  element and isotope data, molecular formulas, molar and exact masses,
+  ring perception, canonicalization. Bundled like cl-plot (Explorer →
+  *Open sample project: chemicl*); element/isotope data converted from
+  the upstream XML to a sexp file (no cxml dependency), epigraph vendored
+  with a two-function alexandria shim, one modern-CL fix in epigraph's
+  sequence helpers; SMILES parsing (needs parser-combinators + fset) is
+  not ported — details in the zip's PORT-NOTES.md. New "Molecules
+  (chemicl)" example notebook and `test:chemicl` CI check; verified
+  end-to-end on both the SBCL and ECL wasm images (caffeine
+  C8H10N4O2 / 194.1906 on both).
+- **Per-cell interrupt**: while a cell runs, its status row now carries an
+  Interrupt button (not just the global Ctrl . / toolbar flow). One click
+  resolves that evaluation as aborted and safely replaces the WASM worker
+  behind it — nothing inside the image keeps running; the respawn boots in
+  the background and the next evaluation works on the fresh image. Browser-
+  verified: an endless `(loop)` cell aborted on click and `(+ 40 2)`
+  evaluated to 42 on the respawned image.
+- **MOP: SBCL team's fixes synced, our side landed** — the new wasm build
+  fixes programmatic `ensure-class` `:direct-slots` and adds
+  `sb-mop:slot-exists-p-using-class`; the 34-check battery now passes
+  34/34 with the gap tolerance removed. Feature-matrix MOP row is *full*;
+  autocomplete offers `SB-MOP` externals; a "Metaobject Protocol" example
+  notebook; an ECL parity probe (16 checks; WECL's slot-value-using-class
+  customization and funcallable instances recorded as engine gaps).
+- **MOP coverage probe** (`pnpm run test:mop`): a 34-check AMOP battery
+  (class protocol, slot metaobjects, the slot-*-using-class family,
+  ensure-generic-function variants, method combinations, funcallable
+  instances) run against the real SBCL wasm image through the worker
+  protocol. Result: the port is at native-SBCL parity — 33/34 pass on
+  both, the single failure (programmatic `ensure-class` `:direct-slots`)
+  is an upstream SBCL gap, tolerated explicitly and enforced once fixed.
+  Findings and both-teams plan in `MOP-Coverage.md`.
+- **Bilingual UI (English / 中文)**: an EN · 中文 toggle in the navbar
+  (and the language follows the browser default, remembered across
+  visits). English strings are the dictionary keys, so a missing
+  translation degrades to English; the IDE chrome, home page, examples
+  gallery, settings, debugger, modals and the full in-app Docs pages
+  (all eleven sections, feature matrix and FAQ included) are
+  translated. The hero
+  headline remounts on language change so the GSAP SplitText animation
+  re-runs on the translated text.
+- **Smarter autocomplete**: context-aware (only callables after `(`;
+  everything in argument position; functions after `#'`; package
+  symbols after a `foo:` prefix; buffer keywords after `:`), ranked
+  (exact prefix > word-start > substring > subsequence, with boosts for
+  locals, buffer and project symbols) instead of alphabetical, and
+  backed by the live image — the full external-symbol alphabet of
+  COMMON-LISP (~800 symbols with real kinds and, from the curated set,
+  arglists/doc popovers) is dumped from the running engine at ready.
+  `let`/`lambda`-list locals of the enclosing form are offered.
+- **ANSI screen in cells** for escape-code-driven output (cursor
+  addressing, clear, SGR colors): a live terminal grid rendered while
+  the cell runs (`pnpm test:ansi`). The SBCL worker flushes
+  escape-carrying partial lines so such programs animate; ECL flushes
+  per newline only, so its screen stays blank (engine-side limitation).
+- **Example: Matrix effect on the ANSI screen** — the classic falling
+  characters, bounded to 20 frames by default
+  (`(run-matrix-effect 60 20 0.05 0)` runs until Ctrl .).
 
 ## [1.0.0-beta.2] — 2026-09-16
 
@@ -179,5 +378,5 @@ the sprints below and was never tagged.
 | 31 | Function series drawn; Ctrl+R over cell inputs; service worker for offline use |
 | 32 | Code cut: version `1.0.0-beta.0`, this changelog, documents pass, release checklist |
 
-[Unreleased]: https://github.com/yfyang86/ConsCell/compare/v1.0.0-beta.0...dev
-[1.0.0-beta.0]: https://github.com/yfyang86/ConsCell/releases/tag/v1.0.0-beta.0
+[Unreleased]: https://github.com/yfyang86/MartingaleCell/compare/v1.0.0-beta.0...dev
+[1.0.0-beta.0]: https://github.com/yfyang86/MartingaleCell/releases/tag/v1.0.0-beta.0

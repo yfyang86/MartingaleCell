@@ -1,4 +1,4 @@
-# Releasing ConsCell
+# Releasing MartingaleCell
 
 The steps for a tagged release, written for `1.0.0-beta.0` and reusable
 for the next ones. `dev` is the integration branch, `main` the release
@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm lint && pnpm build && pnpm test          # 17 suites
 node scripts/boot-harness.mjs --exercise      # ECL + the cl-plot sample
 pnpm preview --port 4173 &                    # then, in another shell:
-node scripts/browser-smoke.mjs --json dist/smoke-report.json   # 11 scenarios
+node scripts/browser-smoke.mjs --json dist/smoke-report.json   # 12 scenarios
 ```
 
 - [ ] Boot screen and About show `v<version>`; the browser's
@@ -47,7 +47,7 @@ sha256sum app/public/sbcl/*.gz app/public/wecl/wecl.wasm
 
 ```sh
 git fetch origin main
-git tag -a v<version> <merge-commit-sha> -m "ConsCell <version>"
+git tag -a v<version> <merge-commit-sha> -m "MartingaleCell <version>"
 git push origin v<version>
 ```
 
@@ -86,7 +86,7 @@ skips its boot and ECL takes over (the boot log says so). Also:
       (the service worker's cache).
 - [ ] From a profile that had the previous version: the boot log shows
       the new artifacts downloading once; DevTools → Application →
-      Cache Storage lists only `conscell-<version>`.
+      Cache Storage lists only `martingalecell-<version>`.
 - [ ] Back on `dev`: bump `app/package.json` to the next working
       version (for example `1.0.0-beta.1`) in the first sprint after
       the release.

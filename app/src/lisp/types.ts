@@ -1,4 +1,4 @@
-/* Shared types for the ConsCell Lisp runtime layer. */
+/* Shared types for the MartingaleCell Lisp runtime layer. */
 
 import type { PlotAttachment } from '@/plot/gnuplot'
 

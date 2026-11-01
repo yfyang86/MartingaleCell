@@ -1,4 +1,4 @@
-# ConsCell —— 开发者手册
+# MartingaleCell —— 开发者手册
 
 面向贡献者的一切：目录结构、架构、两个 Lisp 引擎、worker 协议、测试、
 artifacts 与发布流程。面向用户的内容请先读
