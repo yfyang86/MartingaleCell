@@ -7,6 +7,19 @@
 (mapcar (lambda (n) (* n n)) '(1 2 3 4))   ; ⇒ (1 4 9 16)
 ```
 
+
+![MartingaleCell 首页](docs/screenshots/landing.png)
+
+## 图示示例
+
+- **化学结构直接画进结果单元** —— 褪黑素与维生素 B1（硫胺素）由 SMILES 字符串绘制：
+
+![分子绘制](docs/screenshots/ide-molecules.png)
+
+- **示例画廊** —— 22 个可直接运行的笔记本（基础、宏、CLOS、MOP、条件系统、算法、化学等）：
+
+![示例画廊](docs/screenshots/examples.png)
+
 （本文档为中文版；English version: [README.md](README.md)）
 
 ## 你能得到什么

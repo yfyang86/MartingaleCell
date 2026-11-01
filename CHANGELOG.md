@@ -6,10 +6,34 @@ uses [Semantic Versioning](https://semver.org/). Work lands in sprints
 (`Sprints/SprintN/`), each with a goal, implementation notes, a
 test-and-fix log and a proposal for the next one.
 
-## [Unreleased]
+## [1.0.0] — 2026-11-01
 
-`dev` carries version `1.0.0-beta.3` since the release, so builds after
-it install their own service-worker cache.
+The first full release. Highlights since 1.0.0-beta.2, in one line each:
+
+- **Chemistry in the notebook** — the bundled chemicl sample parses and
+  writes SMILES, computes formulas/masses/rings, and **draws molecules
+  as SVG** with an RDKit-style 2-D layout engine written in plain Lisp
+  (benzene's Kekulé hexagon through cephalostatin-1's 12 fused rings;
+  geometry verified against RDKit's own depictions).
+- **Renamed ConsCell → MartingaleCell**, with one-shot migration of
+  existing users' settings and caches.
+- **Bilingual UI** (English / 中文) across the whole app, docs included.
+- **Smarter autocomplete**: context-aware, ranked, backed by the live
+  image's symbol table.
+- **The MOP at native-SBCL parity** (34/34 battery), synced with the
+  wasm-port fixes; a live ANSI terminal screen in cells; per-cell
+  interrupt that safely replaces the worker; 22 example notebooks.
+- **Release-blocker hardening** (Sprint 35): storage-migration test
+  suite for the IndexedDB keys, sanitised raw-SVG plot payloads,
+  interrupt-safe SBCL job submission.
+- **Binaries vendored**: the SBCL 2.4.8 wasm release zip ships in
+  `releases/` (see its README); the app's gzip'd engine artifacts stay
+  git-tracked under `app/public/sbcl/`.
+
+Details below (all changes since 1.0.0-beta.2):
+
+`dev` carries version `1.0.0` as of this release, so builds after it
+install their own service-worker cache.
 
 ### Changed
 - **Renamed ConsCell to MartingaleCell** across the UI, docs, package

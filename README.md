@@ -10,6 +10,20 @@ leaves your machine.
 
 中文版文档：[README.zh-CN.md](README.zh-CN.md)
 
+![MartingaleCell home](docs/screenshots/landing.png)
+
+## Examples, with pictures
+
+| | |
+|---|---|
+| **The IDE with chemistry running** — melatonin and thiamine drawn from their SMILES strings by the bundled chemicl sample, straight into result cells | ![Molecules drawn from SMILES](docs/screenshots/ide-molecules.png) |
+| **The example gallery** — twenty-two ready-to-run notebooks: basics, macros, CLOS, MOP, conditions, algorithms, format & loop, chemistry | ![Example gallery](docs/screenshots/examples.png) |
+
+Both molecule drawings above were produced by
+`(chemicl:show-smiles "CC(=O)NCCC1=CNc2c1cc(OC)cc2")` (melatonin) and
+`(chemicl:show-smiles "OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N")` (thiamine,
+vitamin B1) — a pure-Lisp 2-D depiction engine verified against RDKit.
+
 ## What you get
 
 - **Two real Lisp engines**, switchable in Settings:
@@ -111,7 +125,7 @@ buffer · `Ctrl+.` interrupt · `Ctrl+K` command palette · `Ctrl+B` project
 explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` search ·
 `Ctrl+Shift+O` outline · `Ctrl+S` save.
 
-## Limitations (beta)
+## Limitations
 
 - One Lisp image per tab; the image is single-threaded (no `sb-thread`).
 - No networking from Lisp (no sockets in WASI/Emscripten); no
@@ -144,6 +158,6 @@ explorer · `Ctrl+R` search everything evaluated this session · `Ctrl+Shift+F` 
 
 ---
 
-Status: **beta** (v1.0.0-beta.0) — see [CHANGELOG.md](CHANGELOG.md).
+Status: **v1.0.0** — see [CHANGELOG.md](CHANGELOG.md) for release notes.
 For hacking on MartingaleCell itself, see [Developer-Manual.md](Developer-Manual.md);
 for cutting a release, [RELEASE.md](RELEASE.md).
