@@ -27,7 +27,7 @@ The first full release. Highlights since 1.0.0-beta.2, in one line each:
   suite for the IndexedDB keys, sanitised raw-SVG plot payloads,
   interrupt-safe SBCL job submission.
 - **Binaries vendored**: the SBCL 2.4.8 wasm release zip ships in
-  `releases/` (see its README); the app's gzip'd engine artifacts stay
+  `releases/` at the repo root (see its README); the app's gzip'd engine artifacts stay
   git-tracked under `app/public/sbcl/`.
 
 Details below (all changes since 1.0.0-beta.2):
